@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import { useLibrary } from '@/components/LibraryProvider'
-import { extractCoverObjectUrlFromAudioFile } from '@/lib/library/extract-cover-object-url-from-audio-file'
 import type { Track } from '@/types/track'
+import { getCoverBytesForTrack } from '@/lib/library/cover-bytes-cache'
 
 type AlbumCoverThumbProps = {
   /** Representative track (e.g. first on the album) — embedded art is read from its file */
@@ -38,7 +38,13 @@ export default function AlbumCoverThumb(props: AlbumCoverThumbProps) {
     void (async (): Promise<void> => {
       const file = await resolveFileForTrack(t)
       if (cancelled || !file) return
-      const u = await extractCoverObjectUrlFromAudioFile(file)
+      const bytes = await getCoverBytesForTrack(t.id, file)
+      if (cancelled) return
+      if (!bytes) {
+        setCoverUrl(null)
+        return
+      }
+      const u = URL.createObjectURL(new Blob([bytes.data], { type: bytes.mime }))
       if (cancelled) {
         if (u) URL.revokeObjectURL(u)
         return

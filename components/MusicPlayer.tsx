@@ -1,18 +1,72 @@
 'use client'
 
 import Link from 'next/link'
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import LibraryBrowser from '@/components/LibraryBrowser'
 import { useLibrary } from '@/components/LibraryProvider'
 import type { Track } from '@/types/track'
 import { formatDuration } from '@/lib/format-duration'
-import { extractCoverObjectUrlFromAudioFile } from '@/lib/library/extract-cover-object-url-from-audio-file'
+import { getCoverBytesForTrack } from '@/lib/library/cover-bytes-cache'
 import ThemeToggle from '@/components/ThemeToggle'
 import FavoriteStarButton from '@/components/FavoriteStarButton'
 import PanelResizeHandle from '@/components/PanelResizeHandle'
 
 const STORAGE_LIBRARY_PANEL_PX = 'muzical.panelWidth.library'
 const STORAGE_QUEUE_PANEL_PX = 'muzical.panelWidth.queue'
+const STORAGE_REPEAT_MODE = 'muzical.repeatMode'
+const STORAGE_SHUFFLE = 'muzical.shuffle'
+const STORAGE_PLAYBACK_RATE = 'muzical.playbackRate'
+
+type RepeatMode = 'off' | 'all' | 'one'
+
+const PLAYBACK_RATES: readonly number[] = [0.5, 0.75, 1, 1.25, 1.5, 2]
+
+function readStoredRepeatMode(): RepeatMode {
+  if (typeof window === 'undefined') return 'all'
+  const v = window.localStorage.getItem(STORAGE_REPEAT_MODE)
+  if (v === 'off' || v === 'all' || v === 'one') return v
+  return 'all'
+}
+
+function readStoredShuffle(): boolean {
+  if (typeof window === 'undefined') return false
+  try {
+    return window.localStorage.getItem(STORAGE_SHUFFLE) === '1'
+  } catch {
+    return false
+  }
+}
+
+function readStoredPlaybackRate(): number {
+  if (typeof window === 'undefined') return 1
+  const v = Number.parseFloat(window.localStorage.getItem(STORAGE_PLAYBACK_RATE) ?? '')
+  if (!Number.isFinite(v)) return 1
+  return PLAYBACK_RATES.includes(v) ? v : 1
+}
+
+function persistRepeatMode(mode: RepeatMode): void {
+  try {
+    window.localStorage.setItem(STORAGE_REPEAT_MODE, mode)
+  } catch {
+    /* ignore */
+  }
+}
+
+function persistShuffle(on: boolean): void {
+  try {
+    window.localStorage.setItem(STORAGE_SHUFFLE, on ? '1' : '0')
+  } catch {
+    /* ignore */
+  }
+}
+
+function persistPlaybackRate(rate: number): void {
+  try {
+    window.localStorage.setItem(STORAGE_PLAYBACK_RATE, String(rate))
+  } catch {
+    /* ignore */
+  }
+}
 const LIBRARY_PANEL_MIN = 300
 const LIBRARY_PANEL_MAX = 960
 const QUEUE_PANEL_MIN = 420
@@ -127,6 +181,34 @@ function IconSettings(props: { className?: string }) {
   )
 }
 
+function IconRepeatLoop(props: { className?: string; dimmed?: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      className={[props.className, props.dimmed ? 'opacity-40' : ''].filter(Boolean).join(' ')}
+    >
+      <path d="M17 1l4 4-4 4" />
+      <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+      <path d="M7 23l-4-4 4-4" />
+      <path d="M21 13v2a4 4 0 0 1-4 4H3" />
+    </svg>
+  )
+}
+
+function IconShuffle(props: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden className={props.className}>
+      <path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
 /**
  * Local-library player: queue from scanned folders, `<audio>` playback via object URLs.
  */
@@ -158,8 +240,12 @@ export default function MusicPlayer() {
   const [layoutLg, setLayoutLg] = useState(false)
   const [libraryPanelPx, setLibraryPanelPx] = useState(440)
   const [queuePanelPx, setQueuePanelPx] = useState(300)
+  const [repeatMode, setRepeatMode] = useState<RepeatMode>('all')
+  const [shuffle, setShuffle] = useState(false)
+  const [playbackRate, setPlaybackRate] = useState(1)
 
   const mainRowRef = useRef<HTMLDivElement>(null)
+  const shuffleHistoryRef = useRef<number[]>([])
   const libraryPanelPxRef = useRef(440)
   const queuePanelPxRef = useRef(300)
   const [dragOverQueueId, setDragOverQueueId] = useState<string | null>(null)
@@ -174,10 +260,15 @@ export default function MusicPlayer() {
   const objectUrlRef = useRef<string | null>(null)
   const coverObjectUrlRef = useRef<string | null>(null)
   const isPlayingRef = useRef(isPlaying)
+  const playbackRateRef = useRef(playbackRate)
 
   useLayoutEffect(() => {
     isPlayingRef.current = isPlaying
   }, [isPlaying])
+
+  useLayoutEffect(() => {
+    playbackRateRef.current = playbackRate
+  }, [playbackRate])
 
   useLayoutEffect(() => {
     libraryPanelPxRef.current = libraryPanelPx
@@ -188,8 +279,15 @@ export default function MusicPlayer() {
     queueMicrotask(() => {
       setLibraryPanelPx(readStoredPanelPx(STORAGE_LIBRARY_PANEL_PX, 440))
       setQueuePanelPx(readStoredPanelPx(STORAGE_QUEUE_PANEL_PX, 300))
+      setRepeatMode(readStoredRepeatMode())
+      setShuffle(readStoredShuffle())
+      setPlaybackRate(readStoredPlaybackRate())
     })
   }, [])
+
+  useEffect(() => {
+    if (!shuffle) shuffleHistoryRef.current = []
+  }, [shuffle])
 
   useLayoutEffect(() => {
     if (typeof window === 'undefined') return
@@ -275,6 +373,7 @@ export default function MusicPlayer() {
 
   const selectIndex = useCallback(
     (index: number) => {
+      shuffleHistoryRef.current = []
       setActiveQueueId(queue[index]?.queueId ?? null)
       setPositionSec(0)
       setLoadError(null)
@@ -283,18 +382,85 @@ export default function MusicPlayer() {
     [queue],
   )
 
-  const goRelative = useCallback(
-    (delta: number) => {
-      if (queue.length === 0) return
-      const idx = activeIndex >= 0 ? activeIndex : 0
-      const next = (idx + delta + queue.length) % queue.length
-      setActiveQueueId(queue[next]?.queueId ?? null)
+  const goNext = useCallback((): void => {
+    if (queue.length === 0) return
+    const idx = activeIndex >= 0 ? activeIndex : 0
+
+    if (shuffle && queue.length > 1) {
+      shuffleHistoryRef.current.push(idx)
+      let j = idx
+      for (let n = 0; n < 48 && j === idx; n++) {
+        j = Math.floor(Math.random() * queue.length)
+      }
+      setActiveQueueId(queue[j]?.queueId ?? null)
       setPositionSec(0)
       setLoadError(null)
       setIsPlaying(true)
-    },
-    [activeIndex, queue],
-  )
+      return
+    }
+
+    if (idx < queue.length - 1) {
+      setActiveQueueId(queue[idx + 1]?.queueId ?? null)
+      setPositionSec(0)
+      setLoadError(null)
+      setIsPlaying(true)
+      return
+    }
+    if (repeatMode === 'all') {
+      setActiveQueueId(queue[0]?.queueId ?? null)
+      setPositionSec(0)
+      setLoadError(null)
+      setIsPlaying(true)
+      return
+    }
+    setIsPlaying(false)
+  }, [activeIndex, queue, repeatMode, shuffle])
+
+  const goPrev = useCallback((): void => {
+    if (queue.length === 0) return
+    const idx = activeIndex >= 0 ? activeIndex : 0
+
+    if (shuffle && shuffleHistoryRef.current.length > 0) {
+      const prevIdx = shuffleHistoryRef.current.pop()
+      if (prevIdx !== undefined && prevIdx >= 0 && prevIdx < queue.length) {
+        setActiveQueueId(queue[prevIdx]?.queueId ?? null)
+        setPositionSec(0)
+        setLoadError(null)
+        setIsPlaying(true)
+        return
+      }
+    }
+
+    if (idx > 0) {
+      setActiveQueueId(queue[idx - 1]?.queueId ?? null)
+      setPositionSec(0)
+      setLoadError(null)
+      setIsPlaying(true)
+      return
+    }
+    if (repeatMode === 'all') {
+      setActiveQueueId(queue[queue.length - 1]?.queueId ?? null)
+      setPositionSec(0)
+      setLoadError(null)
+      setIsPlaying(true)
+    }
+  }, [activeIndex, queue, repeatMode, shuffle])
+
+  const cycleRepeatMode = useCallback((): void => {
+    setRepeatMode((m) => {
+      const next: RepeatMode = m === 'off' ? 'all' : m === 'all' ? 'one' : 'off'
+      persistRepeatMode(next)
+      return next
+    })
+  }, [])
+
+  const toggleShuffle = useCallback((): void => {
+    setShuffle((s) => {
+      const next = !s
+      persistShuffle(next)
+      return next
+    })
+  }, [])
 
   const clampPanelsToRow = useCallback((): void => {
     const rowW = mainRowRef.current?.getBoundingClientRect().width ?? 0
@@ -368,6 +534,12 @@ export default function MusicPlayer() {
   }, [volume])
 
   useEffect(() => {
+    const el = audioRef.current
+    if (!el) return undefined
+    el.playbackRate = playbackRate
+  }, [playbackRate])
+
+  useEffect(() => {
     if (coverObjectUrlRef.current) {
       URL.revokeObjectURL(coverObjectUrlRef.current)
       coverObjectUrlRef.current = null
@@ -402,18 +574,19 @@ export default function MusicPlayer() {
         setLoadError('Could not read this file from the library.')
         return
       }
-      const coverPromise = extractCoverObjectUrlFromAudioFile(file)
+      const coverBytesPromise = getCoverBytesForTrack(current.id, file)
       const url = URL.createObjectURL(file)
       if (objectUrlRef.current) {
         URL.revokeObjectURL(objectUrlRef.current)
       }
       objectUrlRef.current = url
-      const coverUrl = await coverPromise
       if (cancelled) {
-        if (coverUrl) URL.revokeObjectURL(coverUrl)
         return
       }
-      if (coverUrl) {
+      const coverBytes = await coverBytesPromise
+      if (cancelled) return
+      if (coverBytes) {
+        const coverUrl = URL.createObjectURL(new Blob([coverBytes.data], { type: coverBytes.mime }))
         coverObjectUrlRef.current = coverUrl
         setCoverArtUrl(coverUrl)
       }
@@ -423,6 +596,7 @@ export default function MusicPlayer() {
       }
       el.src = url
       el.load()
+      el.playbackRate = playbackRateRef.current
       if (isPlayingRef.current) {
         void el.play().catch((e: unknown) => {
           setLoadError(e instanceof Error ? e.message : 'Playback failed')
@@ -467,7 +641,16 @@ export default function MusicPlayer() {
       }
     }
     const onEnded = (): void => {
-      goRelative(1)
+      if (repeatMode === 'one') {
+        el.currentTime = 0
+        setPositionSec(0)
+        void el.play().catch((e: unknown) => {
+          setLoadError(e instanceof Error ? e.message : 'Playback failed')
+          setIsPlaying(false)
+        })
+        return
+      }
+      goNext()
     }
     el.addEventListener('timeupdate', onTime)
     el.addEventListener('loadedmetadata', onMeta)
@@ -477,7 +660,7 @@ export default function MusicPlayer() {
       el.removeEventListener('loadedmetadata', onMeta)
       el.removeEventListener('ended', onEnded)
     }
-  }, [current, bumpTrackDuration, goRelative])
+  }, [current, bumpTrackDuration, goNext, repeatMode])
 
   useEffect(() => {
     return (): void => {
@@ -494,19 +677,43 @@ export default function MusicPlayer() {
 
   const onSeekBarPointer = useCallback(
     (ratio: number) => {
+      const r = Math.min(1, Math.max(0, ratio))
       const el = audioRef.current
       if (!el || !Number.isFinite(el.duration) || el.duration <= 0) {
         if (durationSec > 0) {
-          setPositionSec(ratio * durationSec)
-          if (el) el.currentTime = ratio * durationSec
+          setPositionSec(r * durationSec)
+          if (el) el.currentTime = r * durationSec
         }
         return
       }
-      const next = Math.min(el.duration, Math.max(0, ratio * el.duration))
+      const next = Math.min(el.duration, Math.max(0, r * el.duration))
       el.currentTime = next
       setPositionSec(next)
     },
     [durationSec],
+  )
+
+  const onSeekBarKeyDown = useCallback(
+    (e: KeyboardEvent<HTMLDivElement>): void => {
+      if (durationSec <= 0) return
+
+      const stepSmallSec = 5
+      const stepLargeSec = 30
+      let nextTime: number | null = null
+
+      if (e.key === 'ArrowLeft') nextTime = positionSec - stepSmallSec
+      else if (e.key === 'ArrowRight') nextTime = positionSec + stepSmallSec
+      else if (e.key === 'PageDown') nextTime = positionSec - stepLargeSec
+      else if (e.key === 'PageUp') nextTime = positionSec + stepLargeSec
+      else if (e.key === 'Home') nextTime = 0
+      else if (e.key === 'End') nextTime = durationSec
+      else return
+
+      e.preventDefault()
+      const clamped = Math.min(durationSec, Math.max(0, nextTime))
+      onSeekBarPointer(clamped / durationSec)
+    },
+    [durationSec, onSeekBarPointer, positionSec],
   )
 
   const statusLabel = isScanning
@@ -853,10 +1060,10 @@ export default function MusicPlayer() {
               onPointerDown={(e) => {
                 const el = e.currentTarget
                 const rect = el.getBoundingClientRect()
-                const ratio = (e.clientX - rect.left) / rect.width
+                const ratio = (e.clientX - rect.left) / Math.max(1, rect.width)
                 onSeekBarPointer(ratio)
                 const move = (ev: PointerEvent): void => {
-                  const r = (ev.clientX - rect.left) / rect.width
+                  const r = (ev.clientX - rect.left) / Math.max(1, rect.width)
                   onSeekBarPointer(r)
                 }
                 const up = (): void => {
@@ -867,6 +1074,8 @@ export default function MusicPlayer() {
                 window.addEventListener('pointerup', up)
               }}
               role="slider"
+              tabIndex={0}
+              onKeyDown={onSeekBarKeyDown}
               aria-valuemin={0}
               aria-valuemax={Math.round(durationSec)}
               aria-valuenow={Math.round(positionSec)}
@@ -887,7 +1096,7 @@ export default function MusicPlayer() {
                 <button
                   type="button"
                   aria-label="Previous track"
-                  onClick={() => goRelative(-1)}
+                  onClick={() => goPrev()}
                   disabled={queue.length === 0}
                   className="rounded-full p-2.5 text-zinc-600 transition hover:bg-zinc-200 hover:text-zinc-900 disabled:cursor-not-allowed disabled:opacity-40 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
                 >
@@ -905,7 +1114,7 @@ export default function MusicPlayer() {
                 <button
                   type="button"
                   aria-label="Next track"
-                  onClick={() => goRelative(1)}
+                  onClick={() => goNext()}
                   disabled={queue.length === 0}
                   className="rounded-full p-2.5 text-zinc-600 transition hover:bg-zinc-200 hover:text-zinc-900 disabled:cursor-not-allowed disabled:opacity-40 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
                 >
@@ -926,6 +1135,64 @@ export default function MusicPlayer() {
                   aria-label="Volume"
                 />
               </div>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-center gap-3 border-t border-zinc-200 pt-3 dark:border-zinc-800">
+              <button
+                type="button"
+                onClick={() => cycleRepeatMode()}
+                className="relative flex h-9 w-9 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-600 transition hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:border-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+                aria-label={
+                  repeatMode === 'off'
+                    ? 'Repeat off. Click for repeat all.'
+                    : repeatMode === 'all'
+                      ? 'Repeat all. Click for repeat one.'
+                      : 'Repeat one. Click for repeat off.'
+                }
+              >
+                <IconRepeatLoop dimmed={repeatMode === 'off'} className="h-5 w-5" />
+                {repeatMode === 'one' ? (
+                  <span className="absolute -right-0.5 -top-0.5 flex h-3.5 min-w-[0.875rem] items-center justify-center rounded bg-amber-500 px-0.5 text-[9px] font-bold leading-none text-zinc-950">
+                    1
+                  </span>
+                ) : null}
+              </button>
+              <button
+                type="button"
+                onClick={() => toggleShuffle()}
+                aria-pressed={shuffle}
+                aria-label={shuffle ? 'Shuffle on' : 'Shuffle off'}
+                className={[
+                  'flex h-9 w-9 items-center justify-center rounded-full border transition',
+                  shuffle
+                    ? 'border-amber-500/50 bg-amber-500/15 text-amber-800 dark:text-amber-300'
+                    : 'border-zinc-200 bg-white text-zinc-600 hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:border-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-100',
+                ].join(' ')}
+              >
+                <IconShuffle className="h-5 w-5" />
+              </button>
+              <label className="flex items-center gap-2 text-xs text-zinc-600 dark:text-zinc-400">
+                <span className="sr-only">Playback speed</span>
+                <span aria-hidden className="tabular-nums">
+                  Speed
+                </span>
+                <select
+                  value={playbackRate}
+                  onChange={(e) => {
+                    const v = Number(e.target.value)
+                    setPlaybackRate(v)
+                    persistPlaybackRate(v)
+                  }}
+                  className="cursor-pointer rounded-md border border-zinc-200 bg-white px-2 py-1 text-xs font-medium text-zinc-800 outline-none ring-amber-500/0 transition focus:border-amber-400 focus:ring-2 focus:ring-amber-500/20 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
+                  aria-label="Playback speed"
+                >
+                  {PLAYBACK_RATES.map((r) => (
+                    <option key={r} value={r}>
+                      {r === 1 ? '1×' : `${r}×`}
+                    </option>
+                  ))}
+                </select>
+              </label>
             </div>
           </div>
         </aside>
