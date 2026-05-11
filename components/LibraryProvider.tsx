@@ -38,6 +38,7 @@ type LibraryContextValue = {
   /** Full catalog from scans — not the playback queue */
   libraryTracks: Track[]
   queue: QueuedTrack[]
+  recentlyPlayedTrackIds: readonly string[]
   isScanning: boolean
   scanError: string | null
   hasDirectoryPicker: boolean
@@ -47,6 +48,7 @@ type LibraryContextValue = {
   addToQueue: (items: Track | readonly Track[]) => void
   removeFromQueue: (queueId: string) => void
   clearQueue: () => void
+  recordRecentlyPlayedTrack: (trackId: string) => void
   resolveFileForTrack: (track: Track) => Promise<File | null>
   bumpTrackDuration: (trackId: string, durationSec: number) => void
   favoriteSongIds: readonly string[]
@@ -63,11 +65,36 @@ type LibraryContextValue = {
 
 const LibraryContext = createContext<LibraryContextValue | null>(null)
 
+const STORAGE_RECENTLY_PLAYED_TRACK_IDS = 'muzical.recentlyPlayedTrackIds'
+const RECENTLY_PLAYED_LIMIT = 24
+
 function toggleSortedStringId(prev: readonly string[], id: string): string[] {
   const next = new Set(prev)
   if (next.has(id)) next.delete(id)
   else next.add(id)
   return [...next].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
+}
+
+function safeReadStoredStringArray(key: string): string[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = window.localStorage.getItem(key)
+    if (!raw) return []
+    const parsed: unknown = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter((x): x is string => typeof x === 'string')
+  } catch {
+    return []
+  }
+}
+
+function safeWriteStoredStringArray(key: string, list: readonly string[]): void {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(key, JSON.stringify(list))
+  } catch {
+    /* ignore */
+  }
 }
 
 type CollectTracksResult = {
@@ -171,6 +198,7 @@ export function LibraryProvider(props: { children: ReactNode }) {
   const [roots, setRoots] = useState<LibraryRootMeta[]>([])
   const [libraryTracks, setLibraryTracks] = useState<Track[]>([])
   const [queue, setQueue] = useState<QueuedTrack[]>([])
+  const [recentlyPlayedTrackIds, setRecentlyPlayedTrackIds] = useState<string[]>([])
   const [isScanning, setIsScanning] = useState(false)
   const [scanError, setScanError] = useState<string | null>(null)
   const [hasDirectoryPicker, setHasDirectoryPicker] = useState(false)
@@ -180,6 +208,16 @@ export function LibraryProvider(props: { children: ReactNode }) {
       setHasDirectoryPicker(typeof window !== 'undefined' && 'showDirectoryPicker' in window)
     })
   }, [])
+
+  useEffect(() => {
+    void Promise.resolve().then(() => {
+      setRecentlyPlayedTrackIds(safeReadStoredStringArray(STORAGE_RECENTLY_PLAYED_TRACK_IDS).slice(0, RECENTLY_PLAYED_LIMIT))
+    })
+  }, [])
+
+  useEffect(() => {
+    safeWriteStoredStringArray(STORAGE_RECENTLY_PLAYED_TRACK_IDS, recentlyPlayedTrackIds.slice(0, RECENTLY_PLAYED_LIMIT))
+  }, [recentlyPlayedTrackIds])
 
   useEffect(() => {
     libraryTracksRef.current = libraryTracks
@@ -283,6 +321,15 @@ export function LibraryProvider(props: { children: ReactNode }) {
 
   const clearQueue = useCallback(() => {
     setQueue([])
+  }, [])
+
+  const recordRecentlyPlayedTrack = useCallback((trackId: string) => {
+    const id = trackId.trim()
+    if (!id) return
+    setRecentlyPlayedTrackIds((prev) => {
+      const next = [id, ...prev.filter((x) => x !== id)]
+      return next.slice(0, RECENTLY_PLAYED_LIMIT)
+    })
   }, [])
 
   const resolveFileForTrack = useCallback((track: Track) => {
@@ -522,6 +569,7 @@ export function LibraryProvider(props: { children: ReactNode }) {
       roots,
       libraryTracks,
       queue,
+      recentlyPlayedTrackIds,
       isScanning,
       scanError,
       hasDirectoryPicker,
@@ -531,6 +579,7 @@ export function LibraryProvider(props: { children: ReactNode }) {
       addToQueue,
       removeFromQueue,
       clearQueue,
+      recordRecentlyPlayedTrack,
       resolveFileForTrack,
       bumpTrackDuration,
       favoriteSongIds,
@@ -548,6 +597,7 @@ export function LibraryProvider(props: { children: ReactNode }) {
       roots,
       libraryTracks,
       queue,
+      recentlyPlayedTrackIds,
       isScanning,
       scanError,
       hasDirectoryPicker,
@@ -557,6 +607,7 @@ export function LibraryProvider(props: { children: ReactNode }) {
       addToQueue,
       removeFromQueue,
       clearQueue,
+      recordRecentlyPlayedTrack,
       resolveFileForTrack,
       bumpTrackDuration,
       favoriteSongIds,

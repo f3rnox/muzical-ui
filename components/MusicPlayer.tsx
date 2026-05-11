@@ -13,11 +13,11 @@ import PanelResizeHandle from '@/components/PanelResizeHandle'
 
 const STORAGE_LIBRARY_PANEL_PX = 'muzical.panelWidth.library'
 const STORAGE_QUEUE_PANEL_PX = 'muzical.panelWidth.queue'
-const LIBRARY_PANEL_MIN = 240
+const LIBRARY_PANEL_MIN = 300
 const LIBRARY_PANEL_MAX = 960
-const QUEUE_PANEL_MIN = 180
-const QUEUE_PANEL_MAX = 560
-const PLAYER_PANEL_MIN = 260
+const QUEUE_PANEL_MIN = 420
+// Minimum width for the player panel (aside). Used to clamp resizes.
+const PLAYER_PANEL_MIN = 350
 
 function clampPanelPx(n: number, lo: number, hi: number): number {
   return Math.min(hi, Math.max(lo, n))
@@ -40,7 +40,9 @@ function clampLibraryQueueWidths(
     rowWidthPx - PLAYER_PANEL_MIN,
   )
   let L = clampPanelPx(libraryPx, LIBRARY_PANEL_MIN, LIBRARY_PANEL_MAX)
-  let Q = clampPanelPx(queuePx, QUEUE_PANEL_MIN, QUEUE_PANEL_MAX)
+  // Intentionally no hard `QUEUE_PANEL_MAX` cap: the player panel minimum width is
+  // enforced via `maxSum` below, and we don't want queue width to prevent it.
+  let Q = Math.max(QUEUE_PANEL_MIN, queuePx)
   if (L + Q > maxSum) {
     const over = L + Q - maxSum
     const takeFromL = Math.min(over, L - LIBRARY_PANEL_MIN)
@@ -56,7 +58,7 @@ function clampLibraryQueueWidths(
 
 function clampQueuePanelWidth(rowWidthPx: number, libraryPx: number, queuePx: number): number {
   const maxQ = rowWidthPx - libraryPx - PLAYER_PANEL_MIN
-  return clampPanelPx(queuePx, QUEUE_PANEL_MIN, Math.min(QUEUE_PANEL_MAX, Math.max(QUEUE_PANEL_MIN, maxQ)))
+  return clampPanelPx(queuePx, QUEUE_PANEL_MIN, Math.max(QUEUE_PANEL_MIN, maxQ))
 }
 
 function IconPlay(props: { className?: string }) {
@@ -137,8 +139,12 @@ export default function MusicPlayer() {
     bumpTrackDuration,
     removeFromQueue,
     clearQueue,
+    recentlyPlayedTrackIds,
+    recordRecentlyPlayedTrack,
     isFavoriteSong,
     toggleFavoriteTrack,
+    addToQueue,
+    favoriteSongIds,
   } = useLibrary()
   const [activeQueueId, setActiveQueueId] = useState<string | null>(null)
   const [isPlaying, setIsPlaying] = useState(false)
@@ -202,6 +208,60 @@ export default function MusicPlayer() {
   }, [queue, activeQueueId])
 
   const current: Track | undefined = activeIndex >= 0 ? queue[activeIndex]?.track : undefined
+  const lastRecordedTrackIdRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (!isPlaying) return
+    const id = current?.id ?? ''
+    if (!id) return
+    if (lastRecordedTrackIdRef.current === id) return
+    lastRecordedTrackIdRef.current = id
+    recordRecentlyPlayedTrack(id)
+  }, [current?.id, isPlaying, recordRecentlyPlayedTrack])
+
+  const recentlyPlayedTracks = useMemo(() => {
+    if (recentlyPlayedTrackIds.length === 0) return []
+    const byId = new Map<string, Track>()
+    for (const t of libraryTracks) byId.set(t.id, t)
+    const out: Track[] = []
+    for (const id of recentlyPlayedTrackIds) {
+      const t = byId.get(id)
+      if (t) out.push(t)
+      if (out.length >= 8) break
+    }
+    return out
+  }, [recentlyPlayedTrackIds, libraryTracks])
+
+  const suggestedTracks = useMemo(() => {
+    if (libraryTracks.length === 0) return []
+    const byId = new Map<string, Track>()
+    for (const t of libraryTracks) byId.set(t.id, t)
+
+    const seen = new Set<string>()
+    const out: Track[] = []
+
+    for (const t of recentlyPlayedTracks) {
+      seen.add(t.id)
+    }
+
+    for (const id of favoriteSongIds) {
+      const t = byId.get(id)
+      if (!t) continue
+      if (seen.has(t.id)) continue
+      seen.add(t.id)
+      out.push(t)
+      if (out.length >= 12) return out
+    }
+
+    for (let i = 0; i < libraryTracks.length; i++) {
+      const t = libraryTracks[i]
+      if (seen.has(t.id)) continue
+      seen.add(t.id)
+      out.push(t)
+      if (out.length >= 12) break
+    }
+    return out
+  }, [libraryTracks, favoriteSongIds, recentlyPlayedTracks])
 
   const durationSec = useMemo(() => {
     const fromTrack = current?.durationSec ?? 0
@@ -526,14 +586,95 @@ export default function MusicPlayer() {
           </div>
           <div className="min-h-0 flex-1 overflow-auto pb-2">
             {queue.length === 0 ? (
-              <div className="px-4 py-10 text-center text-sm text-zinc-600 dark:text-zinc-400">
-                <p>Queue is empty. Pick tracks from the library browser and use Add.</p>
-                <Link
-                  href="/settings"
-                  className="mt-3 inline-block font-medium text-amber-700 underline-offset-2 hover:underline dark:text-amber-400"
-                >
-                  Library folders
-                </Link>
+              <div className="px-4 py-6">
+                <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Queue is empty</p>
+                <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+                  Add something to start playback.
+                  <Link
+                    href="/settings"
+                    className="ml-2 font-medium text-amber-700 underline-offset-2 hover:underline dark:text-amber-400"
+                  >
+                    Library folders
+                  </Link>
+                </p>
+
+                {recentlyPlayedTracks.length > 0 ? (
+                  <div className="mt-5">
+                    <p className="mb-2 text-xs font-medium uppercase tracking-wider text-zinc-500">Recently played</p>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      {recentlyPlayedTracks.map((t) => (
+                        <div
+                          key={t.id}
+                          className="flex min-w-0 items-center gap-3 rounded-xl border border-zinc-200 bg-white p-3 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/40 dark:shadow-none"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">{t.title}</p>
+                            <p className="truncate text-xs text-zinc-500 dark:text-zinc-400">
+                              {t.artist} · {t.album}
+                            </p>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-2">
+                            <span className="text-[11px] tabular-nums text-zinc-400 dark:text-zinc-500">
+                              {t.durationSec > 0 ? formatDuration(t.durationSec) : '—'}
+                            </span>
+                            <FavoriteStarButton
+                              className="rounded-full"
+                              filled={isFavoriteSong(t.id)}
+                              onPress={() => toggleFavoriteTrack(t)}
+                              label={isFavoriteSong(t.id) ? 'Remove song from favorites' : 'Add song to favorites'}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => addToQueue(t)}
+                              className="shrink-0 rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-medium text-amber-800 ring-1 ring-amber-500/25 transition hover:bg-amber-500/25 dark:text-amber-300 dark:ring-amber-500/40"
+                            >
+                              Add
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                {suggestedTracks.length > 0 ? (
+                  <div className="mt-6">
+                    <p className="mb-2 text-xs font-medium uppercase tracking-wider text-zinc-500">Suggestions</p>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      {suggestedTracks.map((t) => (
+                        <div
+                          key={t.id}
+                          className="flex min-w-0 items-center gap-3 rounded-xl border border-zinc-200 bg-white p-3 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/40 dark:shadow-none"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">{t.title}</p>
+                            <p className="truncate text-xs text-zinc-500 dark:text-zinc-400">
+                              {t.artist} · {t.album}
+                            </p>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-2">
+                            <span className="text-[11px] tabular-nums text-zinc-400 dark:text-zinc-500">
+                              {t.durationSec > 0 ? formatDuration(t.durationSec) : '—'}
+                            </span>
+                            <FavoriteStarButton
+                              className="rounded-full"
+                              filled={isFavoriteSong(t.id)}
+                              onPress={() => toggleFavoriteTrack(t)}
+                              label={isFavoriteSong(t.id) ? 'Remove song from favorites' : 'Add song to favorites'}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => addToQueue(t)}
+                              className="shrink-0 rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-medium text-amber-800 ring-1 ring-amber-500/25 transition hover:bg-amber-500/25 dark:text-amber-300 dark:ring-amber-500/40"
+                            >
+                              Add
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
               </div>
             ) : (
               <ul className="divide-y divide-zinc-200 dark:divide-zinc-800" role="listbox" aria-label="Track queue">
