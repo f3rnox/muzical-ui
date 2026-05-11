@@ -16,7 +16,9 @@ import {
   idbDeleteRoot,
   idbGetAllRoots,
   idbGetCatalog,
+  idbGetFavorites,
   idbPutCatalog,
+  idbPutFavorites,
   idbPutRoot,
   openLibraryDb,
   type StoredLibraryRoot,
@@ -47,9 +49,26 @@ type LibraryContextValue = {
   clearQueue: () => void
   resolveFileForTrack: (track: Track) => Promise<File | null>
   bumpTrackDuration: (trackId: string, durationSec: number) => void
+  favoriteSongIds: readonly string[]
+  favoriteArtistNames: readonly string[]
+  favoriteAlbumKeys: readonly string[]
+  isFavoriteSong: (trackId: string) => boolean
+  isFavoriteArtist: (name: string) => boolean
+  isFavoriteAlbum: (albumKey: string) => boolean
+  toggleFavoriteSong: (trackId: string) => void
+  toggleFavoriteArtist: (name: string) => void
+  toggleFavoriteAlbum: (albumKey: string) => void
+  toggleFavoriteTrack: (track: Track) => void
 }
 
 const LibraryContext = createContext<LibraryContextValue | null>(null)
+
+function toggleSortedStringId(prev: readonly string[], id: string): string[] {
+  const next = new Set(prev)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  return [...next].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
+}
 
 type CollectTracksResult = {
   tracks: Track[]
@@ -145,6 +164,10 @@ export function LibraryProvider(props: { children: ReactNode }) {
   const rootsMetaRef = useRef<LibraryRootMeta[]>([])
   const libraryTracksRef = useRef<Track[]>([])
   const persistCatalogTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const favoritesReadyRef = useRef(false)
+  const [favoriteSongIds, setFavoriteSongIds] = useState<string[]>([])
+  const [favoriteArtistNames, setFavoriteArtistNames] = useState<string[]>([])
+  const [favoriteAlbumKeys, setFavoriteAlbumKeys] = useState<string[]>([])
   const [roots, setRoots] = useState<LibraryRootMeta[]>([])
   const [libraryTracks, setLibraryTracks] = useState<Track[]>([])
   const [queue, setQueue] = useState<QueuedTrack[]>([])
@@ -266,6 +289,52 @@ export function LibraryProvider(props: { children: ReactNode }) {
     return resolveTrackToFile(track, rootHandlesRef.current)
   }, [])
 
+  const favoriteSongSet = useMemo(() => new Set(favoriteSongIds), [favoriteSongIds])
+  const favoriteArtistSet = useMemo(() => new Set(favoriteArtistNames), [favoriteArtistNames])
+  const favoriteAlbumSet = useMemo(() => new Set(favoriteAlbumKeys), [favoriteAlbumKeys])
+
+  const isFavoriteSong = useCallback(
+    (trackId: string) => favoriteSongSet.has(trackId),
+    [favoriteSongSet],
+  )
+  const isFavoriteArtist = useCallback(
+    (name: string) => favoriteArtistSet.has(name),
+    [favoriteArtistSet],
+  )
+  const isFavoriteAlbum = useCallback(
+    (albumKey: string) => favoriteAlbumSet.has(albumKey),
+    [favoriteAlbumSet],
+  )
+
+  const toggleFavoriteSong = useCallback((trackId: string) => {
+    setFavoriteSongIds((prev) => toggleSortedStringId(prev, trackId))
+  }, [])
+
+  const toggleFavoriteArtist = useCallback((name: string) => {
+    setFavoriteArtistNames((prev) => toggleSortedStringId(prev, name))
+  }, [])
+
+  const toggleFavoriteAlbum = useCallback((albumKey: string) => {
+    setFavoriteAlbumKeys((prev) => toggleSortedStringId(prev, albumKey))
+  }, [])
+
+  const toggleFavoriteTrack = useCallback((track: Track) => {
+    toggleFavoriteSong(track.id)
+  }, [toggleFavoriteSong])
+
+  useEffect(() => {
+    if (!favoritesReadyRef.current) return
+    const db = dbRef.current
+    if (!db) return
+    void idbPutFavorites(db, {
+      songIds: favoriteSongIds,
+      artistNames: favoriteArtistNames,
+      albumKeys: favoriteAlbumKeys,
+    }).catch(() => {
+      /* ignore */
+    })
+  }, [favoriteSongIds, favoriteArtistNames, favoriteAlbumKeys])
+
   const ingestPickedFolder = useCallback(
     async (handle: FileSystemDirectoryHandle): Promise<void> => {
       try {
@@ -360,6 +429,23 @@ export function LibraryProvider(props: { children: ReactNode }) {
           return
         }
         dbRef.current = db
+        try {
+          const fav = await idbGetFavorites(db)
+          if (!disposed) {
+            setFavoriteSongIds(fav.songIds)
+            setFavoriteArtistNames(fav.artistNames)
+            setFavoriteAlbumKeys(fav.albumKeys)
+          }
+        } catch {
+          if (!disposed) {
+            setFavoriteSongIds([])
+            setFavoriteArtistNames([])
+            setFavoriteAlbumKeys([])
+          }
+        }
+        if (!disposed) {
+          favoritesReadyRef.current = true
+        }
         void navigator.storage?.persist?.()
         const rows = await idbGetAllRoots(db)
         if (disposed) return
@@ -447,6 +533,16 @@ export function LibraryProvider(props: { children: ReactNode }) {
       clearQueue,
       resolveFileForTrack,
       bumpTrackDuration,
+      favoriteSongIds,
+      favoriteArtistNames,
+      favoriteAlbumKeys,
+      isFavoriteSong,
+      isFavoriteArtist,
+      isFavoriteAlbum,
+      toggleFavoriteSong,
+      toggleFavoriteArtist,
+      toggleFavoriteAlbum,
+      toggleFavoriteTrack,
     }),
     [
       roots,
@@ -463,6 +559,16 @@ export function LibraryProvider(props: { children: ReactNode }) {
       clearQueue,
       resolveFileForTrack,
       bumpTrackDuration,
+      favoriteSongIds,
+      favoriteArtistNames,
+      favoriteAlbumKeys,
+      isFavoriteSong,
+      isFavoriteArtist,
+      isFavoriteAlbum,
+      toggleFavoriteSong,
+      toggleFavoriteArtist,
+      toggleFavoriteAlbum,
+      toggleFavoriteTrack,
     ],
   )
 

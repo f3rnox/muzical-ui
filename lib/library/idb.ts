@@ -14,6 +14,7 @@ export type StoredLibraryRoot = {
 };
 
 const CATALOG_KEY = "catalog" as const;
+const FAVORITES_KEY = "favorites" as const;
 
 export type StoredLibraryCatalog = {
   key: typeof CATALOG_KEY;
@@ -21,6 +22,13 @@ export type StoredLibraryCatalog = {
   rootIds: string[];
   tracks: Track[];
   savedAt: number;
+};
+
+export type StoredFavorites = {
+  key: typeof FAVORITES_KEY;
+  songIds: string[];
+  artistNames: string[];
+  albumKeys: string[];
 };
 
 /**
@@ -176,6 +184,87 @@ export function idbGetCatalog(
         return;
       }
       resolve(raw);
+    };
+  });
+}
+
+const defaultFavorites = (): StoredFavorites => ({
+  key: FAVORITES_KEY,
+  songIds: [],
+  artistNames: [],
+  albumKeys: [],
+});
+
+/**
+ * Loads saved favorites (songs by track id, artists by display name, albums by composite key).
+ */
+export function idbGetFavorites(db: IDBDatabase): Promise<StoredFavorites> {
+  if (!db.objectStoreNames.contains(LIBRARY_CATALOG_STORE_NAME)) {
+    return Promise.resolve(defaultFavorites());
+  }
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(LIBRARY_CATALOG_STORE_NAME, "readonly");
+    const store = tx.objectStore(LIBRARY_CATALOG_STORE_NAME);
+    const getReq = store.get(FAVORITES_KEY);
+    getReq.onerror = (): void => {
+      reject(getReq.error ?? new Error("IndexedDB favorites get failed"));
+    };
+    getReq.onsuccess = (): void => {
+      const raw = getReq.result as StoredFavorites | undefined;
+      if (
+        !raw ||
+        raw.key !== FAVORITES_KEY ||
+        !Array.isArray(raw.songIds) ||
+        !Array.isArray(raw.artistNames) ||
+        !Array.isArray(raw.albumKeys)
+      ) {
+        resolve(defaultFavorites());
+        return;
+      }
+      resolve({
+        key: FAVORITES_KEY,
+        songIds: [...raw.songIds],
+        artistNames: [...raw.artistNames],
+        albumKeys: [...raw.albumKeys],
+      });
+    };
+  });
+}
+
+/**
+ * Persists favorites in the same object store as the catalog (separate key).
+ */
+export function idbPutFavorites(
+  db: IDBDatabase,
+  data: {
+    songIds: readonly string[];
+    artistNames: readonly string[];
+    albumKeys: readonly string[];
+  },
+): Promise<void> {
+  if (!db.objectStoreNames.contains(LIBRARY_CATALOG_STORE_NAME)) {
+    return Promise.reject(
+      new Error(`Missing object store ${LIBRARY_CATALOG_STORE_NAME}`),
+    );
+  }
+  const payload: StoredFavorites = {
+    key: FAVORITES_KEY,
+    songIds: [...data.songIds],
+    artistNames: [...data.artistNames],
+    albumKeys: [...data.albumKeys],
+  };
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(LIBRARY_CATALOG_STORE_NAME, "readwrite");
+    const store = tx.objectStore(LIBRARY_CATALOG_STORE_NAME);
+    const putReq = store.put(payload);
+    putReq.onerror = (): void => {
+      reject(putReq.error ?? new Error("IndexedDB favorites put failed"));
+    };
+    tx.oncomplete = (): void => {
+      resolve();
+    };
+    tx.onerror = (): void => {
+      reject(tx.error ?? new Error("IndexedDB favorites transaction failed"));
     };
   });
 }

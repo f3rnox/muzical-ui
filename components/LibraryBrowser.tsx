@@ -5,9 +5,11 @@ import { useLibrary } from '@/components/LibraryProvider'
 import type { LibraryRootMeta } from '@/components/LibraryProvider'
 import type { Track } from '@/types/track'
 import AlbumCoverThumb from '@/components/AlbumCoverThumb'
+import FavoriteStarButton from '@/components/FavoriteStarButton'
+import { albumCompositeKey, artistDisplayName } from '@/lib/library/favorite-keys'
 import { formatDuration } from '@/lib/format-duration'
 
-type BrowseMode = 'artist' | 'album' | 'folder'
+type BrowseMode = 'artist' | 'album' | 'folder' | 'favorites'
 
 function filterTracksByQuery(tracks: readonly Track[], query: string): Track[] {
   const s = query.trim().toLowerCase()
@@ -161,7 +163,7 @@ function folderSearchLabel(hit: SearchFolderHit): string {
 function groupByArtist(tracks: readonly Track[]): Map<string, Track[]> {
   const m = new Map<string, Track[]>()
   for (const t of tracks) {
-    const a = t.artist || 'Unknown artist'
+    const a = artistDisplayName(t.artist)
     const arr = m.get(a) ?? []
     arr.push(t)
     m.set(a, arr)
@@ -175,7 +177,7 @@ function groupByArtist(tracks: readonly Track[]): Map<string, Track[]> {
 function groupByAlbum(tracks: readonly Track[]): Map<string, Track[]> {
   const m = new Map<string, Track[]>()
   for (const t of tracks) {
-    const key = `${t.album}\u0000${t.artist}`
+    const key = albumCompositeKey(t.album, t.artist)
     const arr = m.get(key) ?? []
     arr.push(t)
     m.set(key, arr)
@@ -240,7 +242,20 @@ function tracksUnderFolderPath(tracksAtRoot: readonly Track[], folderPath: strin
  * Browse the scanned catalog by artist, album, or folder; search and add tracks to the queue.
  */
 export default function LibraryBrowser() {
-  const { roots, libraryTracks, addToQueue } = useLibrary()
+  const {
+    roots,
+    libraryTracks,
+    addToQueue,
+    favoriteSongIds,
+    favoriteArtistNames,
+    favoriteAlbumKeys,
+    isFavoriteSong,
+    isFavoriteArtist,
+    isFavoriteAlbum,
+    toggleFavoriteArtist,
+    toggleFavoriteAlbum,
+    toggleFavoriteTrack,
+  } = useLibrary()
   const [mode, setMode] = useState<BrowseMode>('artist')
   const [query, setQuery] = useState('')
   const [artistPick, setArtistPick] = useState<string | null>(null)
@@ -276,6 +291,41 @@ export default function LibraryBrowser() {
     }),
     [albumMap],
   )
+
+  const selectedAlbumDetail = useMemo(() => {
+    if (albumPick === null) return null
+    const tracks = albumMap.get(albumPick) ?? []
+    const parts = albumPick.split('\u0000')
+    const title = parts[0] ?? ''
+    const artist = parts[1] ?? ''
+    let totalSec = 0
+    let withDuration = 0
+    for (const t of tracks) {
+      if (t.durationSec > 0) {
+        totalSec += t.durationSec
+        withDuration += 1
+      }
+    }
+    const rootIdSet = new Set<string>()
+    for (const t of tracks) {
+      const id = t.library?.rootId
+      if (id) rootIdSet.add(id)
+    }
+    const rootLabels = [...rootIdSet]
+      .map((id) => roots.find((r) => r.id === id)?.name ?? id)
+      .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
+    const uniqueArtists = new Set(tracks.map((t) => artistDisplayName(t.artist)))
+    return {
+      title,
+      artist,
+      trackCount: tracks.length,
+      totalSec,
+      withDurationCount: withDuration,
+      sample: tracks[0],
+      rootLabels,
+      multipleTrackArtists: uniqueArtists.size > 1,
+    }
+  }, [albumPick, albumMap, roots])
 
   const folderTracks = useMemo(() => {
     if (!folderRootId) return []
@@ -329,6 +379,57 @@ export default function LibraryBrowser() {
     [searchResults],
   )
 
+  const libraryArtistMap = useMemo(() => groupByArtist(libraryTracks), [libraryTracks])
+  const libraryAlbumMap = useMemo(() => groupByAlbum(libraryTracks), [libraryTracks])
+
+  const favoritedArtistsList = useMemo(() => {
+    return favoriteArtistNames
+      .filter((n) => libraryArtistMap.has(n))
+      .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
+  }, [favoriteArtistNames, libraryArtistMap])
+
+  const favoritedAlbumsList = useMemo(() => {
+    return favoriteAlbumKeys
+      .filter((k) => libraryAlbumMap.has(k))
+      .sort((a, b) => {
+        const [albumA, artistA] = a.split('\u0000')
+        const [albumB, artistB] = b.split('\u0000')
+        const c = albumA.localeCompare(albumB, undefined, { sensitivity: 'base' })
+        return c !== 0 ? c : artistA.localeCompare(artistB, undefined, { sensitivity: 'base' })
+      })
+  }, [favoriteAlbumKeys, libraryAlbumMap])
+
+  const favoritedTracks = useMemo(() => {
+    const set = new Set(favoriteSongIds)
+    return libraryTracks
+      .filter((t) => set.has(t.id))
+      .sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base' }))
+  }, [libraryTracks, favoriteSongIds])
+
+  const allFavoriteTracksUnion = useMemo(() => {
+    const seen = new Set<string>()
+    const out: Track[] = []
+    const push = (t: Track): void => {
+      if (seen.has(t.id)) return
+      seen.add(t.id)
+      out.push(t)
+    }
+    for (const id of favoriteSongIds) {
+      const t = libraryTracks.find((x) => x.id === id)
+      if (t) push(t)
+    }
+    for (const name of favoriteArtistNames) {
+      const list = libraryArtistMap.get(name)
+      if (list) for (const t of list) push(t)
+    }
+    for (const k of favoriteAlbumKeys) {
+      const list = libraryAlbumMap.get(k)
+      if (list) for (const t of list) push(t)
+    }
+    out.sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base' }))
+    return out
+  }, [favoriteSongIds, favoriteArtistNames, favoriteAlbumKeys, libraryTracks, libraryArtistMap, libraryAlbumMap])
+
   const searchSummaryBits = useMemo((): string[] => {
     const bits: string[] = []
     const { artists, albums, folders, songs } = searchResults
@@ -379,7 +480,7 @@ export default function LibraryBrowser() {
           aria-label="Search library"
         />
         <div className="flex flex-wrap gap-1">
-          {(['artist', 'album', 'folder'] as const).map((m) => (
+          {(['artist', 'album', 'folder', 'favorites'] as const).map((m) => (
             <button
               key={m}
               type="button"
@@ -432,7 +533,7 @@ export default function LibraryBrowser() {
                     <p className="px-2 pt-2 text-xs font-medium uppercase tracking-wider text-zinc-500">Artists</p>
                     <ul className="space-y-0.5">
                       {searchResults.artists.map((hit) => (
-                        <li key={hit.name} className="group/row flex items-stretch gap-1">
+                        <li key={hit.name} className="group/row flex items-center gap-1">
                           <button
                             type="button"
                             onClick={() => navigateToArtistFromSearch(hit.name)}
@@ -441,6 +542,11 @@ export default function LibraryBrowser() {
                             <span className="truncate font-medium text-zinc-900 dark:text-zinc-100">{hit.name}</span>
                             <span className="shrink-0 text-xs tabular-nums text-zinc-500">{hit.tracks.length}</span>
                           </button>
+                          <FavoriteStarButton
+                            filled={isFavoriteArtist(hit.name)}
+                            onPress={() => toggleFavoriteArtist(hit.name)}
+                            label={isFavoriteArtist(hit.name) ? 'Remove artist from favorites' : 'Add artist to favorites'}
+                          />
                           <button
                             type="button"
                             onClick={() => onAddMany(hit.tracks)}
@@ -461,7 +567,7 @@ export default function LibraryBrowser() {
                       {searchResults.albums.map((hit) => {
                         const sample = hit.tracks[0]
                         return (
-                          <li key={hit.key} className="group/row flex items-stretch gap-1">
+                          <li key={hit.key} className="group/row flex items-center gap-1">
                             <button
                               type="button"
                               onClick={() => navigateToAlbumFromSearch(hit.key)}
@@ -478,6 +584,13 @@ export default function LibraryBrowser() {
                                 </span>
                               </div>
                             </button>
+                            <FavoriteStarButton
+                              filled={isFavoriteAlbum(hit.key)}
+                              onPress={() => toggleFavoriteAlbum(hit.key)}
+                              label={
+                                isFavoriteAlbum(hit.key) ? 'Remove album from favorites' : 'Add album to favorites'
+                              }
+                            />
                             <button
                               type="button"
                               onClick={() => onAddMany(hit.tracks)}
@@ -499,7 +612,7 @@ export default function LibraryBrowser() {
                       {searchResults.folders.map((hit) => (
                         <li
                           key={`${hit.rootId}\u0000${hit.path}`}
-                          className="group/row flex items-stretch gap-1"
+                          className="group/row flex items-center gap-1"
                         >
                           <button
                             type="button"
@@ -541,6 +654,11 @@ export default function LibraryBrowser() {
                             <span className="shrink-0 text-xs tabular-nums text-zinc-500">
                               {t.durationSec > 0 ? formatDuration(t.durationSec) : '—'}
                             </span>
+                            <FavoriteStarButton
+                              filled={isFavoriteSong(t.id)}
+                              onPress={() => toggleFavoriteTrack(t)}
+                              label={isFavoriteSong(t.id) ? 'Remove song from favorites' : 'Add song to favorites'}
+                            />
                             <button
                               type="button"
                               onClick={() => onAdd(t)}
@@ -561,7 +679,7 @@ export default function LibraryBrowser() {
           artistPick === null ? (
             <ul className="space-y-0.5">
               {artistNames.map((name) => (
-                <li key={name} className="group/row flex items-stretch gap-1">
+                <li key={name} className="group/row flex items-center gap-1">
                   <button
                     type="button"
                     onClick={() => setArtistPick(name)}
@@ -570,6 +688,11 @@ export default function LibraryBrowser() {
                     <span className="truncate font-medium">{name}</span>
                     <span className="shrink-0 text-xs tabular-nums text-zinc-500">{artistMap.get(name)?.length ?? 0}</span>
                   </button>
+                  <FavoriteStarButton
+                    filled={isFavoriteArtist(name)}
+                    onPress={() => toggleFavoriteArtist(name)}
+                    label={isFavoriteArtist(name) ? 'Remove artist from favorites' : 'Add artist to favorites'}
+                  />
                   <button
                     type="button"
                     onClick={() => onAddMany(artistMap.get(name) ?? [])}
@@ -590,7 +713,7 @@ export default function LibraryBrowser() {
               >
                 ← Artists
               </button>
-              <div className="mb-2 flex gap-2 px-2">
+              <div className="mb-2 flex flex-wrap items-center gap-2 px-2">
                 <button
                   type="button"
                   onClick={() => onAddMany(artistMap.get(artistPick) ?? [])}
@@ -598,6 +721,15 @@ export default function LibraryBrowser() {
                 >
                   Add all
                 </button>
+                {artistPick ? (
+                  <FavoriteStarButton
+                    filled={isFavoriteArtist(artistPick)}
+                    onPress={() => toggleFavoriteArtist(artistPick)}
+                    label={
+                      isFavoriteArtist(artistPick) ? 'Remove artist from favorites' : 'Add artist to favorites'
+                    }
+                  />
+                ) : null}
               </div>
               <ul className="space-y-0.5">
                 {(artistMap.get(artistPick) ?? []).map((t) => (
@@ -610,6 +742,11 @@ export default function LibraryBrowser() {
                       <span className="shrink-0 text-xs tabular-nums text-zinc-500">
                         {t.durationSec > 0 ? formatDuration(t.durationSec) : '—'}
                       </span>
+                      <FavoriteStarButton
+                        filled={isFavoriteSong(t.id)}
+                        onPress={() => toggleFavoriteTrack(t)}
+                        label={isFavoriteSong(t.id) ? 'Remove song from favorites' : 'Add song to favorites'}
+                      />
                       <button
                         type="button"
                         onClick={() => onAdd(t)}
@@ -631,7 +768,7 @@ export default function LibraryBrowser() {
                 const n = albumMap.get(key)?.length ?? 0
                 const sample = albumMap.get(key)?.[0]
                 return (
-                  <li key={key} className="group/row flex items-stretch gap-1">
+                  <li key={key} className="group/row flex items-center gap-1">
                     <button
                       type="button"
                       onClick={() => setAlbumPick(key)}
@@ -644,6 +781,11 @@ export default function LibraryBrowser() {
                         <span className="mt-0.5 text-xs text-zinc-400">{n} track{n === 1 ? '' : 's'}</span>
                       </div>
                     </button>
+                    <FavoriteStarButton
+                      filled={isFavoriteAlbum(key)}
+                      onPress={() => toggleFavoriteAlbum(key)}
+                      label={isFavoriteAlbum(key) ? 'Remove album from favorites' : 'Add album to favorites'}
+                    />
                     <button
                       type="button"
                       onClick={() => onAddMany(albumMap.get(key) ?? [])}
@@ -665,7 +807,49 @@ export default function LibraryBrowser() {
               >
                 ← Albums
               </button>
-              <div className="mb-2 flex gap-2 px-2">
+              {selectedAlbumDetail ? (
+                <div className="mb-4 border-b border-zinc-200 px-2 pb-4 dark:border-zinc-800">
+                  <div className="flex gap-4">
+                    <AlbumCoverThumb
+                      track={selectedAlbumDetail.sample}
+                      className="h-[5.5rem] w-[5.5rem] shrink-0 overflow-hidden rounded-lg ring-1 ring-zinc-200/80 dark:ring-zinc-700/80"
+                    />
+                    <div className="min-w-0 flex-1 py-0.5">
+                      <h3 className="text-lg font-semibold leading-tight text-zinc-900 dark:text-zinc-50">
+                        {selectedAlbumDetail.title}
+                      </h3>
+                      <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">{selectedAlbumDetail.artist}</p>
+                      {selectedAlbumDetail.multipleTrackArtists ? (
+                        <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-500">
+                          Track-level artists differ on this album
+                        </p>
+                      ) : null}
+                      <p className="mt-2 text-xs tabular-nums text-zinc-500 dark:text-zinc-400">
+                        {selectedAlbumDetail.trackCount} track{selectedAlbumDetail.trackCount === 1 ? '' : 's'}
+                        {selectedAlbumDetail.totalSec > 0
+                          ? ` · ${formatDuration(selectedAlbumDetail.totalSec)} total`
+                          : selectedAlbumDetail.trackCount > 0
+                            ? ' · unknown total length'
+                            : ''}
+                        {selectedAlbumDetail.withDurationCount > 0 &&
+                        selectedAlbumDetail.withDurationCount < selectedAlbumDetail.trackCount ? (
+                          <span className="text-zinc-400"> ({selectedAlbumDetail.withDurationCount} timed)</span>
+                        ) : null}
+                      </p>
+                      {selectedAlbumDetail.rootLabels.length > 1 ? (
+                        <p className="mt-1.5 text-xs leading-snug text-zinc-500 dark:text-zinc-500">
+                          Libraries: {selectedAlbumDetail.rootLabels.join(' · ')}
+                        </p>
+                      ) : selectedAlbumDetail.rootLabels.length === 1 ? (
+                        <p className="mt-1.5 text-xs text-zinc-500 dark:text-zinc-500">
+                          Library: {selectedAlbumDetail.rootLabels[0]}
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+              <div className="mb-2 flex flex-wrap items-center gap-2 px-2">
                 <button
                   type="button"
                   onClick={() => onAddMany(albumMap.get(albumPick) ?? [])}
@@ -673,6 +857,13 @@ export default function LibraryBrowser() {
                 >
                   Add all
                 </button>
+                {albumPick ? (
+                  <FavoriteStarButton
+                    filled={isFavoriteAlbum(albumPick)}
+                    onPress={() => toggleFavoriteAlbum(albumPick)}
+                    label={isFavoriteAlbum(albumPick) ? 'Remove album from favorites' : 'Add album to favorites'}
+                  />
+                ) : null}
               </div>
               <ul className="space-y-0.5">
                 {(albumMap.get(albumPick) ?? []).map((t) => (
@@ -685,6 +876,11 @@ export default function LibraryBrowser() {
                       <span className="shrink-0 text-xs tabular-nums text-zinc-500">
                         {t.durationSec > 0 ? formatDuration(t.durationSec) : '—'}
                       </span>
+                      <FavoriteStarButton
+                        filled={isFavoriteSong(t.id)}
+                        onPress={() => toggleFavoriteTrack(t)}
+                        label={isFavoriteSong(t.id) ? 'Remove song from favorites' : 'Add song to favorites'}
+                      />
                       <button
                         type="button"
                         onClick={() => onAdd(t)}
@@ -698,12 +894,153 @@ export default function LibraryBrowser() {
               </ul>
             </div>
           )
+        ) : mode === 'favorites' ? (
+          <div className="space-y-4 px-1">
+            <div className="flex flex-wrap gap-2 px-2">
+              <button
+                type="button"
+                onClick={() => onAddMany(allFavoriteTracksUnion)}
+                disabled={allFavoriteTracksUnion.length === 0}
+                className="rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-900"
+              >
+                Add all favorite tracks ({allFavoriteTracksUnion.length})
+              </button>
+            </div>
+            {favoritedArtistsList.length === 0 && favoritedAlbumsList.length === 0 && favoritedTracks.length === 0 ? (
+              <p className="px-2 py-6 text-center text-sm text-zinc-500">
+                No favorites yet. Use the star on artists, albums, or songs while browsing or searching.
+              </p>
+            ) : (
+              <>
+                {favoritedArtistsList.length > 0 ? (
+                  <div>
+                    <p className="px-2 pb-1 text-xs font-medium uppercase tracking-wider text-zinc-500">Artists</p>
+                    <ul className="space-y-0.5">
+                      {favoritedArtistsList.map((name) => (
+                        <li key={name} className="group/row flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              goMode('artist')
+                              setArtistPick(name)
+                            }}
+                            className="flex min-w-0 flex-1 items-center justify-between rounded-lg px-3 py-2.5 text-left text-sm text-zinc-800 transition hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800/80"
+                          >
+                            <span className="truncate font-medium text-zinc-900 dark:text-zinc-100">{name}</span>
+                            <span className="shrink-0 text-xs tabular-nums text-zinc-500">
+                              {libraryArtistMap.get(name)?.length ?? 0}
+                            </span>
+                          </button>
+                          <FavoriteStarButton
+                            filled
+                            onPress={() => toggleFavoriteArtist(name)}
+                            label="Remove artist from favorites"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => onAddMany(libraryArtistMap.get(name) ?? [])}
+                            disabled={(libraryArtistMap.get(name)?.length ?? 0) === 0}
+                            className="shrink-0 self-center rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-medium text-amber-800 ring-1 ring-amber-500/25 transition hover:bg-amber-500/25 disabled:opacity-40 dark:text-amber-300 dark:ring-amber-500/40"
+                          >
+                            Add all
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+                {favoritedAlbumsList.length > 0 ? (
+                  <div>
+                    <p className="px-2 pb-1 pt-2 text-xs font-medium uppercase tracking-wider text-zinc-500">Albums</p>
+                    <ul className="space-y-0.5">
+                      {favoritedAlbumsList.map((key) => {
+                        const [album, artist] = key.split('\u0000')
+                        const list = libraryAlbumMap.get(key) ?? []
+                        const sample = list[0]
+                        return (
+                          <li key={key} className="group/row flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                goMode('album')
+                                setAlbumPick(key)
+                              }}
+                              className="flex min-w-0 flex-1 items-center gap-3 rounded-lg px-3 py-2.5 text-left transition hover:bg-zinc-100 dark:hover:bg-zinc-800/80"
+                            >
+                              <AlbumCoverThumb track={sample} />
+                              <div className="flex min-w-0 flex-1 flex-col items-start">
+                                <span className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">
+                                  {album}
+                                </span>
+                                <span className="truncate text-xs text-zinc-500">{artist}</span>
+                                <span className="mt-0.5 text-xs text-zinc-400">
+                                  {list.length} track{list.length === 1 ? '' : 's'}
+                                </span>
+                              </div>
+                            </button>
+                            <FavoriteStarButton
+                              filled
+                              onPress={() => toggleFavoriteAlbum(key)}
+                              label="Remove album from favorites"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => onAddMany(list)}
+                              disabled={list.length === 0}
+                              className="shrink-0 self-center rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-medium text-amber-800 ring-1 ring-amber-500/25 transition hover:bg-amber-500/25 disabled:opacity-40 dark:text-amber-300 dark:ring-amber-500/40"
+                            >
+                              Add all
+                            </button>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  </div>
+                ) : null}
+                {favoritedTracks.length > 0 ? (
+                  <div>
+                    <p className="px-2 pb-1 pt-2 text-xs font-medium uppercase tracking-wider text-zinc-500">Songs</p>
+                    <ul className="space-y-0.5">
+                      {favoritedTracks.map((t) => (
+                        <li key={t.id}>
+                          <div className="flex items-center gap-2 rounded-lg px-2 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-800/80">
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">{t.title}</p>
+                              <p className="truncate text-xs text-zinc-500">
+                                {t.artist} · {t.album}
+                                {t.library?.relativePath ? ` · ${t.library.relativePath}` : ''}
+                              </p>
+                            </div>
+                            <span className="shrink-0 text-xs tabular-nums text-zinc-500">
+                              {t.durationSec > 0 ? formatDuration(t.durationSec) : '—'}
+                            </span>
+                            <FavoriteStarButton
+                              filled
+                              onPress={() => toggleFavoriteTrack(t)}
+                              label="Remove song from favorites"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => onAdd(t)}
+                              className="shrink-0 rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-medium text-amber-800 ring-1 ring-amber-500/25 transition hover:bg-amber-500/25 dark:text-amber-300 dark:ring-amber-500/40"
+                            >
+                              Add
+                            </button>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+              </>
+            )}
+          </div>
         ) : folderRootId === null ? (
           <ul className="space-y-0.5">
             {rootsFiltered.map((r) => {
               const rootTracks = tracksForRoot(filtered, r.id)
               return (
-                <li key={r.id} className="group/row flex items-stretch gap-1">
+                <li key={r.id} className="group/row flex items-center gap-1">
                   <button
                     type="button"
                     onClick={() => {
@@ -771,7 +1108,7 @@ export default function LibraryBrowser() {
                 const childPath = folderPath === '' ? name : `${folderPath}/${name}`
                 const subtree = tracksUnderFolderPath(folderTracks, childPath)
                 return (
-                  <li key={name} className="group/row flex items-stretch gap-1">
+                  <li key={name} className="group/row flex items-center gap-1">
                     <button
                       type="button"
                       onClick={() => setFolderPath(childPath)}
@@ -800,6 +1137,11 @@ export default function LibraryBrowser() {
                     <span className="shrink-0 text-xs tabular-nums text-zinc-500">
                       {t.durationSec > 0 ? formatDuration(t.durationSec) : '—'}
                     </span>
+                    <FavoriteStarButton
+                      filled={isFavoriteSong(t.id)}
+                      onPress={() => toggleFavoriteTrack(t)}
+                      label={isFavoriteSong(t.id) ? 'Remove song from favorites' : 'Add song to favorites'}
+                    />
                     <button
                       type="button"
                       onClick={() => onAdd(t)}

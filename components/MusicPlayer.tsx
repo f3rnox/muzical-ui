@@ -8,6 +8,56 @@ import type { Track } from '@/types/track'
 import { formatDuration } from '@/lib/format-duration'
 import { extractCoverObjectUrlFromAudioFile } from '@/lib/library/extract-cover-object-url-from-audio-file'
 import ThemeToggle from '@/components/ThemeToggle'
+import FavoriteStarButton from '@/components/FavoriteStarButton'
+import PanelResizeHandle from '@/components/PanelResizeHandle'
+
+const STORAGE_LIBRARY_PANEL_PX = 'muzical.panelWidth.library'
+const STORAGE_QUEUE_PANEL_PX = 'muzical.panelWidth.queue'
+const LIBRARY_PANEL_MIN = 240
+const LIBRARY_PANEL_MAX = 960
+const QUEUE_PANEL_MIN = 180
+const QUEUE_PANEL_MAX = 560
+const PLAYER_PANEL_MIN = 260
+
+function clampPanelPx(n: number, lo: number, hi: number): number {
+  return Math.min(hi, Math.max(lo, n))
+}
+
+function readStoredPanelPx(key: string, fallback: number): number {
+  if (typeof window === 'undefined') return fallback
+  const v = Number.parseInt(window.localStorage.getItem(key) ?? '', 10)
+  return Number.isFinite(v) ? v : fallback
+}
+
+function clampLibraryQueueWidths(
+  rowWidthPx: number,
+  libraryPx: number,
+  queuePx: number,
+): { libraryPx: number; queuePx: number } {
+  if (rowWidthPx <= 0) return { libraryPx, queuePx }
+  const maxSum = Math.max(
+    LIBRARY_PANEL_MIN + QUEUE_PANEL_MIN,
+    rowWidthPx - PLAYER_PANEL_MIN,
+  )
+  let L = clampPanelPx(libraryPx, LIBRARY_PANEL_MIN, LIBRARY_PANEL_MAX)
+  let Q = clampPanelPx(queuePx, QUEUE_PANEL_MIN, QUEUE_PANEL_MAX)
+  if (L + Q > maxSum) {
+    const over = L + Q - maxSum
+    const takeFromL = Math.min(over, L - LIBRARY_PANEL_MIN)
+    L -= takeFromL
+    let r = over - takeFromL
+    const takeFromQ = Math.min(r, Q - QUEUE_PANEL_MIN)
+    Q -= takeFromQ
+    r -= takeFromQ
+    if (r > 0) L = Math.max(LIBRARY_PANEL_MIN, L - r)
+  }
+  return { libraryPx: L, queuePx: Q }
+}
+
+function clampQueuePanelWidth(rowWidthPx: number, libraryPx: number, queuePx: number): number {
+  const maxQ = rowWidthPx - libraryPx - PLAYER_PANEL_MIN
+  return clampPanelPx(queuePx, QUEUE_PANEL_MIN, Math.min(QUEUE_PANEL_MAX, Math.max(QUEUE_PANEL_MIN, maxQ)))
+}
 
 function IconPlay(props: { className?: string }) {
   return (
@@ -79,8 +129,17 @@ function IconSettings(props: { className?: string }) {
  * Local-library player: queue from scanned folders, `<audio>` playback via object URLs.
  */
 export default function MusicPlayer() {
-  const { queue, libraryTracks, isScanning, resolveFileForTrack, bumpTrackDuration, removeFromQueue, clearQueue } =
-    useLibrary()
+  const {
+    queue,
+    libraryTracks,
+    isScanning,
+    resolveFileForTrack,
+    bumpTrackDuration,
+    removeFromQueue,
+    clearQueue,
+    isFavoriteSong,
+    toggleFavoriteTrack,
+  } = useLibrary()
   const [activeQueueId, setActiveQueueId] = useState<string | null>(null)
   const [isPlaying, setIsPlaying] = useState(false)
   const [positionSec, setPositionSec] = useState(0)
@@ -88,6 +147,18 @@ export default function MusicPlayer() {
   const [volume, setVolume] = useState(0.85)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [coverArtUrl, setCoverArtUrl] = useState<string | null>(null)
+  const [layoutLg, setLayoutLg] = useState(false)
+  const [libraryPanelPx, setLibraryPanelPx] = useState(440)
+  const [queuePanelPx, setQueuePanelPx] = useState(300)
+
+  const mainRowRef = useRef<HTMLDivElement>(null)
+  const libraryPanelPxRef = useRef(440)
+  const queuePanelPxRef = useRef(300)
+  const panelResizeSessionRef = useRef<
+    | { kind: 'library-queue'; startLib: number; startQ: number }
+    | { kind: 'queue-player'; startQ: number }
+    | null
+  >(null)
 
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const objectUrlRef = useRef<string | null>(null)
@@ -97,6 +168,29 @@ export default function MusicPlayer() {
   useLayoutEffect(() => {
     isPlayingRef.current = isPlaying
   }, [isPlaying])
+
+  useLayoutEffect(() => {
+    libraryPanelPxRef.current = libraryPanelPx
+    queuePanelPxRef.current = queuePanelPx
+  }, [libraryPanelPx, queuePanelPx])
+
+  useEffect(() => {
+    queueMicrotask(() => {
+      setLibraryPanelPx(readStoredPanelPx(STORAGE_LIBRARY_PANEL_PX, 440))
+      setQueuePanelPx(readStoredPanelPx(STORAGE_QUEUE_PANEL_PX, 300))
+    })
+  }, [])
+
+  useLayoutEffect(() => {
+    if (typeof window === 'undefined') return
+    const mq = window.matchMedia('(min-width: 1024px)')
+    const apply = (): void => {
+      setLayoutLg(mq.matches)
+    }
+    apply()
+    mq.addEventListener('change', apply)
+    return () => mq.removeEventListener('change', apply)
+  }, [])
 
   const activeIndex = useMemo(() => {
     if (queue.length === 0) return -1
@@ -137,6 +231,71 @@ export default function MusicPlayer() {
     },
     [activeIndex, queue],
   )
+
+  const clampPanelsToRow = useCallback((): void => {
+    const rowW = mainRowRef.current?.getBoundingClientRect().width ?? 0
+    if (rowW <= 0) return
+    const { libraryPx, queuePx } = clampLibraryQueueWidths(
+      rowW,
+      libraryPanelPxRef.current,
+      queuePanelPxRef.current,
+    )
+    setLibraryPanelPx(libraryPx)
+    setQueuePanelPx(queuePx)
+  }, [])
+
+  const persistPanelWidths = useCallback((): void => {
+    try {
+      window.localStorage.setItem(STORAGE_LIBRARY_PANEL_PX, String(libraryPanelPxRef.current))
+      window.localStorage.setItem(STORAGE_QUEUE_PANEL_PX, String(queuePanelPxRef.current))
+    } catch {
+      /* ignore */
+    }
+  }, [])
+
+  const onLibraryQueueResizeStart = useCallback((): void => {
+    panelResizeSessionRef.current = {
+      kind: 'library-queue',
+      startLib: libraryPanelPxRef.current,
+      startQ: queuePanelPxRef.current,
+    }
+  }, [])
+
+  const onLibraryQueueResizeMove = useCallback((dx: number): void => {
+    const s = panelResizeSessionRef.current
+    if (!s || s.kind !== 'library-queue') return
+    const rowW = mainRowRef.current?.getBoundingClientRect().width ?? 0
+    const next = clampLibraryQueueWidths(rowW, s.startLib + dx, s.startQ - dx)
+    setLibraryPanelPx(next.libraryPx)
+    setQueuePanelPx(next.queuePx)
+  }, [])
+
+  const onQueuePlayerResizeStart = useCallback((): void => {
+    panelResizeSessionRef.current = { kind: 'queue-player', startQ: queuePanelPxRef.current }
+  }, [])
+
+  const onQueuePlayerResizeMove = useCallback((dx: number): void => {
+    const s = panelResizeSessionRef.current
+    if (!s || s.kind !== 'queue-player') return
+    const rowW = mainRowRef.current?.getBoundingClientRect().width ?? 0
+    const nextQ = clampQueuePanelWidth(rowW, libraryPanelPxRef.current, s.startQ + dx)
+    setQueuePanelPx(nextQ)
+  }, [])
+
+  const onPanelResizeEnd = useCallback((): void => {
+    panelResizeSessionRef.current = null
+    persistPanelWidths()
+  }, [persistPanelWidths])
+
+  useEffect(() => {
+    if (!layoutLg) return undefined
+    const onResize = (): void => {
+      clampPanelsToRow()
+    }
+    window.addEventListener('resize', onResize)
+    clampPanelsToRow()
+    return () => window.removeEventListener('resize', onResize)
+  }, [layoutLg, clampPanelsToRow])
 
   useEffect(() => {
     const el = audioRef.current
@@ -328,74 +487,108 @@ export default function MusicPlayer() {
         </p>
       ) : null}
 
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden lg:flex-row">
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden border-b border-zinc-200 dark:border-zinc-800 lg:h-full lg:w-[min(100%,280px)] lg:flex-none lg:shrink-0 lg:border-b-0 lg:border-r xl:w-[300px]">
+      <div
+        ref={mainRowRef}
+        className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden lg:flex-row"
+      >
+        <div
+          className="flex min-h-0 min-w-0 flex-col overflow-hidden max-lg:flex-[2] max-lg:w-full lg:h-full lg:min-w-0 lg:shrink-0"
+          style={layoutLg ? { width: libraryPanelPx, flex: '0 0 auto' } : undefined}
+        >
           <LibraryBrowser />
         </div>
-        <div className="grid min-h-0 min-w-0 flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)_minmax(0,1fr)] overflow-hidden xl:grid-cols-[minmax(0,1fr)_380px] xl:grid-rows-1 xl:divide-x xl:divide-zinc-200 dark:xl:divide-zinc-800">
-          <section className="flex min-h-0 min-w-0 flex-col overflow-hidden border-b border-zinc-200 bg-white dark:border-zinc-800/80 dark:bg-zinc-950/50 xl:border-b-0">
-            <div className="flex shrink-0 items-center justify-between gap-2 px-6 pt-5 pb-2">
-              <h2 className="text-xs font-medium uppercase tracking-wider text-zinc-500">Queue</h2>
-              {queue.length > 0 ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    clearQueue()
-                    setActiveQueueId(null)
-                    setIsPlaying(false)
-                    setPositionSec(0)
-                  }}
-                  className="text-xs font-medium text-zinc-500 underline-offset-2 hover:text-zinc-800 hover:underline dark:hover:text-zinc-300"
+        <PanelResizeHandle
+          aria-label="Resize library and queue panels"
+          onSessionStart={onLibraryQueueResizeStart}
+          onSessionMove={onLibraryQueueResizeMove}
+          onSessionEnd={onPanelResizeEnd}
+        />
+        <section
+          className="flex min-h-0 min-w-0 flex-col overflow-hidden border-b border-zinc-200 bg-white dark:border-zinc-800/80 dark:bg-zinc-950/50 max-lg:flex-1 max-lg:w-full lg:h-full lg:shrink-0 lg:border-b-0 lg:border-r lg:border-zinc-200 lg:dark:border-zinc-800"
+          style={layoutLg ? { width: queuePanelPx, flex: '0 0 auto' } : undefined}
+        >
+          <div className="flex shrink-0 items-center justify-between gap-2 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
+            <h2 className="text-xs font-medium uppercase tracking-wider text-zinc-500">Queue</h2>
+            {queue.length > 0 ? (
+              <button
+                type="button"
+                onClick={() => {
+                  clearQueue()
+                  setActiveQueueId(null)
+                  setIsPlaying(false)
+                  setPositionSec(0)
+                }}
+                className="text-xs font-medium text-zinc-500 underline-offset-2 hover:text-zinc-800 hover:underline dark:hover:text-zinc-300"
+              >
+                Clear
+              </button>
+            ) : null}
+          </div>
+          <div className="min-h-0 flex-1 overflow-auto pb-2">
+            {queue.length === 0 ? (
+              <div className="px-4 py-10 text-center text-sm text-zinc-600 dark:text-zinc-400">
+                <p>Queue is empty. Pick tracks from the library browser and use Add.</p>
+                <Link
+                  href="/settings"
+                  className="mt-3 inline-block font-medium text-amber-700 underline-offset-2 hover:underline dark:text-amber-400"
                 >
-                  Clear
-                </button>
-              ) : null}
-            </div>
-            <div className="min-h-0 flex-1 overflow-auto px-2 pb-4">
-              {queue.length === 0 ? (
-                <div className="px-4 py-10 text-center text-sm text-zinc-600 dark:text-zinc-400">
-                  <p>Queue is empty. Pick tracks from the library browser and use Add.</p>
-                  <Link
-                    href="/settings"
-                    className="mt-3 inline-block font-medium text-amber-700 underline-offset-2 hover:underline dark:text-amber-400"
-                  >
-                    Library folders
-                  </Link>
-                </div>
-              ) : (
-                <ul className="space-y-0.5" role="listbox" aria-label="Track queue">
-                  {queue.map((row, index) => {
-                    const track = row.track
-                    const selected = index === activeIndex
-                    return (
-                      <li key={row.queueId} className="group/row flex items-stretch gap-1">
-                        <button
-                          type="button"
-                          role="option"
-                          aria-selected={selected}
-                          onClick={() => selectIndex(index)}
-                          className={[
-                            'flex min-w-0 flex-1 items-center gap-4 rounded-lg px-4 py-3 text-left transition-colors',
-                            selected
-                              ? 'bg-amber-50 ring-1 ring-amber-200/80 dark:bg-white/[0.04] dark:ring-1 dark:ring-white/[0.06]'
-                              : 'hover:bg-zinc-100 dark:hover:bg-zinc-900/80',
-                          ].join(' ')}
-                        >
-                          <span className="w-6 shrink-0 text-center text-xs tabular-nums text-zinc-500">
-                            {index + 1}
-                          </span>
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">
-                              {track.title}
-                            </p>
-                            <p className="truncate text-xs text-zinc-500">
-                              {track.artist} · {track.album}
-                            </p>
-                          </div>
-                          <span className="shrink-0 text-xs tabular-nums text-zinc-500">
-                            {track.durationSec > 0 ? formatDuration(track.durationSec) : '—'}
-                          </span>
-                        </button>
+                  Library folders
+                </Link>
+              </div>
+            ) : (
+              <ul className="divide-y divide-zinc-200 dark:divide-zinc-800" role="listbox" aria-label="Track queue">
+                {queue.map((row, index) => {
+                  const track = row.track
+                  const selected = index === activeIndex
+                  return (
+                    <li
+                      key={row.queueId}
+                      className={[
+                        'group/row flex items-center gap-0',
+                        selected ? 'bg-amber-50/90 dark:bg-white/[0.06]' : '',
+                      ].join(' ')}
+                    >
+                      <button
+                        type="button"
+                        role="option"
+                        aria-selected={selected}
+                        onClick={() => selectIndex(index)}
+                        className={[
+                          'flex min-w-0 flex-1 items-center gap-3 border-l-2 border-transparent px-4 py-2.5 text-left transition-colors',
+                          selected
+                            ? 'border-amber-500 dark:border-amber-400'
+                            : 'hover:bg-zinc-50 dark:hover:bg-zinc-900/60',
+                        ].join(' ')}
+                      >
+                        <span className="w-5 shrink-0 text-right text-[11px] tabular-nums text-zinc-400 dark:text-zinc-500">
+                          {index + 1}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium leading-snug text-zinc-900 dark:text-zinc-100">
+                            {track.title}
+                          </p>
+                          <p className="truncate text-xs leading-snug text-zinc-500 dark:text-zinc-400">
+                            {track.artist} · {track.album}
+                          </p>
+                        </div>
+                        <span className="shrink-0 text-[11px] tabular-nums text-zinc-400 dark:text-zinc-500">
+                          {track.durationSec > 0 ? formatDuration(track.durationSec) : '—'}
+                        </span>
+                      </button>
+                      <div
+                        className={[
+                          'flex shrink-0 items-center border-l pr-1 pl-0.5',
+                          selected
+                            ? 'border-amber-200/80 dark:border-white/[0.08]'
+                            : 'border-zinc-200 bg-zinc-50/80 dark:border-zinc-800 dark:bg-zinc-900/40',
+                        ].join(' ')}
+                      >
+                        <FavoriteStarButton
+                          className="rounded-none"
+                          filled={isFavoriteSong(track.id)}
+                          onPress={() => toggleFavoriteTrack(track)}
+                          label={isFavoriteSong(track.id) ? 'Remove song from favorites' : 'Add song to favorites'}
+                        />
                         <button
                           type="button"
                           aria-label={`Remove ${track.title} from queue`}
@@ -411,19 +604,25 @@ export default function MusicPlayer() {
                               setPositionSec(0)
                             }
                           }}
-                          className="shrink-0 self-center rounded px-1.5 py-1 text-[11px] text-zinc-500 opacity-70 transition hover:bg-zinc-200 hover:text-zinc-900 sm:opacity-0 sm:group-hover/row:opacity-100 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+                          className="shrink-0 px-2 py-2 text-[11px] text-zinc-500 opacity-80 transition hover:bg-zinc-200/80 hover:text-zinc-900 sm:opacity-0 sm:group-hover/row:opacity-100 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
                         >
                           Remove
                         </button>
-                      </li>
-                    )
-                  })}
-                </ul>
-              )}
-            </div>
-          </section>
-
-          <aside className="flex min-h-0 min-w-0 flex-col gap-6 overflow-y-auto overflow-x-hidden bg-zinc-50 p-6 dark:bg-transparent">
+                      </div>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+          </div>
+        </section>
+        <PanelResizeHandle
+          aria-label="Resize queue and player panels"
+          onSessionStart={onQueuePlayerResizeStart}
+          onSessionMove={onQueuePlayerResizeMove}
+          onSessionEnd={onPanelResizeEnd}
+        />
+        <aside className="flex min-h-0 min-w-0 flex-1 flex-col gap-6 overflow-y-auto overflow-x-hidden bg-zinc-50 p-6 dark:bg-transparent lg:h-full lg:min-w-0 lg:flex-1">
           <div className="mx-auto flex w-full max-w-[280px] flex-col gap-4">
             <div
               className="relative aspect-square w-full overflow-hidden rounded-2xl bg-gradient-to-br from-amber-200/90 via-zinc-100 to-zinc-200 ring-1 ring-zinc-300/70 shadow-xl shadow-zinc-400/20 dark:from-amber-900/40 dark:via-zinc-800 dark:to-zinc-900 dark:ring-zinc-700/60 dark:shadow-2xl dark:shadow-black/40"
@@ -540,8 +739,7 @@ export default function MusicPlayer() {
               </div>
             </div>
           </div>
-          </aside>
-        </div>
+        </aside>
       </div>
     </div>
   )
