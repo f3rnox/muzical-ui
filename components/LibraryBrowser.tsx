@@ -246,6 +246,7 @@ export default function LibraryBrowser() {
     roots,
     libraryTracks,
     addToQueue,
+    compactLists,
     favoriteSongIds,
     favoriteArtistNames,
     favoriteAlbumKeys,
@@ -265,6 +266,13 @@ export default function LibraryBrowser() {
 
   const filtered = useMemo(() => filterTracksByQuery(libraryTracks, query), [libraryTracks, query])
   const searchActive = query.trim().length > 0
+  const compact = compactLists
+  const ulSpaceYClass = compact ? 'space-y-0.25' : 'space-y-0.5'
+  const rowPadLgClass = compact ? 'px-2 py-2' : 'px-3 py-2.5'
+  const rowPadSmClass = compact ? 'px-1.5 py-1.5' : 'px-2 py-2'
+  const rowGapSmClass = compact ? 'gap-1.5' : 'gap-2'
+  const rowGapLgClass = compact ? 'gap-2' : 'gap-3'
+  const folderRowPadClass = compact ? 'py-2 pr-2 pl-5' : 'py-2.5 pr-3 pl-6'
 
   const goMode = useCallback((m: BrowseMode) => {
     setMode(m)
@@ -531,13 +539,13 @@ export default function LibraryBrowser() {
                 {searchResults.artists.length > 0 ? (
                   <>
                     <p className="px-2 pt-2 text-xs font-medium uppercase tracking-wider text-zinc-500">Artists</p>
-                    <ul className="space-y-0.5">
+                    <ul className={ulSpaceYClass}>
                       {searchResults.artists.map((hit) => (
                         <li key={hit.name} className="group/row flex items-center gap-1">
                           <button
                             type="button"
                             onClick={() => navigateToArtistFromSearch(hit.name)}
-                            className="flex min-w-0 flex-1 items-center justify-between rounded-lg px-3 py-2.5 text-left text-sm text-zinc-800 transition hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800/80"
+                            className={`flex min-w-0 flex-1 items-center justify-between rounded-lg ${rowPadLgClass} text-left text-sm text-zinc-800 transition hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800/80`}
                           >
                             <span className="truncate font-medium text-zinc-900 dark:text-zinc-100">{hit.name}</span>
                             <span className="shrink-0 text-xs tabular-nums text-zinc-500">{hit.tracks.length}</span>
@@ -563,7 +571,7 @@ export default function LibraryBrowser() {
                 {searchResults.albums.length > 0 ? (
                   <>
                     <p className="px-2 pt-3 text-xs font-medium uppercase tracking-wider text-zinc-500">Albums</p>
-                    <ul className="space-y-0.5">
+                    <ul className={ulSpaceYClass}>
                       {searchResults.albums.map((hit) => {
                         const sample = hit.tracks[0]
                         return (
@@ -571,7 +579,7 @@ export default function LibraryBrowser() {
                             <button
                               type="button"
                               onClick={() => navigateToAlbumFromSearch(hit.key)}
-                              className="flex min-w-0 flex-1 items-center gap-3 rounded-lg px-3 py-2.5 text-left transition hover:bg-zinc-100 dark:hover:bg-zinc-800/80"
+                            className={`flex min-w-0 flex-1 items-center ${rowGapLgClass} rounded-lg ${rowPadLgClass} text-left transition hover:bg-zinc-100 dark:hover:bg-zinc-800/80`}
                             >
                               <AlbumCoverThumb track={sample} />
                               <div className="flex min-w-0 flex-1 flex-col items-start">
@@ -608,7 +616,7 @@ export default function LibraryBrowser() {
                 {searchResults.folders.length > 0 ? (
                   <>
                     <p className="px-2 pt-3 text-xs font-medium uppercase tracking-wider text-zinc-500">Folders</p>
-                    <ul className="space-y-0.5">
+                    <ul className={ulSpaceYClass}>
                       {searchResults.folders.map((hit) => (
                         <li
                           key={`${hit.rootId}\u0000${hit.path}`}
@@ -617,7 +625,7 @@ export default function LibraryBrowser() {
                           <button
                             type="button"
                             onClick={() => navigateToFolderFromSearch(hit.rootId, hit.path)}
-                            className="flex min-w-0 flex-1 flex-col items-start rounded-lg px-3 py-2.5 text-left text-sm transition hover:bg-zinc-100 dark:hover:bg-zinc-800/80"
+                            className={`flex min-w-0 flex-1 flex-col items-start rounded-lg ${rowPadLgClass} text-left text-sm transition hover:bg-zinc-100 dark:hover:bg-zinc-800/80`}
                           >
                             <span className="truncate font-medium text-zinc-900 dark:text-zinc-100">
                               {folderSearchLabel(hit)}
@@ -640,10 +648,12 @@ export default function LibraryBrowser() {
                 {searchResults.songs.length > 0 ? (
                   <>
                     <p className="px-2 pt-3 text-xs font-medium uppercase tracking-wider text-zinc-500">Songs</p>
-                    <ul className="space-y-0.5">
+                    <ul className={ulSpaceYClass}>
                       {searchResults.songs.map((t) => (
                         <li key={t.id}>
-                          <div className="flex items-center gap-2 rounded-lg px-2 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-800/80">
+                          <div
+                            className={`flex items-center ${rowGapSmClass} rounded-lg ${rowPadSmClass} hover:bg-zinc-100 dark:hover:bg-zinc-800/80`}
+                          >
                             <div className="min-w-0 flex-1">
                               <p className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">{t.title}</p>
                               <p className="truncate text-xs text-zinc-500">
@@ -677,13 +687,13 @@ export default function LibraryBrowser() {
           </div>
         ) : mode === 'artist' ? (
           artistPick === null ? (
-            <ul className="space-y-0.5">
+            <ul className={ulSpaceYClass}>
               {artistNames.map((name) => (
                 <li key={name} className="group/row flex items-center gap-1">
                   <button
                     type="button"
                     onClick={() => setArtistPick(name)}
-                    className="flex min-w-0 flex-1 items-center justify-between rounded-lg px-3 py-2.5 text-left text-sm text-zinc-800 transition hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800/80"
+                    className={`flex min-w-0 flex-1 items-center justify-between rounded-lg ${rowPadLgClass} text-left text-sm text-zinc-800 transition hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800/80`}
                   >
                     <span className="truncate font-medium">{name}</span>
                     <span className="shrink-0 text-xs tabular-nums text-zinc-500">{artistMap.get(name)?.length ?? 0}</span>
@@ -731,10 +741,12 @@ export default function LibraryBrowser() {
                   />
                 ) : null}
               </div>
-              <ul className="space-y-0.5">
+              <ul className={ulSpaceYClass}>
                 {(artistMap.get(artistPick) ?? []).map((t) => (
                   <li key={t.id}>
-                    <div className="flex items-center gap-2 rounded-lg px-2 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-800/80">
+                    <div
+                      className={`flex items-center ${rowGapSmClass} rounded-lg ${rowPadSmClass} hover:bg-zinc-100 dark:hover:bg-zinc-800/80`}
+                    >
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium">{t.title}</p>
                         <p className="truncate text-xs text-zinc-500">{t.album}</p>
@@ -762,7 +774,7 @@ export default function LibraryBrowser() {
           )
         ) : mode === 'album' ? (
           albumPick === null ? (
-            <ul className="space-y-0.5">
+              <ul className={ulSpaceYClass}>
               {albumKeys.map((key) => {
                 const [album, artist] = key.split('\u0000')
                 const n = albumMap.get(key)?.length ?? 0
@@ -772,7 +784,7 @@ export default function LibraryBrowser() {
                     <button
                       type="button"
                       onClick={() => setAlbumPick(key)}
-                      className="flex min-w-0 flex-1 items-center gap-3 rounded-lg px-3 py-2.5 text-left transition hover:bg-zinc-100 dark:hover:bg-zinc-800/80"
+                      className={`flex min-w-0 flex-1 items-center ${rowGapLgClass} rounded-lg ${rowPadLgClass} text-left transition hover:bg-zinc-100 dark:hover:bg-zinc-800/80`}
                     >
                       <AlbumCoverThumb track={sample} />
                       <div className="flex min-w-0 flex-1 flex-col items-start">
@@ -865,10 +877,12 @@ export default function LibraryBrowser() {
                   />
                 ) : null}
               </div>
-              <ul className="space-y-0.5">
+              <ul className={ulSpaceYClass}>
                 {(albumMap.get(albumPick) ?? []).map((t) => (
                   <li key={t.id}>
-                    <div className="flex items-center gap-2 rounded-lg px-2 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-800/80">
+                    <div
+                      className={`flex items-center ${rowGapSmClass} rounded-lg ${rowPadSmClass} hover:bg-zinc-100 dark:hover:bg-zinc-800/80`}
+                    >
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium">{t.title}</p>
                         <p className="truncate text-xs text-zinc-500">{t.artist}</p>
@@ -915,7 +929,7 @@ export default function LibraryBrowser() {
                 {favoritedArtistsList.length > 0 ? (
                   <div>
                     <p className="px-2 pb-1 text-xs font-medium uppercase tracking-wider text-zinc-500">Artists</p>
-                    <ul className="space-y-0.5">
+                    <ul className={ulSpaceYClass}>
                       {favoritedArtistsList.map((name) => (
                         <li key={name} className="group/row flex items-center gap-1">
                           <button
@@ -924,7 +938,7 @@ export default function LibraryBrowser() {
                               goMode('artist')
                               setArtistPick(name)
                             }}
-                            className="flex min-w-0 flex-1 items-center justify-between rounded-lg px-3 py-2.5 text-left text-sm text-zinc-800 transition hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800/80"
+                            className={`flex min-w-0 flex-1 items-center justify-between rounded-lg ${rowPadLgClass} text-left text-sm text-zinc-800 transition hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800/80`}
                           >
                             <span className="truncate font-medium text-zinc-900 dark:text-zinc-100">{name}</span>
                             <span className="shrink-0 text-xs tabular-nums text-zinc-500">
@@ -952,7 +966,7 @@ export default function LibraryBrowser() {
                 {favoritedAlbumsList.length > 0 ? (
                   <div>
                     <p className="px-2 pb-1 pt-2 text-xs font-medium uppercase tracking-wider text-zinc-500">Albums</p>
-                    <ul className="space-y-0.5">
+                    <ul className={ulSpaceYClass}>
                       {favoritedAlbumsList.map((key) => {
                         const [album, artist] = key.split('\u0000')
                         const list = libraryAlbumMap.get(key) ?? []
@@ -965,7 +979,7 @@ export default function LibraryBrowser() {
                                 goMode('album')
                                 setAlbumPick(key)
                               }}
-                              className="flex min-w-0 flex-1 items-center gap-3 rounded-lg px-3 py-2.5 text-left transition hover:bg-zinc-100 dark:hover:bg-zinc-800/80"
+                              className={`flex min-w-0 flex-1 items-center ${rowGapLgClass} rounded-lg ${rowPadLgClass} text-left transition hover:bg-zinc-100 dark:hover:bg-zinc-800/80`}
                             >
                               <AlbumCoverThumb track={sample} />
                               <div className="flex min-w-0 flex-1 flex-col items-start">
@@ -1000,10 +1014,12 @@ export default function LibraryBrowser() {
                 {favoritedTracks.length > 0 ? (
                   <div>
                     <p className="px-2 pb-1 pt-2 text-xs font-medium uppercase tracking-wider text-zinc-500">Songs</p>
-                    <ul className="space-y-0.5">
+                    <ul className={ulSpaceYClass}>
                       {favoritedTracks.map((t) => (
                         <li key={t.id}>
-                          <div className="flex items-center gap-2 rounded-lg px-2 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-800/80">
+                          <div
+                            className={`flex items-center ${rowGapSmClass} rounded-lg ${rowPadSmClass} hover:bg-zinc-100 dark:hover:bg-zinc-800/80`}
+                          >
                             <div className="min-w-0 flex-1">
                               <p className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">{t.title}</p>
                               <p className="truncate text-xs text-zinc-500">
@@ -1036,7 +1052,7 @@ export default function LibraryBrowser() {
             )}
           </div>
         ) : folderRootId === null ? (
-          <ul className="space-y-0.5">
+          <ul className={ulSpaceYClass}>
             {rootsFiltered.map((r) => {
               const rootTracks = tracksForRoot(filtered, r.id)
               return (
@@ -1047,7 +1063,7 @@ export default function LibraryBrowser() {
                       setFolderRootId(r.id)
                       setFolderPath('')
                     }}
-                    className="flex min-w-0 flex-1 items-center justify-between rounded-lg px-3 py-2.5 text-left text-sm transition hover:bg-zinc-100 dark:hover:bg-zinc-800/80"
+                    className={`flex min-w-0 flex-1 items-center justify-between rounded-lg ${rowPadLgClass} text-left text-sm transition hover:bg-zinc-100 dark:hover:bg-zinc-800/80`}
                   >
                     <span className="truncate font-medium text-zinc-900 dark:text-zinc-100">{r.name}</span>
                     <span className="shrink-0 text-xs text-zinc-500">{rootTracks.length}</span>
@@ -1103,7 +1119,7 @@ export default function LibraryBrowser() {
                 Add files in this level only
               </button>
             </div>
-            <ul className="space-y-0.5">
+            <ul className={ulSpaceYClass}>
               {folderChildren.folders.map((name) => {
                 const childPath = folderPath === '' ? name : `${folderPath}/${name}`
                 const subtree = tracksUnderFolderPath(folderTracks, childPath)
@@ -1112,7 +1128,7 @@ export default function LibraryBrowser() {
                     <button
                       type="button"
                       onClick={() => setFolderPath(childPath)}
-                      className="flex min-w-0 flex-1 items-center rounded-lg py-2.5 pr-3 pl-6 text-left text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800/80"
+                      className={`flex min-w-0 flex-1 items-center rounded-lg ${folderRowPadClass} text-left text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800/80`}
                     >
                       <span className="truncate font-medium text-zinc-900 dark:text-zinc-100">{name}</span>
                       <span className="ml-2 shrink-0 text-xs tabular-nums text-zinc-500">{subtree.length}</span>
@@ -1130,7 +1146,11 @@ export default function LibraryBrowser() {
               })}
               {folderChildren.files.map((t) => (
                 <li key={t.id}>
-                  <div className="flex items-center gap-2 rounded-lg px-2 py-2 pl-4 hover:bg-zinc-100 dark:hover:bg-zinc-800/80">
+                  <div
+                    className={`flex items-center ${rowGapSmClass} rounded-lg ${rowPadSmClass} ${
+                      compact ? 'pl-3' : 'pl-4'
+                    } hover:bg-zinc-100 dark:hover:bg-zinc-800/80`}
+                  >
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium">{t.title}</p>
                     </div>

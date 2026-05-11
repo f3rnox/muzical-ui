@@ -39,6 +39,7 @@ type LibraryContextValue = {
   libraryTracks: Track[]
   queue: QueuedTrack[]
   recentlyPlayedTrackIds: readonly string[]
+  compactLists: boolean
   isScanning: boolean
   scanError: string | null
   hasDirectoryPicker: boolean
@@ -49,6 +50,8 @@ type LibraryContextValue = {
   removeFromQueue: (queueId: string) => void
   clearQueue: () => void
   recordRecentlyPlayedTrack: (trackId: string) => void
+  setCompactLists: (next: boolean) => void
+  reorderQueueItems: (fromIndex: number, toIndex: number) => void
   resolveFileForTrack: (track: Track) => Promise<File | null>
   bumpTrackDuration: (trackId: string, durationSec: number) => void
   favoriteSongIds: readonly string[]
@@ -67,6 +70,28 @@ const LibraryContext = createContext<LibraryContextValue | null>(null)
 
 const STORAGE_RECENTLY_PLAYED_TRACK_IDS = 'muzical.recentlyPlayedTrackIds'
 const RECENTLY_PLAYED_LIMIT = 24
+const STORAGE_COMPACT_LISTS = 'muzical.compactLists'
+
+function safeReadStoredBoolean(key: string): boolean {
+  if (typeof window === 'undefined') return false
+  try {
+    const raw = window.localStorage.getItem(key)
+    if (!raw) return false
+    const parsed: unknown = JSON.parse(raw)
+    return parsed === true
+  } catch {
+    return false
+  }
+}
+
+function safeWriteStoredBoolean(key: string, value: boolean): void {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value))
+  } catch {
+    /* ignore */
+  }
+}
 
 function toggleSortedStringId(prev: readonly string[], id: string): string[] {
   const next = new Set(prev)
@@ -199,6 +224,7 @@ export function LibraryProvider(props: { children: ReactNode }) {
   const [libraryTracks, setLibraryTracks] = useState<Track[]>([])
   const [queue, setQueue] = useState<QueuedTrack[]>([])
   const [recentlyPlayedTrackIds, setRecentlyPlayedTrackIds] = useState<string[]>([])
+  const [compactLists, setCompactListsState] = useState(false)
   const [isScanning, setIsScanning] = useState(false)
   const [scanError, setScanError] = useState<string | null>(null)
   const [hasDirectoryPicker, setHasDirectoryPicker] = useState(false)
@@ -212,6 +238,12 @@ export function LibraryProvider(props: { children: ReactNode }) {
   useEffect(() => {
     void Promise.resolve().then(() => {
       setRecentlyPlayedTrackIds(safeReadStoredStringArray(STORAGE_RECENTLY_PLAYED_TRACK_IDS).slice(0, RECENTLY_PLAYED_LIMIT))
+    })
+  }, [])
+
+  useEffect(() => {
+    void Promise.resolve().then(() => {
+      setCompactListsState(safeReadStoredBoolean(STORAGE_COMPACT_LISTS))
     })
   }, [])
 
@@ -323,6 +355,20 @@ export function LibraryProvider(props: { children: ReactNode }) {
     setQueue([])
   }, [])
 
+  const reorderQueueItems = useCallback((fromIndex: number, toIndex: number) => {
+    if (!Number.isFinite(fromIndex) || !Number.isFinite(toIndex)) return
+    const fi = Math.trunc(fromIndex)
+    const ti = Math.trunc(toIndex)
+    setQueue((prev) => {
+      if (fi < 0 || ti < 0 || fi >= prev.length || ti >= prev.length) return prev
+      if (fi === ti) return prev
+      const next = [...prev]
+      const [moved] = next.splice(fi, 1)
+      next.splice(ti, 0, moved)
+      return next
+    })
+  }, [])
+
   const recordRecentlyPlayedTrack = useCallback((trackId: string) => {
     const id = trackId.trim()
     if (!id) return
@@ -330,6 +376,11 @@ export function LibraryProvider(props: { children: ReactNode }) {
       const next = [id, ...prev.filter((x) => x !== id)]
       return next.slice(0, RECENTLY_PLAYED_LIMIT)
     })
+  }, [])
+
+  const setCompactLists = useCallback((next: boolean) => {
+    setCompactListsState(next)
+    safeWriteStoredBoolean(STORAGE_COMPACT_LISTS, next)
   }, [])
 
   const resolveFileForTrack = useCallback((track: Track) => {
@@ -570,6 +621,7 @@ export function LibraryProvider(props: { children: ReactNode }) {
       libraryTracks,
       queue,
       recentlyPlayedTrackIds,
+      compactLists,
       isScanning,
       scanError,
       hasDirectoryPicker,
@@ -580,6 +632,8 @@ export function LibraryProvider(props: { children: ReactNode }) {
       removeFromQueue,
       clearQueue,
       recordRecentlyPlayedTrack,
+      setCompactLists,
+      reorderQueueItems,
       resolveFileForTrack,
       bumpTrackDuration,
       favoriteSongIds,
@@ -598,6 +652,7 @@ export function LibraryProvider(props: { children: ReactNode }) {
       libraryTracks,
       queue,
       recentlyPlayedTrackIds,
+      compactLists,
       isScanning,
       scanError,
       hasDirectoryPicker,
@@ -608,6 +663,8 @@ export function LibraryProvider(props: { children: ReactNode }) {
       removeFromQueue,
       clearQueue,
       recordRecentlyPlayedTrack,
+      setCompactLists,
+      reorderQueueItems,
       resolveFileForTrack,
       bumpTrackDuration,
       favoriteSongIds,

@@ -139,6 +139,8 @@ export default function MusicPlayer() {
     bumpTrackDuration,
     removeFromQueue,
     clearQueue,
+    compactLists,
+    reorderQueueItems,
     recentlyPlayedTrackIds,
     recordRecentlyPlayedTrack,
     isFavoriteSong,
@@ -160,6 +162,8 @@ export default function MusicPlayer() {
   const mainRowRef = useRef<HTMLDivElement>(null)
   const libraryPanelPxRef = useRef(440)
   const queuePanelPxRef = useRef(300)
+  const [dragOverQueueId, setDragOverQueueId] = useState<string | null>(null)
+  const [draggingQueueId, setDraggingQueueId] = useState<string | null>(null)
   const panelResizeSessionRef = useRef<
     | { kind: 'library-queue'; startLib: number; startQ: number }
     | { kind: 'queue-player'; startQ: number }
@@ -509,6 +513,12 @@ export default function MusicPlayer() {
     ? 'Scanning…'
     : `${libraryTracks.length} in library · ${queue.length} in queue`
 
+  const queueRowGapClass = compactLists ? 'gap-2' : 'gap-3'
+  const queueRowPadClass = compactLists ? 'px-3 py-2' : 'px-4 py-2.5'
+  const queueRemoveButtonPadClass = compactLists ? 'px-1.5 py-1.5' : 'px-2 py-2'
+  const emptyQueueCardGapClass = compactLists ? 'gap-2' : 'gap-3'
+  const emptyQueueCardPadClass = compactLists ? 'p-2' : 'p-3'
+
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col bg-zinc-100 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
       <audio ref={audioRef} className="hidden" preload="metadata" />
@@ -605,7 +615,7 @@ export default function MusicPlayer() {
                       {recentlyPlayedTracks.map((t) => (
                         <div
                           key={t.id}
-                          className="flex min-w-0 items-center gap-3 rounded-xl border border-zinc-200 bg-white p-3 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/40 dark:shadow-none"
+                          className={`flex min-w-0 items-center ${emptyQueueCardGapClass} rounded-xl border border-zinc-200 bg-white ${emptyQueueCardPadClass} shadow-sm dark:border-zinc-800 dark:bg-zinc-950/40 dark:shadow-none`}
                         >
                           <div className="min-w-0 flex-1">
                             <p className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">{t.title}</p>
@@ -644,7 +654,7 @@ export default function MusicPlayer() {
                       {suggestedTracks.map((t) => (
                         <div
                           key={t.id}
-                          className="flex min-w-0 items-center gap-3 rounded-xl border border-zinc-200 bg-white p-3 shadow-sm dark:border-zinc-800 dark:bg-zinc-950/40 dark:shadow-none"
+                          className={`flex min-w-0 items-center ${emptyQueueCardGapClass} rounded-xl border border-zinc-200 bg-white ${emptyQueueCardPadClass} shadow-sm dark:border-zinc-800 dark:bg-zinc-950/40 dark:shadow-none`}
                         >
                           <div className="min-w-0 flex-1">
                             <p className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">{t.title}</p>
@@ -681,24 +691,62 @@ export default function MusicPlayer() {
                 {queue.map((row, index) => {
                   const track = row.track
                   const selected = index === activeIndex
+                  const isDropTarget = dragOverQueueId === row.queueId && draggingQueueId !== row.queueId
                   return (
                     <li
                       key={row.queueId}
                       className={[
                         'group/row flex items-center gap-0',
                         selected ? 'bg-amber-50/90 dark:bg-white/[0.06]' : '',
+                        isDropTarget ? 'ring-1 ring-amber-400/30' : '',
                       ].join(' ')}
+                      onDragOver={(e) => {
+                        if (!draggingQueueId) return
+                        e.preventDefault()
+                        if (dragOverQueueId !== row.queueId) setDragOverQueueId(row.queueId)
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault()
+                        const fromQueueId = draggingQueueId
+                        setDraggingQueueId(null)
+                        setDragOverQueueId(null)
+                        if (!fromQueueId) return
+                        if (fromQueueId === row.queueId) return
+                        const fromIndex = queue.findIndex((q) => q.queueId === fromQueueId)
+                        if (fromIndex < 0) return
+
+                        const rect = (e.currentTarget as HTMLLIElement).getBoundingClientRect()
+                        const insertAfter = e.clientY > rect.top + rect.height / 2
+                        // Desired insertion index in the original list (before any splice shifting).
+                        const desiredInsertIndex = insertAfter ? index + 1 : index
+                        // Convert to insertion index after removal of the dragged item.
+                        const adjustedToIndex = fromIndex < desiredInsertIndex ? desiredInsertIndex - 1 : desiredInsertIndex
+                        reorderQueueItems(fromIndex, adjustedToIndex)
+                      }}
                     >
                       <button
                         type="button"
                         role="option"
                         aria-selected={selected}
                         onClick={() => selectIndex(index)}
+                        draggable
+                        onDragStart={(e) => {
+                          setDraggingQueueId(row.queueId)
+                          setDragOverQueueId(row.queueId)
+                          e.dataTransfer.effectAllowed = 'move'
+                          e.dataTransfer.setData('text/plain', row.queueId)
+                        }}
+                        onDragEnd={() => {
+                          setDraggingQueueId(null)
+                          setDragOverQueueId(null)
+                        }}
                         className={[
-                          'flex min-w-0 flex-1 items-center gap-3 border-l-2 border-transparent px-4 py-2.5 text-left transition-colors',
+                          `flex min-w-0 flex-1 items-center ${queueRowGapClass} border-l-2 border-transparent ${queueRowPadClass} text-left transition-colors`,
                           selected
                             ? 'border-amber-500 dark:border-amber-400'
                             : 'hover:bg-zinc-50 dark:hover:bg-zinc-900/60',
+                          'cursor-grab active:cursor-grabbing',
+                          isDropTarget ? 'border-amber-500/20 dark:border-amber-400/20' : '',
                         ].join(' ')}
                       >
                         <span className="w-5 shrink-0 text-right text-[11px] tabular-nums text-zinc-400 dark:text-zinc-500">
@@ -745,7 +793,7 @@ export default function MusicPlayer() {
                               setPositionSec(0)
                             }
                           }}
-                          className="shrink-0 px-2 py-2 text-[11px] text-zinc-500 opacity-80 transition hover:bg-zinc-200/80 hover:text-zinc-900 sm:opacity-0 sm:group-hover/row:opacity-100 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+                          className={`shrink-0 ${queueRemoveButtonPadClass} text-[11px] text-zinc-500 opacity-80 transition hover:bg-zinc-200/80 hover:text-zinc-900 sm:opacity-0 sm:group-hover/row:opacity-100 dark:hover:bg-zinc-800 dark:hover:text-zinc-100`}
                         >
                           Remove
                         </button>

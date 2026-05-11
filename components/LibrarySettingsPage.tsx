@@ -28,6 +28,8 @@ export default function LibrarySettingsPage() {
     addLibraryFolder,
     removeLibraryFolder,
     rescanAll,
+    compactLists,
+    setCompactLists,
   } = useLibrary()
 
   return (
@@ -88,6 +90,29 @@ export default function LibrarySettingsPage() {
             >
               {isScanning ? 'Scanning…' : 'Rescan all'}
             </button>
+          </div>
+        </section>
+
+        <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900/40">
+          <div className="flex items-baseline justify-between gap-4">
+            <div className="min-w-0">
+              <h2 className="text-xs font-medium uppercase tracking-wider text-zinc-500">List density</h2>
+              <p className="mt-2 text-sm leading-relaxed text-zinc-600 dark:text-zinc-400">
+                Compact lists show tighter spacing in the player and library browser.
+              </p>
+            </div>
+            <label className="flex cursor-pointer items-center gap-3">
+              <input
+                type="checkbox"
+                checked={compactLists}
+                onChange={(e) => setCompactLists(e.target.checked)}
+                aria-label="Enable compact lists"
+                className="h-4 w-4 rounded border-zinc-300 text-amber-500 focus:ring-2 focus:ring-amber-500/20 dark:border-zinc-700 dark:bg-zinc-900"
+              />
+              <span className="shrink-0 text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                {compactLists ? 'Compact' : 'Comfortable'}
+              </span>
+            </label>
           </div>
         </section>
 
