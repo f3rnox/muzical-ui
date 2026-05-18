@@ -5,7 +5,29 @@ const fs = require('node:fs')
 const path = require('node:path')
 
 const packageRoot = path.resolve(__dirname, '..')
-const standaloneServerPath = path.join(packageRoot, '.next', 'standalone', 'server.js')
+const standaloneDir = path.join(packageRoot, '.next', 'standalone')
+const standaloneServerPath = path.join(standaloneDir, 'server.js')
+
+/**
+ * Standalone server expects static assets under `.next/standalone/.next/static`.
+ */
+function ensureStandaloneAssets() {
+  const staticSrc = path.join(packageRoot, '.next', 'static')
+  const staticDest = path.join(standaloneDir, '.next', 'static')
+  const publicSrc = path.join(packageRoot, 'public')
+  const publicDest = path.join(standaloneDir, 'public')
+
+  if (!fs.existsSync(staticDest) && fs.existsSync(staticSrc)) {
+    fs.mkdirSync(path.dirname(staticDest), { recursive: true })
+    fs.cpSync(staticSrc, staticDest, { recursive: true })
+  }
+
+  if (!fs.existsSync(publicDest) && fs.existsSync(publicSrc)) {
+    fs.cpSync(publicSrc, publicDest, { recursive: true })
+  }
+}
+
+ensureStandaloneAssets()
 
 if (!fs.existsSync(standaloneServerPath)) {
   console.error('muzical-ui: standalone production server missing (.next/standalone/server.js).')
@@ -17,7 +39,7 @@ const child = spawn(
   process.execPath,
   [standaloneServerPath, ...process.argv.slice(2)],
   {
-    cwd: packageRoot,
+    cwd: standaloneDir,
     stdio: 'inherit',
     env: {
       ...process.env,
