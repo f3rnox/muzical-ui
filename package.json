@@ -26,15 +26,11 @@
     "stt-ui": "./bin/stt-ui.js"
   },
   "files": [
-    "bin",
-    ".next",
-    "app",
-    "components",
-    "lib",
-    "types",
+    "bin/stt-ui.js",
+    ".next/standalone",
+    ".next/static",
     "public",
-    "next.config.ts",
-    "postcss.config.mjs"
+    "package.json"
   ],
   "scripts": {
     "dev": "next dev",

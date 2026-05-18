@@ -5,19 +5,17 @@ const fs = require('node:fs')
 const path = require('node:path')
 
 const packageRoot = path.resolve(__dirname, '..')
-const buildIdPath = path.join(packageRoot, '.next', 'BUILD_ID')
+const standaloneServerPath = path.join(packageRoot, '.next', 'standalone', 'server.js')
 
-if (!fs.existsSync(buildIdPath)) {
-  console.error('muzical-ui: production build missing from the installed package (.next/BUILD_ID).')
-  console.error('Install a published build that includes .next, or from a checkout run: pnpm build')
+if (!fs.existsSync(standaloneServerPath)) {
+  console.error('muzical-ui: standalone production server missing (.next/standalone/server.js).')
+  console.error('Publish from a clean build with output: standalone, or run: pnpm build')
   process.exit(1)
 }
 
-const nextBin = require.resolve('next/dist/bin/next')
-
 const child = spawn(
   process.execPath,
-  [nextBin, 'start', ...process.argv.slice(2)],
+  [standaloneServerPath, ...process.argv.slice(2)],
   {
     cwd: packageRoot,
     stdio: 'inherit',
