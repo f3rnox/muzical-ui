@@ -263,7 +263,6 @@ export default function LibraryBrowser() {
   const [albumPick, setAlbumPick] = useState<string | null>(null)
   const [folderRootId, setFolderRootId] = useState<string | null>(null)
   const [folderPath, setFolderPath] = useState('')
-
   const filtered = useMemo(() => filterTracksByQuery(libraryTracks, query), [libraryTracks, query])
   const searchActive = query.trim().length > 0
   const compact = compactLists
@@ -494,7 +493,7 @@ export default function LibraryBrowser() {
               type="button"
               onClick={() => goMode(m)}
               className={[
-                'rounded-full px-3 py-1 text-xs font-medium capitalize transition',
+                'cursor-pointer rounded-full px-3 py-1 text-xs font-medium capitalize transition',
                 mode === m
                   ? 'bg-amber-500 text-zinc-950'
                   : 'bg-zinc-200 text-zinc-700 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700',
@@ -511,180 +510,180 @@ export default function LibraryBrowser() {
           <p className="px-2 py-6 text-center text-sm text-zinc-500">No library tracks yet. Configure folders in settings.</p>
         ) : searchActive ? (
           <div className="space-y-1">
-            <p className="px-2 pb-2 text-xs text-zinc-500">
-              {searchSummaryBits.length > 0 ? (
-                <>
-                  {searchSummaryBits.join(' · ')}
-                  {searchUnionTracks.length > 0 ? (
-                    <span className="text-zinc-400">
-                      {' '}
-                      · {searchUnionTracks.length} unique track{searchUnionTracks.length === 1 ? '' : 's'} (add all)
-                    </span>
-                  ) : null}
-                </>
-              ) : (
-                'No matches.'
-              )}
-            </p>
-            {searchSummaryBits.length > 0 ? (
-              <>
-                <button
-                  type="button"
-                  onClick={() => onAddMany(searchUnionTracks)}
-                  disabled={searchUnionTracks.length === 0}
-                  className="mb-2 w-full rounded-lg border border-zinc-200 bg-white py-2 text-xs font-medium text-zinc-800 transition hover:bg-zinc-50 disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
-                >
-                  Add all search results to queue
-                </button>
-                {searchResults.artists.length > 0 ? (
+                <p className="px-2 pb-2 text-xs text-zinc-500">
+                  {searchSummaryBits.length > 0 ? (
+                    <>
+                      {searchSummaryBits.join(' · ')}
+                      {searchUnionTracks.length > 0 ? (
+                        <span className="text-zinc-400">
+                          {' '}
+                          · {searchUnionTracks.length} unique track{searchUnionTracks.length === 1 ? '' : 's'} (add all)
+                        </span>
+                      ) : null}
+                    </>
+                  ) : (
+                    'No matches.'
+                  )}
+                </p>
+                {searchSummaryBits.length > 0 ? (
                   <>
-                    <p className="px-2 pt-2 text-xs font-medium uppercase tracking-wider text-zinc-500">Artists</p>
-                    <ul className={ulSpaceYClass}>
-                      {searchResults.artists.map((hit) => (
-                        <li key={hit.name} className="group/row flex items-center gap-1">
-                          <button
-                            type="button"
-                            onClick={() => navigateToArtistFromSearch(hit.name)}
-                            className={`flex min-w-0 flex-1 items-center justify-between rounded-lg ${rowPadLgClass} text-left text-sm text-zinc-800 transition hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800/80`}
-                          >
-                            <span className="truncate font-medium text-zinc-900 dark:text-zinc-100">{hit.name}</span>
-                            <span className="shrink-0 text-xs tabular-nums text-zinc-500">{hit.tracks.length}</span>
-                          </button>
-                          <FavoriteStarButton
-                            filled={isFavoriteArtist(hit.name)}
-                            onPress={() => toggleFavoriteArtist(hit.name)}
-                            label={isFavoriteArtist(hit.name) ? 'Remove artist from favorites' : 'Add artist to favorites'}
-                          />
-                          <button
-                            type="button"
-                            onClick={() => onAddMany(hit.tracks)}
-                            disabled={hit.tracks.length === 0}
-                            className="shrink-0 self-center rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-medium text-amber-800 ring-1 ring-amber-500/25 transition hover:bg-amber-500/25 disabled:opacity-40 dark:text-amber-300 dark:ring-amber-500/40"
-                          >
-                            Add all
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  </>
-                ) : null}
-                {searchResults.albums.length > 0 ? (
-                  <>
-                    <p className="px-2 pt-3 text-xs font-medium uppercase tracking-wider text-zinc-500">Albums</p>
-                    <ul className={ulSpaceYClass}>
-                      {searchResults.albums.map((hit) => {
-                        const sample = hit.tracks[0]
-                        return (
-                          <li key={hit.key} className="group/row flex items-center gap-1">
-                            <button
-                              type="button"
-                              onClick={() => navigateToAlbumFromSearch(hit.key)}
-                            className={`flex min-w-0 flex-1 items-center ${rowGapLgClass} rounded-lg ${rowPadLgClass} text-left transition hover:bg-zinc-100 dark:hover:bg-zinc-800/80`}
+                    <button
+                      type="button"
+                      onClick={() => onAddMany(searchUnionTracks)}
+                      disabled={searchUnionTracks.length === 0}
+                      className="mb-2 w-full rounded-lg border border-zinc-200 bg-white py-2 text-xs font-medium text-zinc-800 transition hover:bg-zinc-50 disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                    >
+                      Add all search results to queue
+                    </button>
+                    {searchResults.artists.length > 0 ? (
+                      <>
+                        <p className="px-2 pt-2 text-xs font-medium uppercase tracking-wider text-zinc-500">Artists</p>
+                        <ul className={ulSpaceYClass}>
+                          {searchResults.artists.map((hit) => (
+                            <li key={hit.name} className="group/row flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => navigateToArtistFromSearch(hit.name)}
+                                className={`flex min-w-0 flex-1 items-center justify-between rounded-lg ${rowPadLgClass} text-left text-sm text-zinc-800 transition hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800/80`}
+                              >
+                                <span className="truncate font-medium text-zinc-900 dark:text-zinc-100">{hit.name}</span>
+                                <span className="shrink-0 text-xs tabular-nums text-zinc-500">{hit.tracks.length}</span>
+                              </button>
+                              <FavoriteStarButton
+                                filled={isFavoriteArtist(hit.name)}
+                                onPress={() => toggleFavoriteArtist(hit.name)}
+                                label={isFavoriteArtist(hit.name) ? 'Remove artist from favorites' : 'Add artist to favorites'}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => onAddMany(hit.tracks)}
+                                disabled={hit.tracks.length === 0}
+                                className="shrink-0 self-center rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-medium text-amber-800 ring-1 ring-amber-500/25 transition hover:bg-amber-500/25 disabled:opacity-40 dark:text-amber-300 dark:ring-amber-500/40"
+                              >
+                                Add all
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      </>
+                    ) : null}
+                    {searchResults.albums.length > 0 ? (
+                      <>
+                        <p className="px-2 pt-3 text-xs font-medium uppercase tracking-wider text-zinc-500">Albums</p>
+                        <ul className={ulSpaceYClass}>
+                          {searchResults.albums.map((hit) => {
+                            const sample = hit.tracks[0]
+                            return (
+                              <li key={hit.key} className="group/row flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => navigateToAlbumFromSearch(hit.key)}
+                                  className={`flex min-w-0 flex-1 items-center ${rowGapLgClass} rounded-lg ${rowPadLgClass} text-left transition hover:bg-zinc-100 dark:hover:bg-zinc-800/80`}
+                                >
+                                  <AlbumCoverThumb track={sample} />
+                                  <div className="flex min-w-0 flex-1 flex-col items-start">
+                                    <span className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">
+                                      {hit.album}
+                                    </span>
+                                    <span className="truncate text-xs text-zinc-500">{hit.artist}</span>
+                                    <span className="mt-0.5 text-xs text-zinc-400">
+                                      {hit.tracks.length} track{hit.tracks.length === 1 ? '' : 's'}
+                                    </span>
+                                  </div>
+                                </button>
+                                <FavoriteStarButton
+                                  filled={isFavoriteAlbum(hit.key)}
+                                  onPress={() => toggleFavoriteAlbum(hit.key)}
+                                  label={
+                                    isFavoriteAlbum(hit.key) ? 'Remove album from favorites' : 'Add album to favorites'
+                                  }
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => onAddMany(hit.tracks)}
+                                  disabled={hit.tracks.length === 0}
+                                  className="shrink-0 self-center rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-medium text-amber-800 ring-1 ring-amber-500/25 transition hover:bg-amber-500/25 disabled:opacity-40 dark:text-amber-300 dark:ring-amber-500/40"
+                                >
+                                  Add all
+                                </button>
+                              </li>
+                            )
+                          })}
+                        </ul>
+                      </>
+                    ) : null}
+                    {searchResults.folders.length > 0 ? (
+                      <>
+                        <p className="px-2 pt-3 text-xs font-medium uppercase tracking-wider text-zinc-500">Folders</p>
+                        <ul className={ulSpaceYClass}>
+                          {searchResults.folders.map((hit) => (
+                            <li
+                              key={`${hit.rootId}\u0000${hit.path}`}
+                              className="group/row flex items-center gap-1"
                             >
-                              <AlbumCoverThumb track={sample} />
-                              <div className="flex min-w-0 flex-1 flex-col items-start">
-                                <span className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">
-                                  {hit.album}
+                              <button
+                                type="button"
+                                onClick={() => navigateToFolderFromSearch(hit.rootId, hit.path)}
+                                className={`flex min-w-0 flex-1 flex-col items-start rounded-lg ${rowPadLgClass} text-left text-sm transition hover:bg-zinc-100 dark:hover:bg-zinc-800/80`}
+                              >
+                                <span className="truncate font-medium text-zinc-900 dark:text-zinc-100">
+                                  {folderSearchLabel(hit)}
                                 </span>
-                                <span className="truncate text-xs text-zinc-500">{hit.artist}</span>
-                                <span className="mt-0.5 text-xs text-zinc-400">
-                                  {hit.tracks.length} track{hit.tracks.length === 1 ? '' : 's'}
+                                <span className="mt-0.5 text-xs tabular-nums text-zinc-500">{hit.tracks.length} tracks</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => onAddMany(hit.tracks)}
+                                disabled={hit.tracks.length === 0}
+                                className="shrink-0 self-center rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-medium text-amber-800 ring-1 ring-amber-500/25 transition hover:bg-amber-500/25 disabled:opacity-40 dark:text-amber-300 dark:ring-amber-500/40"
+                              >
+                                Add all
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      </>
+                    ) : null}
+                    {searchResults.songs.length > 0 ? (
+                      <>
+                        <p className="px-2 pt-3 text-xs font-medium uppercase tracking-wider text-zinc-500">Songs</p>
+                        <ul className={ulSpaceYClass}>
+                          {searchResults.songs.map((t) => (
+                            <li key={t.id}>
+                              <div
+                                className={`flex items-center ${rowGapSmClass} rounded-lg ${rowPadSmClass} hover:bg-zinc-100 dark:hover:bg-zinc-800/80`}
+                              >
+                                <div className="min-w-0 flex-1">
+                                  <p className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">{t.title}</p>
+                                  <p className="truncate text-xs text-zinc-500">
+                                    {t.artist} · {t.album}
+                                    {t.library?.relativePath ? ` · ${t.library.relativePath}` : ''}
+                                  </p>
+                                </div>
+                                <span className="shrink-0 text-xs tabular-nums text-zinc-500">
+                                  {t.durationSec > 0 ? formatDuration(t.durationSec) : '—'}
                                 </span>
+                                <FavoriteStarButton
+                                  filled={isFavoriteSong(t.id)}
+                                  onPress={() => toggleFavoriteTrack(t)}
+                                  label={isFavoriteSong(t.id) ? 'Remove song from favorites' : 'Add song to favorites'}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => onAdd(t)}
+                                  className="shrink-0 rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-medium text-amber-800 ring-1 ring-amber-500/25 transition hover:bg-amber-500/25 dark:text-amber-300 dark:ring-amber-500/40"
+                                >
+                                  Add
+                                </button>
                               </div>
-                            </button>
-                            <FavoriteStarButton
-                              filled={isFavoriteAlbum(hit.key)}
-                              onPress={() => toggleFavoriteAlbum(hit.key)}
-                              label={
-                                isFavoriteAlbum(hit.key) ? 'Remove album from favorites' : 'Add album to favorites'
-                              }
-                            />
-                            <button
-                              type="button"
-                              onClick={() => onAddMany(hit.tracks)}
-                              disabled={hit.tracks.length === 0}
-                              className="shrink-0 self-center rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-medium text-amber-800 ring-1 ring-amber-500/25 transition hover:bg-amber-500/25 disabled:opacity-40 dark:text-amber-300 dark:ring-amber-500/40"
-                            >
-                              Add all
-                            </button>
-                          </li>
-                        )
-                      })}
-                    </ul>
+                            </li>
+                          ))}
+                        </ul>
+                      </>
+                    ) : null}
                   </>
                 ) : null}
-                {searchResults.folders.length > 0 ? (
-                  <>
-                    <p className="px-2 pt-3 text-xs font-medium uppercase tracking-wider text-zinc-500">Folders</p>
-                    <ul className={ulSpaceYClass}>
-                      {searchResults.folders.map((hit) => (
-                        <li
-                          key={`${hit.rootId}\u0000${hit.path}`}
-                          className="group/row flex items-center gap-1"
-                        >
-                          <button
-                            type="button"
-                            onClick={() => navigateToFolderFromSearch(hit.rootId, hit.path)}
-                            className={`flex min-w-0 flex-1 flex-col items-start rounded-lg ${rowPadLgClass} text-left text-sm transition hover:bg-zinc-100 dark:hover:bg-zinc-800/80`}
-                          >
-                            <span className="truncate font-medium text-zinc-900 dark:text-zinc-100">
-                              {folderSearchLabel(hit)}
-                            </span>
-                            <span className="mt-0.5 text-xs tabular-nums text-zinc-500">{hit.tracks.length} tracks</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => onAddMany(hit.tracks)}
-                            disabled={hit.tracks.length === 0}
-                            className="shrink-0 self-center rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-medium text-amber-800 ring-1 ring-amber-500/25 transition hover:bg-amber-500/25 disabled:opacity-40 dark:text-amber-300 dark:ring-amber-500/40"
-                          >
-                            Add all
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  </>
-                ) : null}
-                {searchResults.songs.length > 0 ? (
-                  <>
-                    <p className="px-2 pt-3 text-xs font-medium uppercase tracking-wider text-zinc-500">Songs</p>
-                    <ul className={ulSpaceYClass}>
-                      {searchResults.songs.map((t) => (
-                        <li key={t.id}>
-                          <div
-                            className={`flex items-center ${rowGapSmClass} rounded-lg ${rowPadSmClass} hover:bg-zinc-100 dark:hover:bg-zinc-800/80`}
-                          >
-                            <div className="min-w-0 flex-1">
-                              <p className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">{t.title}</p>
-                              <p className="truncate text-xs text-zinc-500">
-                                {t.artist} · {t.album}
-                                {t.library?.relativePath ? ` · ${t.library.relativePath}` : ''}
-                              </p>
-                            </div>
-                            <span className="shrink-0 text-xs tabular-nums text-zinc-500">
-                              {t.durationSec > 0 ? formatDuration(t.durationSec) : '—'}
-                            </span>
-                            <FavoriteStarButton
-                              filled={isFavoriteSong(t.id)}
-                              onPress={() => toggleFavoriteTrack(t)}
-                              label={isFavoriteSong(t.id) ? 'Remove song from favorites' : 'Add song to favorites'}
-                            />
-                            <button
-                              type="button"
-                              onClick={() => onAdd(t)}
-                              className="shrink-0 rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-medium text-amber-800 ring-1 ring-amber-500/25 transition hover:bg-amber-500/25 dark:text-amber-300 dark:ring-amber-500/40"
-                            >
-                              Add
-                            </button>
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  </>
-                ) : null}
-              </>
-            ) : null}
-          </div>
+              </div>
         ) : mode === 'artist' ? (
           artistPick === null ? (
             <ul className={ulSpaceYClass}>

@@ -18,6 +18,12 @@ export const SETTINGS_NAV_ITEMS: readonly SettingsNavItem[] = [
       "Scan folders, rescan on startup, and manage configured directories.",
   },
   {
+    href: "/settings/youtube",
+    label: "YouTube",
+    description:
+      "YouTube Data API key for resolving MusicBrainz tracks to embeddable videos.",
+  },
+  {
     href: "/settings/playback",
     label: "Playback",
     description: "Restore your queue and playhead between sessions.",
