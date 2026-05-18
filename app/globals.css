@@ -1,5 +1,5 @@
 @import "tailwindcss";
-@import "./accent-palettes.css";
+@import "./color-palettes.css";
 
 html {
   height: 100%;
@@ -7,28 +7,7 @@ html {
 
 @custom-variant dark (&:where(.dark, .dark *));
 
-:root {
-  --background: #fafafa;
-  --foreground: #171717;
-}
-
-.dark {
-  --background: #0a0a0a;
-  --foreground: #ededed;
-}
-
-/* Custom scrollbars (WebKit + Firefox). */
-:root {
-  --scrollbar-track: rgba(63, 63, 70, 0.15);
-  --scrollbar-thumb: rgba(161, 161, 170, 0.7);
-  --scrollbar-thumb-hover: rgba(161, 161, 170, 0.95);
-}
-
-.dark {
-  --scrollbar-track: rgba(39, 39, 42, 0.7);
-  --scrollbar-thumb: rgba(82, 82, 91, 0.9);
-  --scrollbar-thumb-hover: rgba(82, 82, 91, 1);
-}
+/* Page chrome and scrollbars come from color-palettes.css per [data-palette]. */
 
 * {
   scrollbar-width: thin;

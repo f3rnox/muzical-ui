@@ -4,7 +4,7 @@ import Script from 'next/script'
 import { LibraryProvider } from '@/components/LibraryProvider'
 import { PlaybackPreferencesProvider } from '@/components/PlaybackPreferencesProvider'
 import { YoutubePreferencesProvider } from '@/components/YoutubePreferencesProvider'
-import { AccentProvider } from '@/components/AccentProvider'
+import { PaletteProvider } from '@/components/PaletteProvider'
 import { ThemeProvider } from '@/components/ThemeProvider'
 import getAppInitScript from '@/lib/app-init-script'
 import './globals.css'
@@ -43,13 +43,13 @@ export default function RootLayout({
         />
         <div className="flex min-h-0 flex-1 flex-col">
           <ThemeProvider>
-            <AccentProvider>
+            <PaletteProvider>
               <PlaybackPreferencesProvider>
                 <YoutubePreferencesProvider>
                   <LibraryProvider>{children}</LibraryProvider>
                 </YoutubePreferencesProvider>
               </PlaybackPreferencesProvider>
-            </AccentProvider>
+            </PaletteProvider>
           </ThemeProvider>
         </div>
       </body>

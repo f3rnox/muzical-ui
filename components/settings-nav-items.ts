@@ -43,7 +43,8 @@ export const SETTINGS_NAV_ITEMS: readonly SettingsNavItem[] = [
   {
     href: "/settings/display",
     label: "Display",
-    description: "List density and other visual preferences in the player.",
+    description:
+      "Color palette themes, list density, and other visual preferences.",
   },
 ] as const;
 

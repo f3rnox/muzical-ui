@@ -1,6 +1,6 @@
 'use client'
 
-import AccentColorPicker from '@/components/AccentColorPicker'
+import ThemePalettePicker from '@/components/ThemePalettePicker'
 import { useLibrary } from '@/components/LibraryProvider'
 import SettingsSwitchRow from '@/components/SettingsSwitchRow'
 
@@ -18,7 +18,7 @@ export default function DisplaySettingsPanel() {
       </div>
 
       <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900/40">
-        <AccentColorPicker />
+        <ThemePalettePicker />
       </section>
 
       <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900/40">

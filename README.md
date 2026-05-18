@@ -24,8 +24,8 @@ browser only.
   panel.
 - **Layout** — On large screens: resizable library, queue, and player columns;
   stacks vertically on small screens.
-- **Settings** — Library scan paths, playback, browse default tab, display density,
-  accent color, and theme.
+- **Settings** — Library scan paths, playback, browse default tab, color palette
+  themes, display density, and light/dark mode.
 
 ## Requirements
 
