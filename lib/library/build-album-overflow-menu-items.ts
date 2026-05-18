@@ -4,6 +4,7 @@ type BuildAlbumOverflowMenuItemsOptions = {
   albumKey: string;
   onRemoveAlbumFromLibrary: (albumKey: string) => void;
   onEditAlbumMetadata?: (albumKey: string) => void;
+  onAddAlbumToPlaylist?: (albumKey: string) => void;
 };
 
 /**
@@ -18,6 +19,13 @@ export default function buildAlbumOverflowMenuItems(
       id: "edit-metadata",
       label: "Edit album metadata",
       onSelect: () => options.onEditAlbumMetadata!(options.albumKey),
+    });
+  }
+  if (options.onAddAlbumToPlaylist) {
+    items.push({
+      id: "add-to-playlist",
+      label: "Add album to playlist…",
+      onSelect: () => options.onAddAlbumToPlaylist!(options.albumKey),
     });
   }
   items.push({

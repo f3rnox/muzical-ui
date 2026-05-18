@@ -55,6 +55,7 @@ import mergeScannedTracksWithSavedLibrary from '@/lib/library/merge-scanned-trac
 import normalizeTrackForLibrarySave from '@/lib/library/normalize-track-for-library-save'
 import parsePersistedCatalogTracks from '@/lib/library/parse-persisted-catalog-tracks'
 import { resolveTrackToFile } from '@/lib/library/resolve-track-file'
+import AddToPlaylistDialog from '@/components/AddToPlaylistDialog'
 import LibraryScanNotification from '@/components/LibraryScanNotification'
 import RelatedSongsDialog from '@/components/RelatedSongsDialog'
 import TrackDetailsDialog from '@/components/TrackDetailsDialog'
@@ -64,6 +65,15 @@ import type { LibraryScanPreferences } from '@/types/library-scan-preferences'
 import readStoredLibraryScanPreferences from '@/lib/library/read-stored-library-scan-preferences'
 import writeStoredLibraryScanPreferences from '@/lib/library/write-stored-library-scan-preferences'
 import scanPreferencesToTreeOptions from '@/lib/library/scan-preferences-to-tree-options'
+import readStoredPlaylists from '@/lib/playlists/read-stored-playlists'
+import writeStoredPlaylists from '@/lib/playlists/write-stored-playlists'
+import generatePlaylistId from '@/lib/playlists/generate-playlist-id'
+import normalizePlaylistName from '@/lib/playlists/normalize-playlist-name'
+import appendTrackIdsToPlaylist from '@/lib/playlists/append-track-ids-to-playlist'
+import removeTrackIdsFromPlaylist from '@/lib/playlists/remove-track-ids-from-playlist'
+import reorderPlaylistTrackIds from '@/lib/playlists/reorder-playlist-track-ids'
+import { PLAYLISTS_LIMIT } from '@/lib/playlists/playlist-storage-key'
+import type { Playlist } from '@/types/playlist'
 import readStoredPlaybackSnapshot from '@/lib/playback/read-stored-playback-snapshot'
 import writeStoredPlaybackSnapshot from '@/lib/playback/write-stored-playback-snapshot'
 import buildEmptyPlaybackSnapshot from '@/lib/playback/build-empty-playback-snapshot'
@@ -75,6 +85,7 @@ import { useYoutubePreferences } from '@/components/YoutubePreferencesProvider'
 
 export type { LibraryRootMeta } from '@/types/library-root-meta'
 export type { LibraryScanPreferences } from '@/types/library-scan-preferences'
+export type { Playlist } from '@/types/playlist'
 
 export type PlaybackRestore = {
   activeQueueId: string | null
@@ -159,6 +170,14 @@ type LibraryContextValue = {
   relatedSongsSeedTrack: Track | null
   openRelatedSongs: (track: Track) => void
   closeRelatedSongs: () => void
+  playlists: readonly Playlist[]
+  createPlaylist: (name: string, initialTrackIds?: readonly string[]) => Playlist | null
+  renamePlaylist: (playlistId: string, name: string) => boolean
+  deletePlaylist: (playlistId: string) => void
+  addTracksToPlaylist: (playlistId: string, tracks: Track | readonly Track[]) => number
+  removeTracksFromPlaylist: (playlistId: string, trackIds: readonly string[]) => void
+  reorderPlaylistTracks: (playlistId: string, fromIndex: number, toIndex: number) => void
+  openAddToPlaylist: (tracks: Track | readonly Track[], contextLabel: string) => void
 }
 
 const LibraryContext = createContext<LibraryContextValue | null>(null)
@@ -169,6 +188,10 @@ const STORAGE_COMPACT_LISTS = 'muzical.compactLists'
 const STORAGE_AUTO_RESCAN_ON_STARTUP = 'muzical.autoRescanOnStartup'
 const STORAGE_LOG_LIBRARY_SCAN_TIMING = 'muzical.logLibraryScanTiming'
 const STORAGE_REMEMBER_LAST_QUEUE = 'muzical.rememberLastQueue'
+
+function trackArrayFromInput(items: Track | readonly Track[]): Track[] {
+  return Array.isArray(items) ? [...items] : [items as Track]
+}
 
 function safeReadStoredBoolean(key: string): boolean {
   if (typeof window === 'undefined') return false
@@ -337,6 +360,12 @@ export function LibraryProvider(props: { children: ReactNode }) {
   const [youtubePrefetchActive, setYoutubePrefetchActive] = useState(false)
   const [youtubePrefetchVideoCount, setYoutubePrefetchVideoCount] = useState(0)
   const youtubePrefetchVideosRef = useRef(0)
+  const [playlists, setPlaylists] = useState<Playlist[]>([])
+  const playlistsReadyRef = useRef(false)
+  const [addToPlaylistTarget, setAddToPlaylistTarget] = useState<{
+    tracks: readonly Track[]
+    contextLabel: string
+  } | null>(null)
 
   const beginYoutubePrefetch = useCallback((videoCount: number) => {
     const n = Math.max(0, Math.floor(videoCount))
@@ -422,6 +451,18 @@ export function LibraryProvider(props: { children: ReactNode }) {
     if (!recentBrowseSearchesReadyRef.current) return
     writeStoredRecentBrowseSearches(recentBrowseSearches.slice(0, RECENT_BROWSE_SEARCHES_LIMIT))
   }, [recentBrowseSearches])
+
+  useEffect(() => {
+    queueMicrotask(() => {
+      setPlaylists(readStoredPlaylists())
+      playlistsReadyRef.current = true
+    })
+  }, [])
+
+  useEffect(() => {
+    if (!playlistsReadyRef.current) return
+    writeStoredPlaylists(playlists)
+  }, [playlists])
 
   useEffect(() => {
     libraryTracksRef.current = libraryTracks
@@ -996,6 +1037,105 @@ export function LibraryProvider(props: { children: ReactNode }) {
     clearStoredRecentBrowseSearches()
   }, [])
 
+  const createPlaylist = useCallback(
+    (name: string, initialTrackIds?: readonly string[]): Playlist | null => {
+      const cleanName = normalizePlaylistName(name)
+      if (!cleanName) return null
+      const now = Date.now()
+      const seenIds = new Set<string>()
+      const trackIds: string[] = []
+      if (initialTrackIds) {
+        for (const id of initialTrackIds) {
+          if (!id || seenIds.has(id)) continue
+          seenIds.add(id)
+          trackIds.push(id)
+        }
+      }
+      const playlist: Playlist = {
+        id: generatePlaylistId(),
+        name: cleanName,
+        trackIds,
+        createdAt: now,
+        updatedAt: now,
+      }
+      setPlaylists((prev) => [playlist, ...prev].slice(0, PLAYLISTS_LIMIT))
+      return playlist
+    },
+    [],
+  )
+
+  const renamePlaylist = useCallback((playlistId: string, name: string): boolean => {
+    const cleanName = normalizePlaylistName(name)
+    if (!cleanName) return false
+    let matched = false
+    setPlaylists((prev) =>
+      prev.map((p) => {
+        if (p.id !== playlistId) return p
+        matched = true
+        if (p.name === cleanName) return p
+        return { ...p, name: cleanName, updatedAt: Date.now() }
+      }),
+    )
+    return matched
+  }, [])
+
+  const deletePlaylist = useCallback((playlistId: string) => {
+    setPlaylists((prev) => prev.filter((p) => p.id !== playlistId))
+  }, [])
+
+  const addTracksToPlaylist = useCallback(
+    (playlistId: string, tracks: Track | readonly Track[]): number => {
+      const list = trackArrayFromInput(tracks)
+      const ids = list.map((t) => t.id).filter((id): id is string => Boolean(id))
+      if (ids.length === 0) return 0
+      let added = 0
+      setPlaylists((prev) =>
+        prev.map((p) => {
+          if (p.id !== playlistId) return p
+          const next = appendTrackIdsToPlaylist(p, ids)
+          added = next.trackIds.length - p.trackIds.length
+          return next
+        }),
+      )
+      return added
+    },
+    [],
+  )
+
+  const removeTracksFromPlaylist = useCallback(
+    (playlistId: string, trackIds: readonly string[]) => {
+      if (trackIds.length === 0) return
+      setPlaylists((prev) =>
+        prev.map((p) => (p.id === playlistId ? removeTrackIdsFromPlaylist(p, trackIds) : p)),
+      )
+    },
+    [],
+  )
+
+  const reorderPlaylistTracks = useCallback(
+    (playlistId: string, fromIndex: number, toIndex: number) => {
+      setPlaylists((prev) =>
+        prev.map((p) =>
+          p.id === playlistId ? reorderPlaylistTrackIds(p, fromIndex, toIndex) : p,
+        ),
+      )
+    },
+    [],
+  )
+
+  const openAddToPlaylist = useCallback(
+    (tracks: Track | readonly Track[], contextLabel: string) => {
+      const list = trackArrayFromInput(tracks)
+      if (list.length === 0) return
+      setAddToPlaylistTarget({ tracks: list, contextLabel })
+    },
+    [],
+  )
+
+  const closeAddToPlaylist = useCallback(() => {
+    setAddToPlaylistTarget(null)
+  }, [])
+
   const setCompactLists = useCallback((next: boolean) => {
     setCompactListsState(next)
     safeWriteStoredBoolean(STORAGE_COMPACT_LISTS, next)
@@ -1386,6 +1526,14 @@ export function LibraryProvider(props: { children: ReactNode }) {
       relatedSongsSeedTrack,
       openRelatedSongs,
       closeRelatedSongs,
+      playlists,
+      createPlaylist,
+      renamePlaylist,
+      deletePlaylist,
+      addTracksToPlaylist,
+      removeTracksFromPlaylist,
+      reorderPlaylistTracks,
+      openAddToPlaylist,
     }),
     [
       roots,
@@ -1456,6 +1604,14 @@ export function LibraryProvider(props: { children: ReactNode }) {
       relatedSongsSeedTrack,
       openRelatedSongs,
       closeRelatedSongs,
+      playlists,
+      createPlaylist,
+      renamePlaylist,
+      deletePlaylist,
+      addTracksToPlaylist,
+      removeTracksFromPlaylist,
+      reorderPlaylistTracks,
+      openAddToPlaylist,
     ],
   )
 
@@ -1465,6 +1621,13 @@ export function LibraryProvider(props: { children: ReactNode }) {
       <LibraryScanNotification progress={scanProgress} onDismiss={dismissScanNotification} />
       <TrackDetailsDialog track={detailsTrack} onClose={closeTrackDetails} />
       <RelatedSongsDialog seedTrack={relatedSongsSeedTrack} onClose={closeRelatedSongs} />
+      {addToPlaylistTarget ? (
+        <AddToPlaylistDialog
+          tracks={addToPlaylistTarget.tracks}
+          contextLabel={addToPlaylistTarget.contextLabel}
+          onClose={closeAddToPlaylist}
+        />
+      ) : null}
     </LibraryContext.Provider>
   )
 }

@@ -10,6 +10,7 @@ import type { Track } from '@/types/track'
 import AlbumCoverThumb from '@/components/AlbumCoverThumb'
 import FavoriteStarButton from '@/components/FavoriteStarButton'
 import LibrarySongTrackRow from '@/components/LibrarySongTrackRow'
+import PlaylistsBrowserPanel from '@/components/PlaylistsBrowserPanel'
 import AlbumMetadataDialog from '@/components/AlbumMetadataDialog'
 import ArtistMetadataDialog from '@/components/ArtistMetadataDialog'
 import TrackRowOverflowMenu from '@/components/TrackRowOverflowMenu'
@@ -18,7 +19,7 @@ import buildArtistOverflowMenuItems from '@/lib/library/build-artist-overflow-me
 import { albumCompositeKey, artistDisplayName } from '@/lib/library/favorite-keys'
 import { formatDuration } from '@/lib/format-duration'
 
-type BrowseMode = 'artist' | 'album' | 'folder' | 'favorites'
+type BrowseMode = 'artist' | 'album' | 'folder' | 'favorites' | 'playlists'
 
 function filterTracksByQuery(tracks: readonly Track[], query: string): Track[] {
   const s = query.trim().toLowerCase()
@@ -266,6 +267,7 @@ export default function LibraryBrowser() {
     removeAlbumFromLibrary,
     removeArtistFromLibrary,
     recordRecentBrowseSearch,
+    openAddToPlaylist,
   } = useLibrary()
   const searchParams = useSearchParams()
   const [mode, setMode] = useState<BrowseMode>('artist')
@@ -564,14 +566,28 @@ export default function LibraryBrowser() {
     }
   }, [albumMetadataEditKey, libraryAlbumMap])
 
+  const handleAddAlbumToPlaylist = useCallback(
+    (albumKey: string) => {
+      const tracks = libraryAlbumMap.get(albumKey) ?? []
+      if (tracks.length === 0) return
+      const parts = albumKey.split('\u0000')
+      const title = parts[0] ?? 'Album'
+      const artist = parts[1] ?? ''
+      const label = artist ? `${title} · ${artist}` : title
+      openAddToPlaylist(tracks, label)
+    },
+    [libraryAlbumMap, openAddToPlaylist],
+  )
+
   const albumOverflowMenuItems = useCallback(
     (albumKey: string) =>
       buildAlbumOverflowMenuItems({
         albumKey,
         onRemoveAlbumFromLibrary: handleRemoveAlbumFromLibrary,
         onEditAlbumMetadata: openAlbumMetadataEdit,
+        onAddAlbumToPlaylist: handleAddAlbumToPlaylist,
       }),
-    [handleRemoveAlbumFromLibrary, openAlbumMetadataEdit],
+    [handleRemoveAlbumFromLibrary, openAlbumMetadataEdit, handleAddAlbumToPlaylist],
   )
 
   const openArtistMetadataEdit = useCallback((artistName: string) => {
@@ -590,14 +606,24 @@ export default function LibraryBrowser() {
     }
   }, [artistMetadataEditName, libraryArtistMap])
 
+  const handleAddArtistToPlaylist = useCallback(
+    (artistName: string) => {
+      const tracks = libraryArtistMap.get(artistName) ?? []
+      if (tracks.length === 0) return
+      openAddToPlaylist(tracks, artistName)
+    },
+    [libraryArtistMap, openAddToPlaylist],
+  )
+
   const artistOverflowMenuItems = useCallback(
     (artistName: string) =>
       buildArtistOverflowMenuItems({
         artistName,
         onRemoveArtistFromLibrary: handleRemoveArtistFromLibrary,
         onEditArtistMetadata: openArtistMetadataEdit,
+        onAddArtistToPlaylist: handleAddArtistToPlaylist,
       }),
-    [handleRemoveArtistFromLibrary, openArtistMetadataEdit],
+    [handleRemoveArtistFromLibrary, openArtistMetadataEdit, handleAddArtistToPlaylist],
   )
 
   return (
@@ -614,7 +640,7 @@ export default function LibraryBrowser() {
         />
         <RecentBrowseSearchSuggestions source="library" onSelect={setQuery} />
         <div className="flex flex-wrap gap-1">
-          {(['artist', 'album', 'folder', 'favorites'] as const).map((m) => (
+          {(['artist', 'album', 'folder', 'favorites', 'playlists'] as const).map((m) => (
             <button
               key={m}
               type="button"
@@ -1178,6 +1204,12 @@ export default function LibraryBrowser() {
               </>
             )}
           </div>
+        ) : mode === 'playlists' ? (
+          <PlaylistsBrowserPanel
+            compact={compact}
+            rowPadLgClass={rowPadLgClass}
+            ulSpaceYClass={ulSpaceYClass}
+          />
         ) : folderRootId === null ? (
           <ul className={ulSpaceYClass}>
             {rootsFiltered.map((r) => {

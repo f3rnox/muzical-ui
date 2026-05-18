@@ -19,8 +19,14 @@ type LibrarySongTrackRowProps = {
  * Library song row with favorites, details menu, and add-to-queue.
  */
 export default function LibrarySongTrackRow(props: LibrarySongTrackRowProps) {
-  const { openTrackDetails, openRelatedSongs, removeFromLibrary, isFavoriteSong, toggleFavoriteTrack } =
-    useLibrary()
+  const {
+    openTrackDetails,
+    openRelatedSongs,
+    openAddToPlaylist,
+    removeFromLibrary,
+    isFavoriteSong,
+    toggleFavoriteTrack,
+  } = useLibrary()
   const rowPadSmClass = props.compact ? 'px-1.5 py-1.5' : 'px-2 py-2'
   const rowGapSmClass = props.compact ? 'gap-1.5' : 'gap-2'
 
@@ -47,6 +53,7 @@ export default function LibrarySongTrackRow(props: LibrarySongTrackRowProps) {
           track: props.track,
           onViewDetails: openTrackDetails,
           onViewRelatedSongs: openRelatedSongs,
+          onAddToPlaylist: (track) => openAddToPlaylist(track, track.title),
           onRemoveFromLibrary: () => removeFromLibrary(props.track),
         })}
       />

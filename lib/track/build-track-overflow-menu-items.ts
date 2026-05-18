@@ -8,6 +8,7 @@ type BuildTrackOverflowMenuItemsOptions = {
   onSave?: () => void;
   alreadySaved?: boolean;
   onRemoveFromLibrary?: () => void;
+  onAddToPlaylist?: (track: Track) => void;
 };
 
 /**
@@ -29,6 +30,14 @@ export default function buildTrackOverflowMenuItems(
       id: "related",
       label: "Related songs",
       onSelect: () => options.onViewRelatedSongs!(options.track),
+    });
+  }
+
+  if (options.onAddToPlaylist) {
+    items.push({
+      id: "add-to-playlist",
+      label: "Add to playlist…",
+      onSelect: () => options.onAddToPlaylist!(options.track),
     });
   }
 
