@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.14](https://github.com/f3rnox/muzical-ui/compare/v0.1.13...v0.1.14) (2026-05-18)
+
+
+### Features
+
+* add version number in topbar ([7543135](https://github.com/f3rnox/muzical-ui/commit/7543135ff5077da8d188f75001eb915c50addc69))
+
 ### [0.1.13](https://github.com/f3rnox/muzical-ui/compare/v0.1.12...v0.1.13) (2026-05-18)
 
 
