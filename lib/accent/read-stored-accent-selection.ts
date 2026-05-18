@@ -20,7 +20,7 @@ export default function readStoredAccentSelection(): AccentSelection {
     };
   }
 
-  let customHex = DEFAULT_CUSTOM_ACCENT_HEX;
+  let customHex: string = DEFAULT_CUSTOM_ACCENT_HEX;
   try {
     const rawHex = window.localStorage.getItem(CUSTOM_ACCENT_HEX_STORAGE_KEY);
     if (typeof rawHex === "string") {
