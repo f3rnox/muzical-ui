@@ -253,7 +253,6 @@ export default function MusicPlayer() {
   const [volume, setVolume] = useState(0.85)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [streamResolving, setStreamResolving] = useState(false)
-  const [forceSearchFallback, setForceSearchFallback] = useState(false)
   const [coverArtUrl, setCoverArtUrl] = useState<string | null>(null)
   const [layoutLg, setLayoutLg] = useState(false)
   const [libraryPanelPx, setLibraryPanelPx] = useState(440)
@@ -676,23 +675,10 @@ export default function MusicPlayer() {
   const useSearchPlayback = shouldUseYoutubeSearchPlayback(
     current?.youtubeQuery,
     current?.youtubeVideoId,
-    readStoredYoutubeApiKey().length > 0,
-    forceSearchFallback,
   )
   const youtubeStreamActive = Boolean(
     current?.youtubeQuery && (current?.youtubeVideoId || useSearchPlayback),
   )
-
-  useEffect(() => {
-    setForceSearchFallback(false)
-    const query = current?.youtubeQuery?.trim()
-    if (!query || current?.youtubeVideoId) return undefined
-    if (readYoutubeDataApiBlocked() || !readStoredYoutubeApiKey()) return undefined
-    const t = window.setTimeout(() => setForceSearchFallback(true), 10000)
-    return (): void => {
-      window.clearTimeout(t)
-    }
-  }, [current?.id, current?.youtubeQuery, current?.youtubeVideoId])
 
   useEffect(() => {
     if (!current?.youtubeQuery) {
@@ -723,10 +709,6 @@ export default function MusicPlayer() {
         }
         youtubePlayerRef.current = null
       }
-      return undefined
-    }
-
-    if (!videoId && !useSearchPlayback) {
       return undefined
     }
 
@@ -774,8 +756,21 @@ export default function MusicPlayer() {
               }
             },
             onStateChange: (event: any) => {
-              if (event.data === window.YT.PlayerState.ENDED) {
+              const state = event.data
+              if (state === window.YT.PlayerState.ENDED) {
                 goNext()
+                return
+              }
+              if (
+                isPlayingRef.current &&
+                (state === window.YT.PlayerState.CUED ||
+                  state === window.YT.PlayerState.PAUSED)
+              ) {
+                try {
+                  event.target.playVideo()
+                } catch {
+                  /* ignore */
+                }
               }
             },
           },
@@ -822,7 +817,7 @@ export default function MusicPlayer() {
     }
 
     return (): void => {
-      if (!youtubeStreamActive && youtubePlayerRef.current) {
+      if (youtubePlayerRef.current) {
         try {
           youtubePlayerRef.current.destroy()
         } catch {
@@ -831,17 +826,7 @@ export default function MusicPlayer() {
         youtubePlayerRef.current = null
       }
     }
-  }, [
-    current?.youtubeVideoId,
-    current?.youtubeQuery,
-    useSearchPlayback,
-    youtubeStreamActive,
-    isPlaying,
-    volume,
-    goNext,
-    bumpTrackDuration,
-    current?.id,
-  ])
+  }, [current?.youtubeVideoId, current?.youtubeQuery, useSearchPlayback, goNext, bumpTrackDuration, current?.id])
 
   useEffect(() => {
     const player = youtubePlayerRef.current
