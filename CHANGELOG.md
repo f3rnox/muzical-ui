@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.5](https://github.com/f3rnox/muzical-ui/compare/v0.1.4...v0.1.5) (2026-05-18)
+
+
+### Bug Fixes
+
+* bin name to muzical-ui ([3d2cf6f](https://github.com/f3rnox/muzical-ui/commit/3d2cf6fba45030cbc415717b6e431c6d1159ca9f))
+
 ### [0.1.4](https://github.com/f3rnox/muzical-ui/compare/v0.1.3...v0.1.4) (2026-05-18)
 
 
