@@ -1,4 +1,6 @@
+import parsePersistedTrack from "@/lib/playback/parse-persisted-track";
 import type { PersistedPlaybackSnapshot } from "@/types/persisted-playback-snapshot";
+import type { Track } from "@/types/track";
 
 const STORAGE_KEY = "muzical.playbackSnapshot";
 
@@ -17,6 +19,15 @@ export default function readStoredPlaybackSnapshot(): PersistedPlaybackSnapshot 
     const trackIds = o.trackIds.filter(
       (x): x is string => typeof x === "string" && x.length > 0,
     );
+    let tracks: Track[] | undefined;
+    if (Array.isArray(o.tracks)) {
+      const list: Track[] = [];
+      for (const item of o.tracks) {
+        const row = parsePersistedTrack(item);
+        if (row) list.push(row);
+      }
+      if (list.length > 0) tracks = list;
+    }
     const activeTrackId =
       typeof o.activeTrackId === "string" ? o.activeTrackId : null;
     const positionSec =
@@ -25,7 +36,7 @@ export default function readStoredPlaybackSnapshot(): PersistedPlaybackSnapshot 
       o.positionSec >= 0
         ? o.positionSec
         : 0;
-    return { trackIds, activeTrackId, positionSec };
+    return { trackIds, tracks, activeTrackId, positionSec };
   } catch {
     return null;
   }

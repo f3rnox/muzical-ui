@@ -39,6 +39,10 @@ import scanPreferencesToTreeOptions from '@/lib/library/scan-preferences-to-tree
 import readStoredPlaybackSnapshot from '@/lib/playback/read-stored-playback-snapshot'
 import writeStoredPlaybackSnapshot from '@/lib/playback/write-stored-playback-snapshot'
 import buildQueueFromSnapshot from '@/lib/playback/build-queue-from-snapshot'
+import collectYoutubePrefetchTargets from '@/lib/youtube/collect-youtube-prefetch-targets'
+import prefetchYoutubeVideoIds from '@/lib/youtube/prefetch-youtube-video-ids'
+import readStoredYoutubeApiKey from '@/lib/youtube/read-stored-youtube-api-key'
+import readYoutubeDataApiBlocked from '@/lib/youtube/read-youtube-data-api-blocked'
 
 export type { LibraryRootMeta } from '@/types/library-root-meta'
 export type { LibraryScanPreferences } from '@/types/library-scan-preferences'
@@ -80,6 +84,7 @@ type LibraryContextValue = {
   reorderQueueItems: (fromIndex: number, toIndex: number) => void
   resolveFileForTrack: (track: Track) => Promise<File | null>
   bumpTrackDuration: (trackId: string, durationSec: number) => void
+  patchTrackById: (trackId: string, patch: (track: Track) => Track) => void
   favoriteSongIds: readonly string[]
   favoriteArtistNames: readonly string[]
   favoriteAlbumKeys: readonly string[]
@@ -336,6 +341,7 @@ export function LibraryProvider(props: { children: ReactNode }) {
     const activeRow = activeId ? q.find((row) => row.queueId === activeId) : q[0]
     writeStoredPlaybackSnapshot({
       trackIds: q.map((row) => row.track.id),
+      tracks: q.map((row) => row.track),
       activeTrackId: activeRow?.track.id ?? null,
       positionSec: playbackReportRef.current.positionSec,
     })
@@ -359,15 +365,22 @@ export function LibraryProvider(props: { children: ReactNode }) {
       if (snap && snap.trackIds.length > 0) {
         const restored = buildQueueFromSnapshot(tracks, snap)
         if (restored.queue.length > 0) {
-          setQueue(restored.queue)
-          playbackReportRef.current = {
-            activeQueueId: restored.activeQueueId,
-            positionSec: restored.positionSec,
-          }
-          setPlaybackRestore({
-            activeQueueId: restored.activeQueueId,
-            positionSec: restored.positionSec,
+          let applied = false
+          setQueue((prev) => {
+            if (prev.length > 0) return prev
+            applied = true
+            return restored.queue
           })
+          if (applied) {
+            playbackReportRef.current = {
+              activeQueueId: restored.activeQueueId,
+              positionSec: restored.positionSec,
+            }
+            setPlaybackRestore({
+              activeQueueId: restored.activeQueueId,
+              positionSec: restored.positionSec,
+            })
+          }
         }
       }
     }
@@ -378,9 +391,10 @@ export function LibraryProvider(props: { children: ReactNode }) {
     if (!queueHydratedRef.current) return
     const byId = new Map(libraryTracks.map((t) => [t.id, t]))
     setQueue((prev) =>
-      prev
-        .filter((row) => byId.has(row.track.id))
-        .map((row) => ({ ...row, track: byId.get(row.track.id) as Track })),
+      prev.map((row) => {
+        const catalog = byId.get(row.track.id)
+        return catalog ? { ...row, track: catalog } : row
+      }),
     )
   }, [libraryTracks])
 
@@ -543,6 +557,33 @@ export function LibraryProvider(props: { children: ReactNode }) {
     setQueue((prev) => prev.map((q) => ({ ...q, track: patch(q.track) })))
     persistCatalogDebounced()
   }, [persistCatalogDebounced])
+
+  const patchTrackById = useCallback((trackId: string, patch: (track: Track) => Track) => {
+    const id = trackId.trim()
+    if (!id) return
+    const apply = (t: Track): Track => (t.id === id ? patch(t) : t)
+    setLibraryTracks((prev) => prev.map(apply))
+    setQueue((prev) => prev.map((q) => ({ ...q, track: apply(q.track) })))
+  }, [])
+
+  useEffect(() => {
+    const apiKey = readStoredYoutubeApiKey()
+    if (!apiKey || readYoutubeDataApiBlocked()) return undefined
+    const targets = collectYoutubePrefetchTargets(queue.map((row) => row.track)).slice(0, 8)
+    if (targets.length === 0) return undefined
+    const controller = new AbortController()
+    void prefetchYoutubeVideoIds(
+      targets,
+      apiKey,
+      (trackId, videoId) => {
+        patchTrackById(trackId, (t) => ({ ...t, youtubeVideoId: videoId }))
+      },
+      { signal: controller.signal },
+    )
+    return (): void => {
+      controller.abort()
+    }
+  }, [queue, patchTrackById])
 
   const addToQueue = useCallback((items: Track | readonly Track[]) => {
     const list = Array.isArray(items) ? items : [items]
@@ -905,6 +946,7 @@ export function LibraryProvider(props: { children: ReactNode }) {
       reorderQueueItems,
       resolveFileForTrack,
       bumpTrackDuration,
+      patchTrackById,
       favoriteSongIds,
       favoriteArtistNames,
       favoriteAlbumKeys,
@@ -947,6 +989,7 @@ export function LibraryProvider(props: { children: ReactNode }) {
       reorderQueueItems,
       resolveFileForTrack,
       bumpTrackDuration,
+      patchTrackById,
       favoriteSongIds,
       favoriteArtistNames,
       favoriteAlbumKeys,

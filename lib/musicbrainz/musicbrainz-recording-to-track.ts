@@ -36,7 +36,6 @@ export function musicBrainzRecordingToTrack(
       recording.length && Number.isFinite(recording.length)
         ? Math.round(recording.length / 1000)
         : 0,
-    audioUrl: `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(youtubeQuery)}&autoplay=1&controls=1&rel=0&modestbranding=1`,
     source: "musicbrainz",
     youtubeQuery,
   };

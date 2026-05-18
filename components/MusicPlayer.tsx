@@ -18,6 +18,10 @@ import ThemeToggle from '@/components/ThemeToggle'
 import FavoriteStarButton from '@/components/FavoriteStarButton'
 import PanelResizeHandle from '@/components/PanelResizeHandle'
 import QueueLoadingSpinner from '@/components/QueueLoadingSpinner'
+import YouTubeStreamNotification from '@/components/YouTubeStreamNotification'
+import readStoredYoutubeApiKey from '@/lib/youtube/read-stored-youtube-api-key'
+import readYoutubeDataApiBlocked from '@/lib/youtube/read-youtube-data-api-blocked'
+import shouldUseYoutubeSearchPlayback from '@/lib/youtube/should-use-youtube-search-playback'
 
 const STORAGE_LIBRARY_PANEL_PX = 'muzical.panelWidth.library'
 const STORAGE_QUEUE_PANEL_PX = 'muzical.panelWidth.queue'
@@ -248,6 +252,8 @@ export default function MusicPlayer() {
   const [mediaDuration, setMediaDuration] = useState(0)
   const [volume, setVolume] = useState(0.85)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [streamResolving, setStreamResolving] = useState(false)
+  const [forceSearchFallback, setForceSearchFallback] = useState(false)
   const [coverArtUrl, setCoverArtUrl] = useState<string | null>(null)
   const [layoutLg, setLayoutLg] = useState(false)
   const [libraryPanelPx, setLibraryPanelPx] = useState(440)
@@ -667,9 +673,48 @@ export default function MusicPlayer() {
     }
   }, [current, resolveFileForTrack])
 
+  const useSearchPlayback = shouldUseYoutubeSearchPlayback(
+    current?.youtubeQuery,
+    current?.youtubeVideoId,
+    readStoredYoutubeApiKey().length > 0,
+    forceSearchFallback,
+  )
+  const youtubeStreamActive = Boolean(
+    current?.youtubeQuery && (current?.youtubeVideoId || useSearchPlayback),
+  )
+
   useEffect(() => {
-    const query = current?.youtubeQuery
-    if (!query) {
+    setForceSearchFallback(false)
+    const query = current?.youtubeQuery?.trim()
+    if (!query || current?.youtubeVideoId) return undefined
+    if (readYoutubeDataApiBlocked() || !readStoredYoutubeApiKey()) return undefined
+    const t = window.setTimeout(() => setForceSearchFallback(true), 10000)
+    return (): void => {
+      window.clearTimeout(t)
+    }
+  }, [current?.id, current?.youtubeQuery, current?.youtubeVideoId])
+
+  useEffect(() => {
+    if (!current?.youtubeQuery) {
+      setStreamResolving(false)
+      return undefined
+    }
+    if (current.youtubeVideoId || useSearchPlayback) {
+      setStreamResolving(false)
+      return undefined
+    }
+    if (!readStoredYoutubeApiKey() || readYoutubeDataApiBlocked()) {
+      setStreamResolving(false)
+      return undefined
+    }
+    setStreamResolving(true)
+    return undefined
+  }, [current?.id, current?.youtubeQuery, current?.youtubeVideoId, useSearchPlayback])
+
+  useEffect(() => {
+    const videoId = current?.youtubeVideoId?.trim()
+    const query = current?.youtubeQuery?.trim()
+    if (!videoId && !query) {
       if (youtubePlayerRef.current) {
         try {
           youtubePlayerRef.current.destroy()
@@ -681,6 +726,21 @@ export default function MusicPlayer() {
       return undefined
     }
 
+    if (!videoId && !useSearchPlayback) {
+      return undefined
+    }
+
+    const basePlayerVars = {
+      autoplay: isPlaying ? 1 : 0,
+      controls: 0,
+      disablekb: 1,
+      fs: 0,
+      rel: 0,
+      modestbranding: 1,
+      iv_load_policy: 3,
+      origin: window.location.origin,
+    }
+
     const ensurePlayer = (): void => {
       if (!window.YT?.Player || !youtubeContainerRef.current) {
         return
@@ -688,25 +748,27 @@ export default function MusicPlayer() {
       const existingPlayer = youtubePlayerRef.current
       const createPlayer = (): void => {
         if (!youtubeContainerRef.current) return
+        const playerVars = useSearchPlayback && query
+          ? { ...basePlayerVars, listType: 'search' as const, list: query }
+          : basePlayerVars
         youtubePlayerRef.current = new window.YT.Player(youtubeContainerRef.current, {
-          height: '100%',
-          width: '100%',
-          playerVars: {
-            autoplay: isPlaying ? 1 : 0,
-            controls: 1,
-            rel: 0,
-            modestbranding: 1,
-            listType: 'search',
-            list: query,
-            origin: window.location.origin,
-          },
+          height: '1',
+          width: '1',
+          ...(videoId && !useSearchPlayback ? { videoId } : {}),
+          playerVars,
           events: {
             onReady: (event: any) => {
               try {
                 event.target.setVolume(Math.round(volume * 100))
+                const d = event.target.getDuration?.()
+                if (Number.isFinite(d) && d > 0) {
+                  setMediaDuration(d)
+                  bumpTrackDuration(current?.id ?? '', d)
+                }
               } catch {
                 /* ignore */
               }
+              setLoadError(null)
               if (isPlaying) {
                 event.target.playVideo()
               }
@@ -722,7 +784,11 @@ export default function MusicPlayer() {
 
       if (existingPlayer) {
         try {
-          existingPlayer.loadPlaylist({ listType: 'search', list: query, index: 0, suggestedQuality: 'small' })
+          if (useSearchPlayback && query) {
+            existingPlayer.loadPlaylist({ listType: 'search', list: query, index: 0 })
+          } else if (videoId) {
+            existingPlayer.loadVideoById(videoId)
+          }
           if (isPlaying) existingPlayer.playVideo()
           else existingPlayer.pauseVideo()
           existingPlayer.setVolume(Math.round(volume * 100))
@@ -756,7 +822,7 @@ export default function MusicPlayer() {
     }
 
     return (): void => {
-      if (!current?.youtubeQuery && youtubePlayerRef.current) {
+      if (!youtubeStreamActive && youtubePlayerRef.current) {
         try {
           youtubePlayerRef.current.destroy()
         } catch {
@@ -765,28 +831,62 @@ export default function MusicPlayer() {
         youtubePlayerRef.current = null
       }
     }
-  }, [current?.youtubeQuery, isPlaying, volume, goNext])
+  }, [
+    current?.youtubeVideoId,
+    current?.youtubeQuery,
+    useSearchPlayback,
+    youtubeStreamActive,
+    isPlaying,
+    volume,
+    goNext,
+    bumpTrackDuration,
+    current?.id,
+  ])
 
   useEffect(() => {
     const player = youtubePlayerRef.current
-    if (!player || !current?.youtubeQuery) return
+    if (!player || !youtubeStreamActive) return
     try {
       if (isPlaying) player.playVideo()
       else player.pauseVideo()
     } catch {
       /* ignore */
     }
-  }, [isPlaying, current?.youtubeQuery])
+  }, [isPlaying, youtubeStreamActive])
 
   useEffect(() => {
     const player = youtubePlayerRef.current
-    if (!player || !current?.youtubeQuery) return
+    if (!player || !youtubeStreamActive) return
     try {
       player.setVolume(Math.round(volume * 100))
     } catch {
       /* ignore */
     }
-  }, [volume, current?.youtubeQuery])
+  }, [volume, youtubeStreamActive])
+
+  useEffect(() => {
+    if (!youtubeStreamActive) return undefined
+    const tick = (): void => {
+      const player = youtubePlayerRef.current
+      if (!player?.getCurrentTime) return
+      try {
+        const t = player.getCurrentTime()
+        if (Number.isFinite(t) && t >= 0) {
+          setPositionSec(t)
+          reportPlayback(activeQueueIdRef.current, t)
+        }
+        const d = player.getDuration?.()
+        if (Number.isFinite(d) && d > 0) setMediaDuration(d)
+      } catch {
+        /* ignore */
+      }
+    }
+    tick()
+    const id = window.setInterval(tick, 500)
+    return (): void => {
+      window.clearInterval(id)
+    }
+  }, [youtubeStreamActive, reportPlayback])
 
   useEffect(() => {
     const el = audioRef.current
@@ -865,6 +965,31 @@ export default function MusicPlayer() {
   const onSeekBarPointer = useCallback(
     (ratio: number) => {
       const r = Math.min(1, Math.max(0, ratio))
+      const yt = youtubePlayerRef.current
+      if (youtubeStreamActive && yt?.seekTo) {
+        const total =
+          durationSec > 0
+            ? durationSec
+            : (() => {
+                try {
+                  const d = yt.getDuration?.()
+                  return Number.isFinite(d) && d > 0 ? d : 0
+                } catch {
+                  return 0
+                }
+              })()
+        if (total > 0) {
+          const next = r * total
+          try {
+            yt.seekTo(next, true)
+          } catch {
+            /* ignore */
+          }
+          setPositionSec(next)
+          reportPlayback(activeQueueIdRef.current, next)
+        }
+        return
+      }
       const el = audioRef.current
       if (!el || !Number.isFinite(el.duration) || el.duration <= 0) {
         if (durationSec > 0) {
@@ -878,7 +1003,7 @@ export default function MusicPlayer() {
       setPositionSec(next)
       reportPlayback(activeQueueIdRef.current, next)
     },
-    [durationSec, reportPlayback],
+    [youtubeStreamActive, durationSec, reportPlayback],
   )
 
   const onSeekBarKeyDown = useCallback(
@@ -916,7 +1041,14 @@ export default function MusicPlayer() {
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col bg-zinc-100 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
+      <YouTubeStreamNotification visible={streamResolving} trackTitle={current?.title} />
       <audio ref={audioRef} className="hidden" preload="metadata" />
+      <div
+        ref={youtubeContainerRef}
+        className="pointer-events-none fixed h-px w-px overflow-hidden opacity-0"
+        aria-hidden
+        tabIndex={-1}
+      />
 
       <header className="flex shrink-0 items-center justify-between border-b border-zinc-200 bg-white/90 px-6 py-4 backdrop-blur-sm dark:border-zinc-800/80 dark:bg-zinc-950/90">
         <div className="flex items-center gap-3">
@@ -1238,9 +1370,23 @@ export default function MusicPlayer() {
                 </div>
               )}
             </div>
-            {current?.youtubeQuery ? (
+            {null && current?.youtubeQuery ? (
               <div className="mt-4 overflow-hidden rounded-3xl border border-zinc-200 bg-black dark:border-zinc-800">
-                <div ref={youtubeContainerRef} className="aspect-video bg-black" />
+                {false ? (
+                  <div className="flex aspect-video items-center justify-center bg-black text-sm text-zinc-400">
+                    Finding video…
+                  </div>
+                ) : (
+                  <div className="flex aspect-video items-center justify-center bg-black px-4 text-center text-sm text-zinc-400">
+                    <Link
+                      href="/settings/youtube"
+                      className="text-amber-600 underline underline-offset-2 hover:text-amber-500 dark:text-amber-400"
+                    >
+                      Add a YouTube API key
+                    </Link>{' '}
+                    in Settings to play this track.
+                  </div>
+                )}
               </div>
             ) : null}
             <div className="text-center">

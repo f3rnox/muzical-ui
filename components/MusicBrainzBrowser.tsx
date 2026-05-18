@@ -6,6 +6,10 @@ import MusicBrainzTrackRow from '@/components/MusicBrainzTrackRow'
 import { groupTracksByAlbum } from '@/lib/musicbrainz/group-tracks-by-album'
 import { groupTracksByArtist } from '@/lib/musicbrainz/group-tracks-by-artist'
 import { searchMusicBrainz } from '@/lib/musicbrainz'
+import collectYoutubePrefetchTargets from '@/lib/youtube/collect-youtube-prefetch-targets'
+import prefetchYoutubeVideoIds from '@/lib/youtube/prefetch-youtube-video-ids'
+import readStoredYoutubeApiKey from '@/lib/youtube/read-stored-youtube-api-key'
+import readYoutubeDataApiBlocked from '@/lib/youtube/read-youtube-data-api-blocked'
 import type { Track } from '@/types/track'
 
 type MusicBrainzBrowseMode = 'artist' | 'album' | 'song'
@@ -117,6 +121,27 @@ export default function MusicBrainzBrowser() {
       }
     }
   }, [query])
+
+  useEffect(() => {
+    const apiKey = readStoredYoutubeApiKey()
+    if (!apiKey || readYoutubeDataApiBlocked() || results.length === 0) return undefined
+    const targets = collectYoutubePrefetchTargets(results).slice(0, 12)
+    if (targets.length === 0) return undefined
+    const controller = new AbortController()
+    void prefetchYoutubeVideoIds(
+      targets,
+      apiKey,
+      (trackId, videoId) => {
+        setResults((prev) =>
+          prev.map((t) => (t.id === trackId ? { ...t, youtubeVideoId: videoId } : t)),
+        )
+      },
+      { signal: controller.signal },
+    )
+    return (): void => {
+      controller.abort()
+    }
+  }, [results])
 
   const onQueue = useCallback((t: Track) => addToQueue(t), [addToQueue])
   const onSave = useCallback((t: Track) => addToLibrary(t), [addToLibrary])
@@ -295,7 +320,9 @@ export default function MusicBrainzBrowser() {
       <div className="shrink-0 space-y-3 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
         <div>
           <h2 className="text-xs font-medium uppercase tracking-wider text-zinc-500">MusicBrainz</h2>
-          <p className="mt-1 text-xs text-zinc-400">Discover recordings via MusicBrainz; playback uses YouTube search.</p>
+          <p className="mt-1 text-xs text-zinc-400">
+            Discover recordings via MusicBrainz; streams via YouTube in the background (Settings → YouTube).
+          </p>
         </div>
         <input
           type="search"

@@ -12,17 +12,28 @@ export type RestoredQueue = {
  * Rebuilds a playback queue from a snapshot and the current library catalog.
  */
 export default function buildQueueFromSnapshot(
-  tracks: readonly Track[],
+  libraryCatalog: readonly Track[],
   snapshot: PersistedPlaybackSnapshot,
 ): RestoredQueue {
-  const byId = new Map<string, Track>();
-  for (const t of tracks) byId.set(t.id, t);
-  const queue: QueuedTrack[] = [];
-  for (const trackId of snapshot.trackIds) {
-    const track = byId.get(trackId);
-    if (!track) continue;
-    queue.push({ queueId: crypto.randomUUID(), track });
+  const libraryById = new Map<string, Track>();
+  for (const t of libraryCatalog) libraryById.set(t.id, t);
+
+  const resolvedTracks: Track[] = [];
+  if (snapshot.tracks && snapshot.tracks.length > 0) {
+    for (const row of snapshot.tracks) {
+      resolvedTracks.push(libraryById.get(row.id) ?? row);
+    }
+  } else {
+    for (const trackId of snapshot.trackIds) {
+      const track = libraryById.get(trackId);
+      if (track) resolvedTracks.push(track);
+    }
   }
+
+  const queue: QueuedTrack[] = resolvedTracks.map((track) => ({
+    queueId: crypto.randomUUID(),
+    track,
+  }));
   let activeQueueId: string | null = null;
   if (snapshot.activeTrackId) {
     const row = queue.find((q) => q.track.id === snapshot.activeTrackId);
