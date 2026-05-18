@@ -91,21 +91,41 @@ async function pendingFileToTrack(p: PendingAudioFile): Promise<Track> {
   }
 }
 
+export type MetadataScanProgress = {
+  filesDone: number;
+  filesTotal: number;
+};
+
+export type DirectoryScanProgress =
+  | { phase: "walk" }
+  | { phase: "metadata"; filesDone: number; filesTotal: number };
+
 /**
  * Opens files in bounded parallel, parses tags, and returns `Track` rows sorted by path.
  */
 export async function buildTracksFromPending(
   pending: readonly PendingAudioFile[],
+  onProgress?: (progress: MetadataScanProgress) => void,
 ): Promise<Track[]> {
   if (pending.length === 0) return [];
   const tracks: Track[] = new Array(pending.length);
   let nextIndex = 0;
+  let filesDone = 0;
+  const filesTotal = pending.length;
+
+  const report = (): void => {
+    onProgress?.({ filesDone, filesTotal });
+  };
+
+  report();
 
   const worker = async (): Promise<void> => {
     for (;;) {
       const i = nextIndex++;
       if (i >= pending.length) break;
       tracks[i] = await pendingFileToTrack(pending[i] as PendingAudioFile);
+      filesDone += 1;
+      report();
     }
   };
 
@@ -121,8 +141,13 @@ export async function scanDirectoryForTracks(
   rootId: string,
   rootDisplayName: string,
   dir: FileSystemDirectoryHandle,
+  onProgress?: (progress: DirectoryScanProgress) => void,
 ): Promise<Track[]> {
+  onProgress?.({ phase: "walk" });
   const pending: PendingAudioFile[] = [];
   await collectPendingAudioFiles(rootId, rootDisplayName, dir, "", pending);
-  return buildTracksFromPending(pending);
+  onProgress?.({ phase: "metadata", filesDone: 0, filesTotal: pending.length });
+  return buildTracksFromPending(pending, (metadata) => {
+    onProgress?.({ phase: "metadata", ...metadata });
+  });
 }

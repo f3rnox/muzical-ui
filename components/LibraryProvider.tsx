@@ -24,14 +24,16 @@ import {
   type StoredLibraryRoot,
 } from '@/lib/library/idb'
 import { formatFsAccessErrorMessage } from '@/lib/library/format-fs-access-error'
-import { scanDirectoryForTracks } from '@/lib/library/scan-tree'
+import { collectTracksForMeta } from '@/lib/library/collect-tracks-for-meta'
+import { scanProgressLabel } from '@/lib/library/scan-progress-label'
+import { scanProgressPercent } from '@/lib/library/scan-progress-percent'
+import type { ScanProgressTick } from '@/lib/library/scan-progress-tick'
 import { resolveTrackToFile } from '@/lib/library/resolve-track-file'
+import LibraryScanNotification from '@/components/LibraryScanNotification'
+import type { LibraryRootMeta } from '@/types/library-root-meta'
+import type { LibraryScanProgress } from '@/types/library-scan-progress'
 
-export type LibraryRootMeta = {
-  id: string
-  name: string
-  addedAt: number
-}
+export type { LibraryRootMeta } from '@/types/library-root-meta'
 
 type LibraryContextValue = {
   roots: LibraryRootMeta[]
@@ -122,14 +124,6 @@ function safeWriteStoredStringArray(key: string, list: readonly string[]): void 
   }
 }
 
-type CollectTracksResult = {
-  tracks: Track[]
-  /** Roots whose handle could not be enumerated (blocked context, revoked permission, etc.) */
-  failedRootCount: number
-  /** First scan error message for diagnostics (permission, etc.) */
-  firstError: string | null
-}
-
 function catalogMatchesRoots(
   meta: readonly { id: string }[],
   cachedRootIds: readonly string[],
@@ -141,48 +135,29 @@ function catalogMatchesRoots(
   return sorted.every((id, i) => id === cachedRootIds[i])
 }
 
-function scanFailureMessage(e: unknown): string {
-  if (e instanceof DOMException) {
-    return `${e.name}: ${e.message}`
-  }
-  if (e instanceof Error) {
-    return e.message
-  }
-  return String(e)
-}
-
-async function collectTracksForMeta(
-  meta: readonly LibraryRootMeta[],
-  handles: ReadonlyMap<string, FileSystemDirectoryHandle>,
-): Promise<CollectTracksResult> {
-  const list: Track[] = []
-  let failedRootCount = 0
-  let firstError: string | null = null
-  for (const r of meta) {
-    const h = handles.get(r.id)
-    if (!h) continue
-    try {
-      const chunk = await scanDirectoryForTracks(r.id, r.name, h)
-      list.push(...chunk)
-    } catch (e) {
-      failedRootCount += 1
-      if (!firstError) firstError = scanFailureMessage(e)
-    }
-  }
-  list.sort((a, b) => {
-    const ra = a.library?.rootId ?? ''
-    const rb = b.library?.rootId ?? ''
-    const c = ra.localeCompare(rb, undefined, { sensitivity: 'base' })
-    if (c !== 0) return c
-    const pa = a.library?.relativePath ?? a.title
-    const pb = b.library?.relativePath ?? b.title
-    return pa.localeCompare(pb, undefined, { sensitivity: 'base' })
-  })
-  return { tracks: list, failedRootCount, firstError }
-}
-
 const DISK_ACCESS_HINT =
   'Use Rescan all in Library settings, or remove and add the folders again so the browser can access your music.'
+
+const SCAN_NOTIFICATION_DISMISS_MS = 8000
+
+/**
+ * True when every configured root already has persisted read access (no prompt on scan).
+ */
+async function everyHandleHasGrantedReadAccess(
+  handles: ReadonlyMap<string, FileSystemDirectoryHandle>,
+): Promise<boolean> {
+  if (handles.size === 0) return false
+  const opts = { mode: 'read' as const }
+  for (const h of handles.values()) {
+    try {
+      const q = await h.queryPermission?.(opts)
+      if (q !== 'granted') return false
+    } catch {
+      return false
+    }
+  }
+  return true
+}
 
 /**
  * Checks read permission on handles. Only passes `mayRequestPrompt: true` from a user gesture
@@ -216,6 +191,7 @@ export function LibraryProvider(props: { children: ReactNode }) {
   const rootsMetaRef = useRef<LibraryRootMeta[]>([])
   const libraryTracksRef = useRef<Track[]>([])
   const persistCatalogTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const scanDismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const favoritesReadyRef = useRef(false)
   const [favoriteSongIds, setFavoriteSongIds] = useState<string[]>([])
   const [favoriteArtistNames, setFavoriteArtistNames] = useState<string[]>([])
@@ -226,6 +202,7 @@ export function LibraryProvider(props: { children: ReactNode }) {
   const [recentlyPlayedTrackIds, setRecentlyPlayedTrackIds] = useState<string[]>([])
   const [compactLists, setCompactListsState] = useState(false)
   const [isScanning, setIsScanning] = useState(false)
+  const [scanProgress, setScanProgress] = useState<LibraryScanProgress | null>(null)
   const [scanError, setScanError] = useState<string | null>(null)
   const [hasDirectoryPicker, setHasDirectoryPicker] = useState(false)
 
@@ -260,6 +237,10 @@ export function LibraryProvider(props: { children: ReactNode }) {
       if (persistCatalogTimerRef.current) {
         clearTimeout(persistCatalogTimerRef.current)
         persistCatalogTimerRef.current = null
+      }
+      if (scanDismissTimerRef.current) {
+        clearTimeout(scanDismissTimerRef.current)
+        scanDismissTimerRef.current = null
       }
     }
   }, [])
@@ -297,18 +278,87 @@ export function LibraryProvider(props: { children: ReactNode }) {
     }
   }, [flushPersistCatalogNow])
 
-  const runScan = useCallback(async (withUserActivation = false): Promise<void> => {
-    if (scanLockRef.current) return
-    scanLockRef.current = true
-    const meta = rootsMetaRef.current
-    const map = rootHandlesRef.current
-    try {
-      if (meta.length > 0) {
-        await reconfirmReadAccessForHandles(map, withUserActivation)
-      }
+  const clearScanDismissTimer = useCallback((): void => {
+    if (scanDismissTimerRef.current) {
+      clearTimeout(scanDismissTimerRef.current)
+      scanDismissTimerRef.current = null
+    }
+  }, [])
+
+  const scheduleScanDismiss = useCallback((): void => {
+    clearScanDismissTimer()
+    scanDismissTimerRef.current = setTimeout(() => {
+      scanDismissTimerRef.current = null
+      setScanProgress(null)
+    }, SCAN_NOTIFICATION_DISMISS_MS)
+  }, [clearScanDismissTimer])
+
+  const dismissScanNotification = useCallback((): void => {
+    clearScanDismissTimer()
+    setScanProgress(null)
+  }, [clearScanDismissTimer])
+
+  const applyScanProgressTick = useCallback((tick: ScanProgressTick): void => {
+    setScanProgress({
+      percent: scanProgressPercent(tick),
+      label: scanProgressLabel(tick),
+      rootName: tick.rootName,
+      filesDone: tick.filesDone ?? 0,
+      filesTotal: tick.filesTotal ?? 0,
+    })
+  }, [])
+
+  const performScan = useCallback(
+    async (withUserActivation: boolean) => {
+      if (scanLockRef.current) return null
+      scanLockRef.current = true
+      const meta = rootsMetaRef.current
+      const map = rootHandlesRef.current
+      clearScanDismissTimer()
       setIsScanning(true)
       setScanError(null)
-      const { tracks: next, failedRootCount, firstError } = await collectTracksForMeta(meta, map)
+      setScanProgress({
+        percent: 0,
+        label: 'Starting library scan…',
+        rootName: null,
+        filesDone: 0,
+        filesTotal: 0,
+      })
+      try {
+        if (meta.length > 0) {
+          await reconfirmReadAccessForHandles(map, withUserActivation)
+        }
+        const result = await collectTracksForMeta(meta, map, applyScanProgressTick)
+        setScanProgress({
+          percent: 100,
+          label:
+            result.tracks.length > 0
+              ? `Found ${result.tracks.length} track${result.tracks.length === 1 ? '' : 's'}`
+              : 'Scan complete',
+          rootName: null,
+          filesDone: result.tracks.length,
+          filesTotal: result.tracks.length,
+        })
+        scheduleScanDismiss()
+        return result
+      } catch (e) {
+        setScanProgress(null)
+        setScanError(e instanceof Error ? e.message : 'Scan failed')
+        return null
+      } finally {
+        scanLockRef.current = false
+        setIsScanning(false)
+      }
+    },
+    [applyScanProgressTick, clearScanDismissTimer, scheduleScanDismiss],
+  )
+
+  const runScan = useCallback(
+    async (withUserActivation = false): Promise<void> => {
+      const result = await performScan(withUserActivation)
+      if (!result) return
+      const meta = rootsMetaRef.current
+      const { tracks: next, failedRootCount, firstError } = result
       setLibraryTracks(next)
       const db = dbRef.current
       if (db) {
@@ -321,13 +371,9 @@ export function LibraryProvider(props: { children: ReactNode }) {
       if (withUserActivation && failedRootCount > 0 && next.length === 0 && meta.length > 0) {
         setScanError(firstError ? `${firstError} ${DISK_ACCESS_HINT}` : DISK_ACCESS_HINT)
       }
-    } catch (e) {
-      setScanError(e instanceof Error ? e.message : 'Scan failed')
-    } finally {
-      scanLockRef.current = false
-      setIsScanning(false)
-    }
-  }, [])
+    },
+    [performScan],
+  )
 
   const bumpTrackDuration = useCallback((trackId: string, durationSec: number) => {
     if (!Number.isFinite(durationSec) || durationSec <= 0) return
@@ -573,18 +619,25 @@ export function LibraryProvider(props: { children: ReactNode }) {
           /* ignore missing or corrupt catalog */
         }
         if (disposed) return
-        setIsScanning(true)
-        setScanError(null)
-        if (meta.length > 0) {
-          await reconfirmReadAccessForHandles(map, false)
-        }
+        const mayRescanOnLoad = meta.length > 0 && (await everyHandleHasGrantedReadAccess(map))
         if (disposed) return
-        const { tracks: next, firstError, failedRootCount } = await collectTracksForMeta(meta, map)
-        if (disposed) return
-        const needsGesture = next.length === 0 && meta.length > 0 && failedRootCount > 0
-        if (needsGesture) {
-          if (cachedApplied) {
-            setScanError(null)
+        if (mayRescanOnLoad && !disposed) {
+          const result = await performScan(false)
+          if (disposed || !result) return
+          const { tracks: next, firstError, failedRootCount } = result
+          const needsGesture = next.length === 0 && meta.length > 0 && failedRootCount > 0
+          if (needsGesture) {
+            if (cachedApplied) {
+              setScanError(null)
+            } else {
+              setLibraryTracks(next)
+              try {
+                await idbPutCatalog(db, meta.map((r) => r.id), next)
+              } catch {
+                /* ignore */
+              }
+              setScanError(firstError ? `${firstError} ${DISK_ACCESS_HINT}` : DISK_ACCESS_HINT)
+            }
           } else {
             setLibraryTracks(next)
             try {
@@ -592,28 +645,18 @@ export function LibraryProvider(props: { children: ReactNode }) {
             } catch {
               /* ignore */
             }
-            setScanError(firstError ? `${firstError} ${DISK_ACCESS_HINT}` : DISK_ACCESS_HINT)
-          }
-        } else {
-          setLibraryTracks(next)
-          try {
-            await idbPutCatalog(db, meta.map((r) => r.id), next)
-          } catch {
-            /* ignore */
           }
         }
       } catch (e) {
         if (!disposed) {
           setScanError(e instanceof Error ? e.message : 'Could not load library')
         }
-      } finally {
-        if (!disposed) setIsScanning(false)
       }
     })()
     return (): void => {
       disposed = true
     }
-  }, [])
+  }, [performScan])
 
   const value = useMemo(
     () => ({
@@ -680,7 +723,12 @@ export function LibraryProvider(props: { children: ReactNode }) {
     ],
   )
 
-  return <LibraryContext.Provider value={value}>{props.children}</LibraryContext.Provider>
+  return (
+    <LibraryContext.Provider value={value}>
+      {props.children}
+      <LibraryScanNotification progress={scanProgress} onDismiss={dismissScanNotification} />
+    </LibraryContext.Provider>
+  )
 }
 
 /**
