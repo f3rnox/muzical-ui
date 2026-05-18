@@ -217,6 +217,7 @@ export default function MusicPlayer() {
     addToLibrary,
     removeFromLibrary,
     openTrackDetails,
+    openRelatedSongs,
     favoriteSongIds,
     favoriteArtistNames,
     favoriteAlbumKeys,
@@ -1447,6 +1448,7 @@ export default function MusicPlayer() {
                           items={buildTrackOverflowMenuItems({
                             track,
                             onViewDetails: openTrackDetails,
+                            onViewRelatedSongs: openRelatedSongs,
                             onSave:
                               isStreamTrack && !isSavedInLibrary
                                 ? () => addToLibrary(track)

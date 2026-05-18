@@ -56,6 +56,7 @@ import normalizeTrackForLibrarySave from '@/lib/library/normalize-track-for-libr
 import parsePersistedCatalogTracks from '@/lib/library/parse-persisted-catalog-tracks'
 import { resolveTrackToFile } from '@/lib/library/resolve-track-file'
 import LibraryScanNotification from '@/components/LibraryScanNotification'
+import RelatedSongsDialog from '@/components/RelatedSongsDialog'
 import TrackDetailsDialog from '@/components/TrackDetailsDialog'
 import type { LibraryRootMeta } from '@/types/library-root-meta'
 import type { LibraryScanProgress } from '@/types/library-scan-progress'
@@ -155,6 +156,9 @@ type LibraryContextValue = {
   detailsTrack: Track | null
   openTrackDetails: (track: Track) => void
   closeTrackDetails: () => void
+  relatedSongsSeedTrack: Track | null
+  openRelatedSongs: (track: Track) => void
+  closeRelatedSongs: () => void
 }
 
 const LibraryContext = createContext<LibraryContextValue | null>(null)
@@ -329,6 +333,7 @@ export function LibraryProvider(props: { children: ReactNode }) {
   const [scanError, setScanError] = useState<string | null>(null)
   const [hasDirectoryPicker, setHasDirectoryPicker] = useState(false)
   const [detailsTrack, setDetailsTrack] = useState<Track | null>(null)
+  const [relatedSongsSeedTrack, setRelatedSongsSeedTrack] = useState<Track | null>(null)
   const [youtubePrefetchActive, setYoutubePrefetchActive] = useState(false)
   const [youtubePrefetchVideoCount, setYoutubePrefetchVideoCount] = useState(0)
   const youtubePrefetchVideosRef = useRef(0)
@@ -1015,6 +1020,14 @@ export function LibraryProvider(props: { children: ReactNode }) {
     setDetailsTrack(null)
   }, [])
 
+  const openRelatedSongs = useCallback((track: Track) => {
+    setRelatedSongsSeedTrack(track)
+  }, [])
+
+  const closeRelatedSongs = useCallback(() => {
+    setRelatedSongsSeedTrack(null)
+  }, [])
+
   const setScanPreferences = useCallback((next: LibraryScanPreferences) => {
     scanPrefsRef.current = next
     setScanPreferencesState(next)
@@ -1370,6 +1383,9 @@ export function LibraryProvider(props: { children: ReactNode }) {
       detailsTrack,
       openTrackDetails,
       closeTrackDetails,
+      relatedSongsSeedTrack,
+      openRelatedSongs,
+      closeRelatedSongs,
     }),
     [
       roots,
@@ -1437,6 +1453,9 @@ export function LibraryProvider(props: { children: ReactNode }) {
       detailsTrack,
       openTrackDetails,
       closeTrackDetails,
+      relatedSongsSeedTrack,
+      openRelatedSongs,
+      closeRelatedSongs,
     ],
   )
 
@@ -1445,6 +1464,7 @@ export function LibraryProvider(props: { children: ReactNode }) {
       {props.children}
       <LibraryScanNotification progress={scanProgress} onDismiss={dismissScanNotification} />
       <TrackDetailsDialog track={detailsTrack} onClose={closeTrackDetails} />
+      <RelatedSongsDialog seedTrack={relatedSongsSeedTrack} onClose={closeRelatedSongs} />
     </LibraryContext.Provider>
   )
 }

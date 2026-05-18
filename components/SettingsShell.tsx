@@ -32,14 +32,14 @@ export default function SettingsShell(props: SettingsShellProps) {
       </header>
 
       <div className="flex min-h-0 w-full flex-1 overflow-hidden">
-        <aside className="hidden w-44 shrink-0 border-r border-zinc-200 px-4 py-8 dark:border-zinc-800/80 sm:block">
+        <aside className="hidden w-36 shrink-0 border-r border-zinc-200 px-3 py-6 dark:border-zinc-800/80 sm:block">
           <SettingsNav />
         </aside>
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overscroll-contain">
-          <div className="mb-6 px-6 pt-6 sm:hidden">
+          <div className="mb-4 px-4 pt-4 sm:hidden">
             <SettingsNav />
           </div>
-          <div className="px-6 pb-8 pt-2 sm:pt-8">{props.children}</div>
+          <div className="px-4 pb-6 pt-1 sm:px-6 sm:pb-8 sm:pt-6">{props.children}</div>
         </div>
       </div>
     </div>

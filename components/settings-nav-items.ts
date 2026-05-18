@@ -24,6 +24,11 @@ export const SETTINGS_NAV_ITEMS: readonly SettingsNavItem[] = [
       "Data API key, queue video prefetch, and related YouTube options.",
   },
   {
+    href: "/settings/lastfm",
+    label: "Last.fm",
+    description: "API key for related song discovery via track.getSimilar.",
+  },
+  {
     href: "/settings/playback",
     label: "Playback",
     description:

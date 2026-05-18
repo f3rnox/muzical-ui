@@ -12,6 +12,7 @@ export async function searchMusicBrainzRecordingsQuery(
   hints: MusicBrainzSearchHints,
   signal?: AbortSignal,
   limit = 25,
+  offset = 0,
 ): Promise<Track[]> {
   const trimmed = luceneQuery.trim();
   if (!trimmed) return [];
@@ -20,6 +21,7 @@ export async function searchMusicBrainzRecordingsQuery(
   url.searchParams.set("query", trimmed);
   url.searchParams.set("fmt", "json");
   url.searchParams.set("limit", String(limit));
+  if (offset > 0) url.searchParams.set("offset", String(offset));
   url.searchParams.set("inc", "artist-credits+releases");
 
   const body = await fetchMusicBrainzJson<{

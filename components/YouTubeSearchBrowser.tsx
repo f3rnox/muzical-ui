@@ -5,9 +5,10 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useLibrary } from '@/components/LibraryProvider'
 import useSyncBrowseSearchFromUrl from '@/lib/browse/use-sync-browse-search-from-url'
+import BrowseSearchLoadMoreButton from '@/components/BrowseSearchLoadMoreButton'
 import RecentBrowseSearchSuggestions from '@/components/RecentBrowseSearchSuggestions'
 import MusicBrainzTrackRow from '@/components/MusicBrainzTrackRow'
-import searchYoutubeTracks from '@/lib/youtube/search-youtube-tracks'
+import searchYoutubeTracksPage from '@/lib/youtube/search-youtube-tracks-page'
 import useYoutubeApiKeyReady from '@/lib/youtube/use-youtube-api-key-ready'
 import { YOUTUBE_SEARCH_DEBOUNCE_MS } from '@/lib/youtube/youtube-search-constants'
 import type { Track } from '@/types/track'
@@ -21,6 +22,9 @@ export default function YouTubeSearchBrowser() {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<Track[]>([])
   const [loading, setLoading] = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [hasMore, setHasMore] = useState(false)
+  const [ytNextPageToken, setYtNextPageToken] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
   const debounceRef = useRef<number | null>(null)
@@ -46,6 +50,9 @@ export default function YouTubeSearchBrowser() {
     }
     setResults([])
     setLoading(false)
+    setLoadingMore(false)
+    setHasMore(false)
+    setYtNextPageToken(null)
     setError(null)
     setSearchSource(null)
   }, [])
@@ -89,10 +96,12 @@ export default function YouTubeSearchBrowser() {
 
     debounceRef.current = window.setTimeout(() => {
       setLoading(true)
-      void searchYoutubeTracks(q, controller.signal)
-        .then((res) => {
-          setResults(res.tracks)
-          setSearchSource(res.source)
+      void searchYoutubeTracksPage(q, controller.signal)
+        .then((page) => {
+          setResults(page.tracks)
+          setSearchSource(page.source)
+          setYtNextPageToken(page.nextPageToken ?? null)
+          setHasMore(page.hasMore)
           setError(null)
           recordRecentBrowseSearch('youtube', q)
         })
@@ -102,6 +111,8 @@ export default function YouTubeSearchBrowser() {
           setSearchSource(null)
           setError(err instanceof Error ? err.message : 'YouTube search failed')
           setResults([])
+          setHasMore(false)
+          setYtNextPageToken(null)
         })
         .finally(() => setLoading(false))
     }, YOUTUBE_SEARCH_DEBOUNCE_MS)
@@ -134,6 +145,39 @@ export default function YouTubeSearchBrowser() {
     },
     [addToQueue],
   )
+
+  const onLoadMore = useCallback(() => {
+    const q = query.trim()
+    if (q.length < 2 || loadingMore || loading || !canSearch || !hasMore) return
+    setLoadingMore(true)
+    setError(null)
+    const excludeVideoIds = results
+      .map((t) => t.youtubeVideoId?.trim())
+      .filter((id): id is string => Boolean(id))
+    void searchYoutubeTracksPage(q, undefined, {
+      pageToken: ytNextPageToken ?? undefined,
+      excludeVideoIds,
+    })
+      .then((page) => {
+        setResults((prev) => {
+          const seen = new Set(prev.map((t) => t.id))
+          const next = [...prev]
+          for (const t of page.tracks) {
+            if (seen.has(t.id)) continue
+            seen.add(t.id)
+            next.push(t)
+          }
+          return next
+        })
+        setYtNextPageToken(page.nextPageToken ?? null)
+        setHasMore(page.hasMore)
+        if (page.source) setSearchSource(page.source)
+      })
+      .catch((err: unknown) => {
+        setError(err instanceof Error ? err.message : 'YouTube search failed')
+      })
+      .finally(() => setLoadingMore(false))
+  }, [query, loadingMore, loading, canSearch, hasMore, ytNextPageToken, results])
 
   const trimmed = query.trim()
   const queryTooShort = trimmed.length > 0 && trimmed.length < 2
@@ -237,6 +281,11 @@ export default function YouTubeSearchBrowser() {
                 </li>
               ))}
             </ul>
+            <BrowseSearchLoadMoreButton
+              hasMore={hasMore}
+              loading={loadingMore}
+              onLoadMore={onLoadMore}
+            />
           </div>
         ) : null}
       </div>

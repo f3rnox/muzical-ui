@@ -4,11 +4,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useLibrary } from '@/components/LibraryProvider'
 import useSyncBrowseSearchFromUrl from '@/lib/browse/use-sync-browse-search-from-url'
+import BrowseSearchLoadMoreButton from '@/components/BrowseSearchLoadMoreButton'
 import MusicBrainzTrackRow from '@/components/MusicBrainzTrackRow'
 import RecentBrowseSearchSuggestions from '@/components/RecentBrowseSearchSuggestions'
 import { groupTracksByAlbum } from '@/lib/musicbrainz/group-tracks-by-album'
 import { groupTracksByArtist } from '@/lib/musicbrainz/group-tracks-by-artist'
-import { searchMusicBrainz } from '@/lib/musicbrainz'
+import { mergeTracksById } from '@/lib/musicbrainz/merge-tracks-by-id'
+import { searchMusicBrainzPage, type MusicBrainzSearchCursor } from '@/lib/musicbrainz'
 import collectYoutubePrefetchTargets from '@/lib/youtube/collect-youtube-prefetch-targets'
 import prefetchYoutubeVideoIds from '@/lib/youtube/prefetch-youtube-video-ids'
 import readYoutubeDataApiBlocked from '@/lib/youtube/read-youtube-data-api-blocked'
@@ -35,6 +37,9 @@ export default function MusicBrainzBrowser() {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<Track[]>([])
   const [loading, setLoading] = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [hasMore, setHasMore] = useState(false)
+  const [mbCursor, setMbCursor] = useState<MusicBrainzSearchCursor | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [mode, setMode] = useState<MusicBrainzBrowseMode>('song')
   const [artistPick, setArtistPick] = useState<string | null>(null)
@@ -62,6 +67,9 @@ export default function MusicBrainzBrowser() {
     }
     setResults([])
     setLoading(false)
+    setLoadingMore(false)
+    setHasMore(false)
+    setMbCursor(null)
     setError(null)
     setArtistPick(null)
     setAlbumPick(null)
@@ -108,9 +116,11 @@ export default function MusicBrainzBrowser() {
     abortRef.current = controller
 
     debounceRef.current = window.setTimeout(() => {
-      void searchMusicBrainz(q, controller.signal, mode)
-        .then((res) => {
-          setResults(res)
+      void searchMusicBrainzPage(q, controller.signal, mode)
+        .then((page) => {
+          setResults(page.tracks)
+          setMbCursor(page.cursor)
+          setHasMore(page.hasMore)
           setError(null)
           recordRecentBrowseSearch('musicbrainz', q)
         })
@@ -119,6 +129,8 @@ export default function MusicBrainzBrowser() {
           if (typeof err === 'object' && err !== null && 'name' in err && err.name === 'AbortError') return
           setError(err instanceof Error ? err.message : 'MusicBrainz search failed')
           setResults([])
+          setHasMore(false)
+          setMbCursor(null)
         })
         .finally(() => setLoading(false))
     }, 300)
@@ -174,6 +186,29 @@ export default function MusicBrainzBrowser() {
     },
     [addToQueue],
   )
+
+  const onLoadMore = useCallback(() => {
+    const q = query.trim()
+    if (q.length < 3 || !mbCursor || loadingMore || loading) return
+    setLoadingMore(true)
+    setError(null)
+    const controller = new AbortController()
+    void searchMusicBrainzPage(q, controller.signal, mode, mbCursor)
+      .then((page) => {
+        setResults((prev) => {
+          const merged = [...prev]
+          mergeTracksById(merged, page.tracks)
+          return merged
+        })
+        setMbCursor(page.cursor)
+        setHasMore(page.hasMore)
+      })
+      .catch((err: unknown) => {
+        if (err instanceof Error && err.name === 'AbortError') return
+        setError(err instanceof Error ? err.message : 'MusicBrainz search failed')
+      })
+      .finally(() => setLoadingMore(false))
+  }, [query, mode, mbCursor, loadingMore, loading])
 
   const artistMap = useMemo(() => groupTracksByArtist(results), [results])
   const albumMap = useMemo(() => groupTracksByAlbum(results), [results])
@@ -436,6 +471,11 @@ export default function MusicBrainzBrowser() {
               </div>
             </div>
             {renderResultsBody()}
+            <BrowseSearchLoadMoreButton
+              hasMore={hasMore}
+              loading={loadingMore}
+              onLoadMore={onLoadMore}
+            />
           </div>
         )}
       </div>

@@ -4,6 +4,7 @@ import type { Track } from "@/types/track";
 type BuildTrackOverflowMenuItemsOptions = {
   track: Track;
   onViewDetails: (track: Track) => void;
+  onViewRelatedSongs?: (track: Track) => void;
   onSave?: () => void;
   alreadySaved?: boolean;
   onRemoveFromLibrary?: () => void;
@@ -22,6 +23,14 @@ export default function buildTrackOverflowMenuItems(
       onSelect: () => options.onViewDetails(options.track),
     },
   ];
+
+  if (options.onViewRelatedSongs) {
+    items.push({
+      id: "related",
+      label: "Related songs",
+      onSelect: () => options.onViewRelatedSongs!(options.track),
+    });
+  }
 
   if (options.onRemoveFromLibrary) {
     items.push({

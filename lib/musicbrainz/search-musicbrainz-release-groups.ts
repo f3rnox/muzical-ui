@@ -8,6 +8,7 @@ export async function searchMusicBrainzReleaseGroups(
   query: string,
   signal?: AbortSignal,
   limit = 8,
+  offset = 0,
 ): Promise<MusicBrainzReleaseGroup[]> {
   const trimmed = query.trim();
   if (!trimmed) return [];
@@ -16,6 +17,7 @@ export async function searchMusicBrainzReleaseGroups(
   url.searchParams.set("query", trimmed);
   url.searchParams.set("fmt", "json");
   url.searchParams.set("limit", String(limit));
+  if (offset > 0) url.searchParams.set("offset", String(offset));
 
   const body = await fetchMusicBrainzJson<{
     "release-groups"?: MusicBrainzReleaseGroup[];

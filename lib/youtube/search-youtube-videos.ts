@@ -1,10 +1,10 @@
-import isYoutubeQuotaErrorMessage from '@/lib/youtube/is-youtube-quota-error-message'
-import markYoutubeDataApiBlocked from '@/lib/youtube/mark-youtube-data-api-blocked'
-import parseYoutubeDuration from '@/lib/youtube/parse-youtube-duration'
-import readYoutubeDataApiBlocked from '@/lib/youtube/read-youtube-data-api-blocked'
-import type { YoutubeSearchVideo } from '@/lib/youtube/types/youtube-search-video'
-import waitYoutubeDataApiRateLimit from '@/lib/youtube/wait-youtube-data-api-rate-limit'
-import { YOUTUBE_SEARCH_MAX_RESULTS } from '@/lib/youtube/youtube-search-constants'
+import isYoutubeQuotaErrorMessage from "@/lib/youtube/is-youtube-quota-error-message";
+import markYoutubeDataApiBlocked from "@/lib/youtube/mark-youtube-data-api-blocked";
+import parseYoutubeDuration from "@/lib/youtube/parse-youtube-duration";
+import readYoutubeDataApiBlocked from "@/lib/youtube/read-youtube-data-api-blocked";
+import type { YoutubeSearchVideo } from "@/lib/youtube/types/youtube-search-video";
+import waitYoutubeDataApiRateLimit from "@/lib/youtube/wait-youtube-data-api-rate-limit";
+import { YOUTUBE_SEARCH_PAGE_SIZE } from "@/lib/youtube/youtube-search-constants";
 
 type YoutubeSearchListResponse = {
   items?: Array<{
@@ -14,6 +14,7 @@ type YoutubeSearchListResponse = {
       channelTitle?: string;
     };
   }>;
+  nextPageToken?: string;
   error?: { message?: string; errors?: Array<{ reason?: string }> };
 };
 
@@ -29,6 +30,11 @@ type YoutubeVideosListResponse = {
   error?: { message?: string; errors?: Array<{ reason?: string }> };
 };
 
+export type YoutubeSearchVideosResult = {
+  videos: YoutubeSearchVideo[];
+  nextPageToken?: string;
+};
+
 /**
  * Search YouTube for embeddable videos via the Data API v3.
  */
@@ -36,12 +42,13 @@ export default async function searchYoutubeVideos(
   query: string,
   apiKey: string,
   signal?: AbortSignal,
-  maxResults = YOUTUBE_SEARCH_MAX_RESULTS,
-): Promise<YoutubeSearchVideo[]> {
+  maxResults = YOUTUBE_SEARCH_PAGE_SIZE,
+  pageToken?: string,
+): Promise<YoutubeSearchVideosResult> {
   const q = query.trim();
   const key = apiKey.trim();
-  if (!q || !key) return [];
-  if (readYoutubeDataApiBlocked()) return [];
+  if (!q || !key) return { videos: [] };
+  if (readYoutubeDataApiBlocked()) return { videos: [] };
 
   const searchUrl = new URL("https://www.googleapis.com/youtube/v3/search");
   searchUrl.searchParams.set("part", "snippet");
@@ -53,9 +60,11 @@ export default async function searchYoutubeVideos(
   searchUrl.searchParams.set("videoEmbeddable", "true");
   searchUrl.searchParams.set("q", q);
   searchUrl.searchParams.set("key", key);
+  if (pageToken?.trim())
+    searchUrl.searchParams.set("pageToken", pageToken.trim());
 
-  await waitYoutubeDataApiRateLimit()
-  const searchResponse = await fetch(searchUrl, { signal })
+  await waitYoutubeDataApiRateLimit();
+  const searchResponse = await fetch(searchUrl, { signal });
   const searchBody = (await searchResponse.json()) as YoutubeSearchListResponse;
   if (!searchResponse.ok) {
     const message = searchBody.error?.message?.trim() ?? "";
@@ -82,15 +91,17 @@ export default async function searchYoutubeVideos(
       channelTitle: item.snippet?.channelTitle?.trim() || "Unknown channel",
     });
   }
-  if (videoIds.length === 0) return [];
+  if (videoIds.length === 0) {
+    return { videos: [], nextPageToken: searchBody.nextPageToken };
+  }
 
   const detailsUrl = new URL("https://www.googleapis.com/youtube/v3/videos");
   detailsUrl.searchParams.set("part", "contentDetails,snippet");
   detailsUrl.searchParams.set("id", videoIds.join(","));
   detailsUrl.searchParams.set("key", key);
 
-  await waitYoutubeDataApiRateLimit()
-  const detailsResponse = await fetch(detailsUrl, { signal })
+  await waitYoutubeDataApiRateLimit();
+  const detailsResponse = await fetch(detailsUrl, { signal });
   const detailsBody =
     (await detailsResponse.json()) as YoutubeVideosListResponse;
   if (!detailsResponse.ok) {
@@ -128,5 +139,5 @@ export default async function searchYoutubeVideos(
     out.push({ videoId, title, channelTitle, durationSec });
   }
 
-  return out;
+  return { videos: out, nextPageToken: searchBody.nextPageToken };
 }
