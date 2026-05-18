@@ -4,15 +4,17 @@ import { useSearchParams } from 'next/navigation'
 import LibraryBrowser from '@/components/LibraryBrowser'
 import MusicBrainzBrowser from '@/components/MusicBrainzBrowser'
 import YouTubeSearchBrowser from '@/components/YouTubeSearchBrowser'
-import { parseBrowseView } from '@/components/BrowseViewTabs'
+import parseBrowseView from '@/lib/browse/parse-browse-view'
+import useApplyDefaultBrowseView from '@/lib/browse/use-apply-default-browse-view'
 
-export type { BrowseView } from '@/components/BrowseViewTabs'
+export type { BrowseView } from '@/types/browse-view'
 
 /**
  * Left-panel shell: library, MusicBrainz, or YouTube browse (view from URL).
  */
 export default function BrowsePanel() {
   const searchParams = useSearchParams()
+  useApplyDefaultBrowseView()
   const view = parseBrowseView(searchParams.get('view'))
 
   return (

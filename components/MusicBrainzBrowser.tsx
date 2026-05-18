@@ -21,7 +21,15 @@ const BROWSE_MODES: readonly MusicBrainzBrowseMode[] = ['artist', 'album', 'song
  * Search MusicBrainz recordings and browse results by artist, album, or song.
  */
 export default function MusicBrainzBrowser() {
-  const { libraryTracks, addToLibrary, addToQueue, compactLists, recordRecentBrowseSearch } = useLibrary()
+  const {
+    libraryTracks,
+    addToLibrary,
+    addToQueue,
+    compactLists,
+    recordRecentBrowseSearch,
+    beginYoutubePrefetch,
+    endYoutubePrefetch,
+  } = useLibrary()
   const searchParams = useSearchParams()
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<Track[]>([])
@@ -131,6 +139,8 @@ export default function MusicBrainzBrowser() {
     const targets = collectYoutubePrefetchTargets(results).slice(0, 12)
     if (targets.length === 0) return undefined
     const controller = new AbortController()
+    const prefetchCount = targets.length
+    beginYoutubePrefetch(prefetchCount)
     void prefetchYoutubeVideoIds(
       targets,
       (trackId, videoId) => {
@@ -139,11 +149,13 @@ export default function MusicBrainzBrowser() {
         )
       },
       { signal: controller.signal },
-    )
+    ).finally(() => {
+      endYoutubePrefetch(prefetchCount)
+    })
     return (): void => {
       controller.abort()
     }
-  }, [results])
+  }, [results, beginYoutubePrefetch, endYoutubePrefetch])
 
   const onQueue = useCallback((t: Track) => addToQueue(t), [addToQueue])
   const onSave = useCallback((t: Track) => addToLibrary(t), [addToLibrary])

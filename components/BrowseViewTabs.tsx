@@ -2,8 +2,12 @@
 
 import { useCallback } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import parseBrowseView from '@/lib/browse/parse-browse-view'
+import type { BrowseView } from '@/types/browse-view'
 
-export type BrowseView = 'library' | 'musicbrainz' | 'youtube'
+export type { BrowseView } from '@/types/browse-view'
+
+export { default as parseBrowseView } from '@/lib/browse/parse-browse-view'
 
 const BROWSE_VIEWS: readonly BrowseView[] = ['library', 'musicbrainz', 'youtube']
 
@@ -11,12 +15,6 @@ function browseViewLabel(id: BrowseView): string {
   if (id === 'musicbrainz') return 'MusicBrainz'
   if (id === 'youtube') return 'YouTube'
   return 'Library'
-}
-
-/** Parse `?view=` into the active browse tab. */
-export function parseBrowseView(raw: string | null): BrowseView {
-  if (raw === 'musicbrainz' || raw === 'youtube') return raw
-  return 'library'
 }
 
 /**

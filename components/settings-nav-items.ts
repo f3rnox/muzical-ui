@@ -15,18 +15,25 @@ export const SETTINGS_NAV_ITEMS: readonly SettingsNavItem[] = [
     href: "/settings/library",
     label: "Library",
     description:
-      "Scan folders, rescan on startup, and manage configured directories.",
+      "Scan folders, favorites export, rescan on startup, and configured directories.",
   },
   {
     href: "/settings/youtube",
     label: "YouTube",
     description:
-      "YouTube Data API key for resolving MusicBrainz tracks to embeddable videos.",
+      "Data API key, queue video prefetch, and related YouTube options.",
   },
   {
     href: "/settings/playback",
     label: "Playback",
-    description: "Restore your queue and playhead between sessions.",
+    description:
+      "Queue restore, repeat, shuffle, speed, volume, seek steps, and auto-advance.",
+  },
+  {
+    href: "/settings/browse",
+    label: "Browse",
+    description:
+      "Default Library, MusicBrainz, or YouTube tab when Muzical opens.",
   },
   {
     href: "/settings/display",

@@ -2,6 +2,8 @@ import type { Metadata } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import Script from 'next/script'
 import { LibraryProvider } from '@/components/LibraryProvider'
+import { PlaybackPreferencesProvider } from '@/components/PlaybackPreferencesProvider'
+import { YoutubePreferencesProvider } from '@/components/YoutubePreferencesProvider'
 import { AccentProvider } from '@/components/AccentProvider'
 import { ThemeProvider } from '@/components/ThemeProvider'
 import getAppInitScript from '@/lib/app-init-script'
@@ -42,7 +44,11 @@ export default function RootLayout({
         <div className="flex min-h-0 flex-1 flex-col">
           <ThemeProvider>
             <AccentProvider>
-              <LibraryProvider>{children}</LibraryProvider>
+              <PlaybackPreferencesProvider>
+                <YoutubePreferencesProvider>
+                  <LibraryProvider>{children}</LibraryProvider>
+                </YoutubePreferencesProvider>
+              </PlaybackPreferencesProvider>
             </AccentProvider>
           </ThemeProvider>
         </div>

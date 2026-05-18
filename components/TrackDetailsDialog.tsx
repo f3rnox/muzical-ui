@@ -1,8 +1,11 @@
 'use client'
 
-import { useEffect, useId, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useLibrary } from '@/components/LibraryProvider'
+import TrackMetadataEditor from '@/components/TrackMetadataEditor'
 import extractExtendedAudioMetadataFromFile from '@/lib/library/extract-extended-audio-metadata-from-file'
+import applyTrackMetadataPatch from '@/lib/track/apply-track-metadata-patch'
+import type { TrackMetadataFields } from '@/lib/track/apply-track-metadata-patch'
 import buildTrackDetailRows from '@/lib/track/build-track-detail-rows'
 import type { TrackDetailRow } from '@/lib/track/track-detail-row'
 import type { Track } from '@/types/track'
@@ -26,7 +29,7 @@ function DetailSection(props: { title: string; rows: readonly TrackDetailRow[] }
             <dt className="text-xs font-medium text-zinc-500">{row.label}</dt>
             <dd
               className={[
-                'text-sm text-zinc-900 break-words dark:text-zinc-100',
+                'text-sm break-words text-zinc-900 dark:text-zinc-100',
                 row.mono ? 'font-mono text-xs' : '',
               ].join(' ')}
             >
@@ -44,14 +47,25 @@ function DetailSection(props: { title: string; rows: readonly TrackDetailRow[] }
  */
 export default function TrackDetailsDialog(props: TrackDetailsDialogProps) {
   const { track, onClose } = props
-  const { roots, resolveFileForTrack } = useLibrary()
+  const { roots, resolveFileForTrack, patchTrackById } = useLibrary()
   const titleId = useId()
   const panelRef = useRef<HTMLDivElement | null>(null)
   const [fileRows, setFileRows] = useState<TrackDetailRow[]>([])
   const [fileLoading, setFileLoading] = useState(false)
   const [fileError, setFileError] = useState<string | null>(null)
 
-  const trackRows = track ? buildTrackDetailRows(track, roots) : []
+  const readonlyTrackRows = useMemo(
+    () => (track ? buildTrackDetailRows(track, roots, { omitEditableTags: true }) : []),
+    [track, roots],
+  )
+
+  const onSaveMetadata = useCallback(
+    (fields: TrackMetadataFields) => {
+      if (!track) return
+      patchTrackById(track.id, (t) => applyTrackMetadataPatch(t, fields))
+    },
+    [patchTrackById, track],
+  )
 
   useEffect(() => {
     if (!track?.library) return undefined
@@ -142,7 +156,8 @@ export default function TrackDetailsDialog(props: TrackDetailsDialogProps) {
           </button>
         </header>
         <div className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-4 py-4">
-          <DetailSection title="Track" rows={trackRows} />
+          <TrackMetadataEditor track={track} onSave={onSaveMetadata} />
+          <DetailSection title="Details" rows={readonlyTrackRows} />
           {track.library ? (
             <section>
               <h3 className="text-xs font-medium uppercase tracking-wider text-zinc-500">

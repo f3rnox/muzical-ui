@@ -8,6 +8,10 @@ import HiddenYoutubePlayer, {
   type HiddenYoutubePlayerHandle,
 } from '@/components/HiddenYoutubePlayer'
 import { useLibrary } from '@/components/LibraryProvider'
+import { usePlaybackPreferences } from '@/components/PlaybackPreferencesProvider'
+import { DEFAULT_PLAYBACK_VOLUME } from '@/lib/playback/playback-preference-storage-keys'
+import { PLAYBACK_RATES } from '@/lib/playback/playback-rates'
+import type { RepeatMode } from '@/types/repeat-mode'
 import type { Track } from '@/types/track'
 import { formatDuration } from '@/lib/format-duration'
 import { getCoverBytesForTrack } from '@/lib/library/cover-bytes-cache'
@@ -25,60 +29,7 @@ import youtubeVideoThumbnailUrl from '@/lib/youtube/youtube-video-thumbnail-url'
 
 const STORAGE_LIBRARY_PANEL_PX = 'muzical.panelWidth.library'
 const STORAGE_QUEUE_PANEL_PX = 'muzical.panelWidth.queue'
-const STORAGE_REPEAT_MODE = 'muzical.repeatMode'
-const STORAGE_SHUFFLE = 'muzical.shuffle'
-const STORAGE_PLAYBACK_RATE = 'muzical.playbackRate'
 
-type RepeatMode = 'off' | 'all' | 'one'
-
-const PLAYBACK_RATES: readonly number[] = [0.5, 0.75, 1, 1.25, 1.5, 2]
-
-function readStoredRepeatMode(): RepeatMode {
-  if (typeof window === 'undefined') return 'all'
-  const v = window.localStorage.getItem(STORAGE_REPEAT_MODE)
-  if (v === 'off' || v === 'all' || v === 'one') return v
-  return 'all'
-}
-
-function readStoredShuffle(): boolean {
-  if (typeof window === 'undefined') return false
-  try {
-    return window.localStorage.getItem(STORAGE_SHUFFLE) === '1'
-  } catch {
-    return false
-  }
-}
-
-function readStoredPlaybackRate(): number {
-  if (typeof window === 'undefined') return 1
-  const v = Number.parseFloat(window.localStorage.getItem(STORAGE_PLAYBACK_RATE) ?? '')
-  if (!Number.isFinite(v)) return 1
-  return PLAYBACK_RATES.includes(v) ? v : 1
-}
-
-function persistRepeatMode(mode: RepeatMode): void {
-  try {
-    window.localStorage.setItem(STORAGE_REPEAT_MODE, mode)
-  } catch {
-    /* ignore */
-  }
-}
-
-function persistShuffle(on: boolean): void {
-  try {
-    window.localStorage.setItem(STORAGE_SHUFFLE, on ? '1' : '0')
-  } catch {
-    /* ignore */
-  }
-}
-
-function persistPlaybackRate(rate: number): void {
-  try {
-    window.localStorage.setItem(STORAGE_PLAYBACK_RATE, String(rate))
-  } catch {
-    /* ignore */
-  }
-}
 const LIBRARY_PANEL_MIN = 300
 const LIBRARY_PANEL_MAX = 960
 const QUEUE_PANEL_MIN = 420
@@ -229,6 +180,8 @@ export default function MusicPlayer() {
     queue,
     libraryTracks,
     isScanning,
+    youtubePrefetchActive,
+    youtubePrefetchVideoCount,
     resolveFileForTrack,
     bumpTrackDuration,
     removeFromQueue,
@@ -251,20 +204,27 @@ export default function MusicPlayer() {
     isQueueReady,
     patchTrackById,
   } = useLibrary()
+  const {
+    preferences,
+    setRepeatMode,
+    setShuffle,
+    setPlaybackRate,
+    setVolume: persistVolume,
+  } = usePlaybackPreferences()
+  const { repeatMode, shuffle, playbackRate, autoAdvanceOnEnd, seekStepSmallSec, seekStepLargeSec, rememberVolume } =
+    preferences
   const [activeQueueId, setActiveQueueId] = useState<string | null>(null)
   const [isPlaying, setIsPlaying] = useState(false)
   const [positionSec, setPositionSec] = useState(0)
   const [mediaDuration, setMediaDuration] = useState(0)
-  const [volume, setVolume] = useState(0.85)
+  const [sessionVolume, setSessionVolume] = useState<number | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [streamResolving, setStreamResolving] = useState(false)
   const [coverArtUrl, setCoverArtUrl] = useState<string | null>(null)
   const [layoutLg, setLayoutLg] = useState(false)
   const [libraryPanelPx, setLibraryPanelPx] = useState(440)
   const [queuePanelPx, setQueuePanelPx] = useState(300)
-  const [repeatMode, setRepeatMode] = useState<RepeatMode>('all')
-  const [shuffle, setShuffle] = useState(false)
-  const [playbackRate, setPlaybackRate] = useState(1)
+  const volume = rememberVolume ? preferences.volume : (sessionVolume ?? DEFAULT_PLAYBACK_VOLUME)
 
   const mainRowRef = useRef<HTMLDivElement>(null)
   const shuffleHistoryRef = useRef<number[]>([])
@@ -305,9 +265,6 @@ export default function MusicPlayer() {
     queueMicrotask(() => {
       setLibraryPanelPx(readStoredPanelPx(STORAGE_LIBRARY_PANEL_PX, 440))
       setQueuePanelPx(readStoredPanelPx(STORAGE_QUEUE_PANEL_PX, 300))
-      setRepeatMode(readStoredRepeatMode())
-      setShuffle(readStoredShuffle())
-      setPlaybackRate(readStoredPlaybackRate())
     })
   }, [])
 
@@ -500,20 +457,13 @@ export default function MusicPlayer() {
   }, [activeIndex, queue, repeatMode, shuffle])
 
   const cycleRepeatMode = useCallback((): void => {
-    setRepeatMode((m) => {
-      const next: RepeatMode = m === 'off' ? 'all' : m === 'all' ? 'one' : 'off'
-      persistRepeatMode(next)
-      return next
-    })
-  }, [])
+    const next: RepeatMode = repeatMode === 'off' ? 'all' : repeatMode === 'all' ? 'one' : 'off'
+    setRepeatMode(next)
+  }, [repeatMode, setRepeatMode])
 
   const toggleShuffle = useCallback((): void => {
-    setShuffle((s) => {
-      const next = !s
-      persistShuffle(next)
-      return next
-    })
-  }, [])
+    setShuffle(!shuffle)
+  }, [shuffle, setShuffle])
 
   const clampPanelsToRow = useCallback((): void => {
     const rowW = mainRowRef.current?.getBoundingClientRect().width ?? 0
@@ -706,6 +656,32 @@ export default function MusicPlayer() {
   const youtubeStreamActive = Boolean(playbackYoutubeVideoId)
   const needsYoutubeResolve = Boolean(current?.youtubeQuery?.trim() && !playbackYoutubeVideoId)
 
+  const handleTrackEnded = useCallback((): void => {
+    if (repeatMode === 'one') {
+      if (youtubeStreamActive && hiddenYoutubeRef.current) {
+        hiddenYoutubeRef.current.seekTo(0)
+        setPositionSec(0)
+        setIsPlaying(true)
+        return
+      }
+      const el = audioRef.current
+      if (el) {
+        el.currentTime = 0
+        setPositionSec(0)
+        void el.play().catch((e: unknown) => {
+          setLoadError(e instanceof Error ? e.message : 'Playback failed')
+          setIsPlaying(false)
+        })
+      }
+      return
+    }
+    if (!autoAdvanceOnEnd) {
+      setIsPlaying(false)
+      return
+    }
+    goNext()
+  }, [repeatMode, autoAdvanceOnEnd, goNext, youtubeStreamActive])
+
   useEffect(() => {
     const query = current?.youtubeQuery?.trim()
     if (!query || current?.youtubeVideoId?.trim()) {
@@ -809,16 +785,7 @@ export default function MusicPlayer() {
       }
     }
     const onEnded = (): void => {
-      if (repeatMode === 'one') {
-        el.currentTime = 0
-        setPositionSec(0)
-        void el.play().catch((e: unknown) => {
-          setLoadError(e instanceof Error ? e.message : 'Playback failed')
-          setIsPlaying(false)
-        })
-        return
-      }
-      goNext()
+      handleTrackEnded()
     }
     el.addEventListener('timeupdate', onTime)
     el.addEventListener('loadedmetadata', onMeta)
@@ -828,7 +795,7 @@ export default function MusicPlayer() {
       el.removeEventListener('loadedmetadata', onMeta)
       el.removeEventListener('ended', onEnded)
     }
-  }, [current, bumpTrackDuration, goNext, repeatMode, reportPlayback])
+  }, [current, bumpTrackDuration, handleTrackEnded, reportPlayback])
 
   useEffect(() => {
     return (): void => {
@@ -879,14 +846,12 @@ export default function MusicPlayer() {
     (e: KeyboardEvent<HTMLDivElement>): void => {
       if (durationSec <= 0) return
 
-      const stepSmallSec = 5
-      const stepLargeSec = 30
       let nextTime: number | null = null
 
-      if (e.key === 'ArrowLeft') nextTime = positionSec - stepSmallSec
-      else if (e.key === 'ArrowRight') nextTime = positionSec + stepSmallSec
-      else if (e.key === 'PageDown') nextTime = positionSec - stepLargeSec
-      else if (e.key === 'PageUp') nextTime = positionSec + stepLargeSec
+      if (e.key === 'ArrowLeft') nextTime = positionSec - seekStepSmallSec
+      else if (e.key === 'ArrowRight') nextTime = positionSec + seekStepSmallSec
+      else if (e.key === 'PageDown') nextTime = positionSec - seekStepLargeSec
+      else if (e.key === 'PageUp') nextTime = positionSec + seekStepLargeSec
       else if (e.key === 'Home') nextTime = 0
       else if (e.key === 'End') nextTime = durationSec
       else return
@@ -895,12 +860,14 @@ export default function MusicPlayer() {
       const clamped = Math.min(durationSec, Math.max(0, nextTime))
       onSeekBarPointer(clamped / durationSec)
     },
-    [durationSec, onSeekBarPointer, positionSec],
+    [durationSec, onSeekBarPointer, positionSec, seekStepLargeSec, seekStepSmallSec],
   )
 
   const statusLabel = isScanning
     ? 'Scanning…'
-    : `${libraryTracks.length} in library · ${queue.length} in queue`
+    : youtubePrefetchActive
+      ? `Prefetching ${youtubePrefetchVideoCount} YouTube video${youtubePrefetchVideoCount === 1 ? '' : 's'}…`
+      : `${libraryTracks.length} in library · ${queue.length} in queue`
 
   const queueRowGapClass = compactLists ? 'gap-2' : 'gap-3'
   const queueRowPadClass = compactLists ? 'px-3 py-2' : 'px-4 py-2.5'
@@ -921,7 +888,7 @@ export default function MusicPlayer() {
         isPlaying={isPlaying && youtubeStreamActive}
         volume={volume}
         onReady={() => setLoadError(null)}
-        onEnded={goNext}
+        onEnded={handleTrackEnded}
         onDuration={onYoutubeDuration}
         onError={(message) => setLoadError(message)}
       />
@@ -942,6 +909,7 @@ export default function MusicPlayer() {
             href="/settings/library"
             className="hidden cursor-pointer rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-xs text-zinc-500 shadow-sm transition hover:border-zinc-300 hover:bg-zinc-100 hover:text-zinc-700 sm:inline dark:border-zinc-700/80 dark:bg-zinc-900/80 dark:text-zinc-400 dark:shadow-none dark:hover:border-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
             aria-label="Open library settings"
+            aria-live="polite"
           >
             {statusLabel}
           </Link>
@@ -1364,7 +1332,11 @@ export default function MusicPlayer() {
                   max={1}
                   step={0.01}
                   value={volume}
-                  onChange={(e) => setVolume(Number(e.target.value))}
+                  onChange={(e) => {
+                    const v = Number(e.target.value)
+                    if (rememberVolume) persistVolume(v)
+                    else setSessionVolume(v)
+                  }}
                   className="h-1 w-full min-w-0 cursor-pointer accent-accent-500"
                   aria-label="Volume"
                 />
@@ -1412,11 +1384,7 @@ export default function MusicPlayer() {
                 </span>
                 <select
                   value={playbackRate}
-                  onChange={(e) => {
-                    const v = Number(e.target.value)
-                    setPlaybackRate(v)
-                    persistPlaybackRate(v)
-                  }}
+                  onChange={(e) => setPlaybackRate(Number(e.target.value))}
                   className="cursor-pointer rounded-md border border-zinc-200 bg-white px-2 py-1 text-xs font-medium text-zinc-800 outline-none ring-accent-500/0 transition focus:border-accent-400 focus:ring-2 focus:ring-accent-500/20 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
                   aria-label="Playback speed"
                 >

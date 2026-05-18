@@ -15,6 +15,7 @@ import {
   RECENT_BROWSE_SEARCHES_LIMIT,
 } from '@/lib/browse/browse-search-constants'
 import readStoredRecentBrowseSearches from '@/lib/browse/read-stored-recent-browse-searches'
+import clearStoredRecentBrowseSearches from '@/lib/browse/clear-stored-recent-browse-searches'
 import writeStoredRecentBrowseSearches from '@/lib/browse/write-stored-recent-browse-searches'
 import type { BrowseSearchSource, RecentBrowseSearch } from '@/types/browse-search'
 import type { Track } from '@/types/track'
@@ -58,6 +59,7 @@ import buildQueueFromSnapshot from '@/lib/playback/build-queue-from-snapshot'
 import collectYoutubePrefetchTargets from '@/lib/youtube/collect-youtube-prefetch-targets'
 import prefetchYoutubeVideoIds from '@/lib/youtube/prefetch-youtube-video-ids'
 import readYoutubeDataApiBlocked from '@/lib/youtube/read-youtube-data-api-blocked'
+import { useYoutubePreferences } from '@/components/YoutubePreferencesProvider'
 
 export type { LibraryRootMeta } from '@/types/library-root-meta'
 export type { LibraryScanPreferences } from '@/types/library-scan-preferences'
@@ -82,6 +84,10 @@ type LibraryContextValue = {
   playbackRestore: PlaybackRestore | null
   isQueueReady: boolean
   isScanning: boolean
+  youtubePrefetchActive: boolean
+  youtubePrefetchVideoCount: number
+  beginYoutubePrefetch: (videoCount: number) => void
+  endYoutubePrefetch: (videoCount: number) => void
   scanError: string | null
   hasDirectoryPicker: boolean
   addLibraryFolder: () => void
@@ -96,6 +102,7 @@ type LibraryContextValue = {
   clearQueue: () => void
   recordRecentlyPlayedTrack: (trackId: string) => void
   recordRecentBrowseSearch: (source: BrowseSearchSource, query: string) => void
+  clearRecentBrowseSearches: () => void
   setCompactLists: (next: boolean) => void
   setAutoRescanOnStartup: (next: boolean) => void
   setLogLibraryScanTiming: (next: boolean) => void
@@ -117,6 +124,11 @@ type LibraryContextValue = {
   toggleFavoriteArtist: (name: string) => void
   toggleFavoriteAlbum: (albumKey: string) => void
   toggleFavoriteTrack: (track: Track) => void
+  importFavorites: (data: {
+    songIds: readonly string[]
+    artistNames: readonly string[]
+    albumKeys: readonly string[]
+  }) => void
   detailsTrack: Track | null
   openTrackDetails: (track: Track) => void
   closeTrackDetails: () => void
@@ -254,6 +266,7 @@ async function reconfirmReadAccessForHandles(
  * Persists library folder handles, scans audio files, and exposes tracks for the player.
  */
 export function LibraryProvider(props: { children: ReactNode }) {
+  const { preferences: youtubePreferences } = useYoutubePreferences()
   const dbRef = useRef<IDBDatabase | null>(null)
   const scanLockRef = useRef(false)
   const rootHandlesRef = useRef<Map<string, FileSystemDirectoryHandle>>(new Map())
@@ -291,6 +304,26 @@ export function LibraryProvider(props: { children: ReactNode }) {
   const [scanError, setScanError] = useState<string | null>(null)
   const [hasDirectoryPicker, setHasDirectoryPicker] = useState(false)
   const [detailsTrack, setDetailsTrack] = useState<Track | null>(null)
+  const [youtubePrefetchActive, setYoutubePrefetchActive] = useState(false)
+  const [youtubePrefetchVideoCount, setYoutubePrefetchVideoCount] = useState(0)
+  const youtubePrefetchVideosRef = useRef(0)
+
+  const beginYoutubePrefetch = useCallback((videoCount: number) => {
+    const n = Math.max(0, Math.floor(videoCount))
+    if (n === 0) return
+    youtubePrefetchVideosRef.current += n
+    setYoutubePrefetchVideoCount(youtubePrefetchVideosRef.current)
+    setYoutubePrefetchActive(true)
+  }, [])
+
+  const endYoutubePrefetch = useCallback((videoCount: number) => {
+    const n = Math.max(0, Math.floor(videoCount))
+    youtubePrefetchVideosRef.current = Math.max(0, youtubePrefetchVideosRef.current - n)
+    setYoutubePrefetchVideoCount(youtubePrefetchVideosRef.current)
+    if (youtubePrefetchVideosRef.current === 0) {
+      setYoutubePrefetchActive(false)
+    }
+  }, [])
 
   useEffect(() => {
     void Promise.resolve().then(() => {
@@ -625,25 +658,42 @@ export function LibraryProvider(props: { children: ReactNode }) {
     const apply = (t: Track): Track => (t.id === id ? patch(t) : t)
     setLibraryTracks((prev) => prev.map(apply))
     setQueue((prev) => prev.map((q) => ({ ...q, track: apply(q.track) })))
+    setDetailsTrack((prev) => (prev?.id === id ? patch(prev) : prev))
     persistCatalogDebounced()
   }, [persistCatalogDebounced])
 
   useEffect(() => {
+    if (!youtubePreferences.prefetchQueueVideoIds) return undefined
     if (readYoutubeDataApiBlocked()) return undefined
-    const targets = collectYoutubePrefetchTargets(queue.map((row) => row.track)).slice(0, 8)
+    const limit = youtubePreferences.prefetchQueueMaxTracks
+    const targets = collectYoutubePrefetchTargets(queue.map((row) => row.track)).slice(
+      0,
+      limit,
+    )
     if (targets.length === 0) return undefined
     const controller = new AbortController()
+    const prefetchCount = targets.length
+    beginYoutubePrefetch(prefetchCount)
     void prefetchYoutubeVideoIds(
       targets,
       (trackId, videoId) => {
         patchTrackById(trackId, (t) => ({ ...t, youtubeVideoId: videoId }))
       },
       { signal: controller.signal },
-    )
+    ).finally(() => {
+      endYoutubePrefetch(prefetchCount)
+    })
     return (): void => {
       controller.abort()
     }
-  }, [queue, patchTrackById])
+  }, [
+    queue,
+    patchTrackById,
+    youtubePreferences.prefetchQueueVideoIds,
+    youtubePreferences.prefetchQueueMaxTracks,
+    beginYoutubePrefetch,
+    endYoutubePrefetch,
+  ])
 
   const addToQueue = useCallback((items: Track | readonly Track[]) => {
     const list = Array.isArray(items) ? items : [items]
@@ -767,6 +817,11 @@ export function LibraryProvider(props: { children: ReactNode }) {
     )
   }, [])
 
+  const clearRecentBrowseSearches = useCallback(() => {
+    setRecentBrowseSearches([])
+    clearStoredRecentBrowseSearches()
+  }, [])
+
   const setCompactLists = useCallback((next: boolean) => {
     setCompactListsState(next)
     safeWriteStoredBoolean(STORAGE_COMPACT_LISTS, next)
@@ -856,6 +911,19 @@ export function LibraryProvider(props: { children: ReactNode }) {
   const toggleFavoriteTrack = useCallback((track: Track) => {
     toggleFavoriteSong(track.id)
   }, [toggleFavoriteSong])
+
+  const importFavorites = useCallback(
+    (data: {
+      songIds: readonly string[]
+      artistNames: readonly string[]
+      albumKeys: readonly string[]
+    }) => {
+      setFavoriteSongIds([...data.songIds])
+      setFavoriteArtistNames([...data.artistNames])
+      setFavoriteAlbumKeys([...data.albumKeys])
+    },
+    [],
+  )
 
   useEffect(() => {
     if (!favoritesReadyRef.current) return
@@ -1081,6 +1149,10 @@ export function LibraryProvider(props: { children: ReactNode }) {
       playbackRestore,
       isQueueReady,
       isScanning,
+      youtubePrefetchActive,
+      youtubePrefetchVideoCount,
+      beginYoutubePrefetch,
+      endYoutubePrefetch,
       scanError,
       hasDirectoryPicker,
       addLibraryFolder,
@@ -1095,6 +1167,7 @@ export function LibraryProvider(props: { children: ReactNode }) {
       clearQueue,
       recordRecentlyPlayedTrack,
       recordRecentBrowseSearch,
+      clearRecentBrowseSearches,
       setCompactLists,
       setAutoRescanOnStartup,
       setLogLibraryScanTiming,
@@ -1116,6 +1189,7 @@ export function LibraryProvider(props: { children: ReactNode }) {
       toggleFavoriteArtist,
       toggleFavoriteAlbum,
       toggleFavoriteTrack,
+      importFavorites,
       detailsTrack,
       openTrackDetails,
       closeTrackDetails,
@@ -1134,6 +1208,10 @@ export function LibraryProvider(props: { children: ReactNode }) {
       playbackRestore,
       isQueueReady,
       isScanning,
+      youtubePrefetchActive,
+      youtubePrefetchVideoCount,
+      beginYoutubePrefetch,
+      endYoutubePrefetch,
       scanError,
       hasDirectoryPicker,
       addLibraryFolder,
@@ -1148,6 +1226,7 @@ export function LibraryProvider(props: { children: ReactNode }) {
       clearQueue,
       recordRecentlyPlayedTrack,
       recordRecentBrowseSearch,
+      clearRecentBrowseSearches,
       setCompactLists,
       setAutoRescanOnStartup,
       setLogLibraryScanTiming,
@@ -1169,6 +1248,7 @@ export function LibraryProvider(props: { children: ReactNode }) {
       toggleFavoriteArtist,
       toggleFavoriteAlbum,
       toggleFavoriteTrack,
+      importFavorites,
       detailsTrack,
       openTrackDetails,
       closeTrackDetails,
