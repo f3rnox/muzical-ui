@@ -23,10 +23,10 @@
     "node": ">=20"
   },
   "bin": {
-    "stt-ui": "./bin/stt-ui.js"
+    "muzical-ui": "./bin/muzical-ui.js"
   },
   "files": [
-    "bin/stt-ui.js",
+    "bin/muzical-ui.js",
     ".next/standalone",
     ".next/static",
     "public",
