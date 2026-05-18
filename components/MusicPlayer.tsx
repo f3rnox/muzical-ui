@@ -1370,25 +1370,6 @@ export default function MusicPlayer() {
                 </div>
               )}
             </div>
-            {null && current?.youtubeQuery ? (
-              <div className="mt-4 overflow-hidden rounded-3xl border border-zinc-200 bg-black dark:border-zinc-800">
-                {false ? (
-                  <div className="flex aspect-video items-center justify-center bg-black text-sm text-zinc-400">
-                    Finding video…
-                  </div>
-                ) : (
-                  <div className="flex aspect-video items-center justify-center bg-black px-4 text-center text-sm text-zinc-400">
-                    <Link
-                      href="/settings/youtube"
-                      className="text-amber-600 underline underline-offset-2 hover:text-amber-500 dark:text-amber-400"
-                    >
-                      Add a YouTube API key
-                    </Link>{' '}
-                    in Settings to play this track.
-                  </div>
-                )}
-              </div>
-            ) : null}
             <div className="text-center">
               <p className="truncate text-lg font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
                 {current?.title ?? '—'}
