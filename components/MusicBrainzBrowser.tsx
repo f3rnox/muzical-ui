@@ -8,7 +8,6 @@ import { groupTracksByArtist } from '@/lib/musicbrainz/group-tracks-by-artist'
 import { searchMusicBrainz } from '@/lib/musicbrainz'
 import collectYoutubePrefetchTargets from '@/lib/youtube/collect-youtube-prefetch-targets'
 import prefetchYoutubeVideoIds from '@/lib/youtube/prefetch-youtube-video-ids'
-import readStoredYoutubeApiKey from '@/lib/youtube/read-stored-youtube-api-key'
 import readYoutubeDataApiBlocked from '@/lib/youtube/read-youtube-data-api-blocked'
 import type { Track } from '@/types/track'
 
@@ -123,14 +122,12 @@ export default function MusicBrainzBrowser() {
   }, [query, mode])
 
   useEffect(() => {
-    const apiKey = readStoredYoutubeApiKey()
-    if (!apiKey || readYoutubeDataApiBlocked() || results.length === 0) return undefined
+    if (readYoutubeDataApiBlocked() || results.length === 0) return undefined
     const targets = collectYoutubePrefetchTargets(results).slice(0, 12)
     if (targets.length === 0) return undefined
     const controller = new AbortController()
     void prefetchYoutubeVideoIds(
       targets,
-      apiKey,
       (trackId, videoId) => {
         setResults((prev) =>
           prev.map((t) => (t.id === trackId ? { ...t, youtubeVideoId: videoId } : t)),

@@ -3,14 +3,10 @@
 import Link from 'next/link'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import BrowsePanel from '@/components/BrowsePanel'
+import HiddenYoutubePlayer, {
+  type HiddenYoutubePlayerHandle,
+} from '@/components/HiddenYoutubePlayer'
 import { useLibrary } from '@/components/LibraryProvider'
-
-declare global {
-  interface Window {
-    onYouTubeIframeAPIReady?: () => void
-    YT?: any
-  }
-}
 import type { Track } from '@/types/track'
 import { formatDuration } from '@/lib/format-duration'
 import { getCoverBytesForTrack } from '@/lib/library/cover-bytes-cache'
@@ -19,9 +15,8 @@ import FavoriteStarButton from '@/components/FavoriteStarButton'
 import PanelResizeHandle from '@/components/PanelResizeHandle'
 import QueueLoadingSpinner from '@/components/QueueLoadingSpinner'
 import YouTubeStreamNotification from '@/components/YouTubeStreamNotification'
-import readStoredYoutubeApiKey from '@/lib/youtube/read-stored-youtube-api-key'
-import readYoutubeDataApiBlocked from '@/lib/youtube/read-youtube-data-api-blocked'
-import shouldUseYoutubeSearchPlayback from '@/lib/youtube/should-use-youtube-search-playback'
+import resolveYoutubeVideoId from '@/lib/youtube/resolve-youtube-video-id'
+import youtubeVideoThumbnailUrl from '@/lib/youtube/youtube-video-thumbnail-url'
 
 const STORAGE_LIBRARY_PANEL_PX = 'muzical.panelWidth.library'
 const STORAGE_QUEUE_PANEL_PX = 'muzical.panelWidth.queue'
@@ -245,6 +240,7 @@ export default function MusicPlayer() {
     consumePlaybackRestore,
     reportPlayback,
     isQueueReady,
+    patchTrackById,
   } = useLibrary()
   const [activeQueueId, setActiveQueueId] = useState<string | null>(null)
   const [isPlaying, setIsPlaying] = useState(false)
@@ -279,8 +275,7 @@ export default function MusicPlayer() {
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const objectUrlRef = useRef<string | null>(null)
   const coverObjectUrlRef = useRef<string | null>(null)
-  const youtubePlayerRef = useRef<any | null>(null)
-  const youtubeContainerRef = useRef<HTMLDivElement | null>(null)
+  const hiddenYoutubeRef = useRef<HiddenYoutubePlayerHandle | null>(null)
   const isPlayingRef = useRef(isPlaying)
   const playbackRateRef = useRef(playbackRate)
 
@@ -588,9 +583,7 @@ export default function MusicPlayer() {
       URL.revokeObjectURL(coverObjectUrlRef.current)
       coverObjectUrlRef.current = null
     }
-    void Promise.resolve().then(() => {
-      setCoverArtUrl(null)
-    })
+    setCoverArtUrl(null)
 
     if (!current || (!current.library && !current.youtubeQuery && !current.audioUrl)) {
       const el = audioRef.current
@@ -605,6 +598,23 @@ export default function MusicPlayer() {
       }
       return undefined
     }
+
+    const youtubeVideoId = current.youtubeVideoId?.trim()
+    if (!current.library && youtubeVideoId) {
+      const el = audioRef.current
+      if (el) {
+        el.pause()
+        el.removeAttribute('src')
+        el.load()
+      }
+      if (objectUrlRef.current) {
+        URL.revokeObjectURL(objectUrlRef.current)
+        objectUrlRef.current = null
+      }
+      setCoverArtUrl(youtubeVideoThumbnailUrl(youtubeVideoId))
+      return undefined
+    }
+
     if (!current.library) {
       const el = audioRef.current
       if (el) {
@@ -672,199 +682,63 @@ export default function MusicPlayer() {
     }
   }, [current, resolveFileForTrack])
 
-  const useSearchPlayback = shouldUseYoutubeSearchPlayback(
-    current?.youtubeQuery,
-    current?.youtubeVideoId,
-  )
-  const youtubeStreamActive = Boolean(
-    current?.youtubeQuery && (current?.youtubeVideoId || useSearchPlayback),
-  )
+  const playbackYoutubeVideoId = current?.youtubeVideoId?.trim() || null
 
   useEffect(() => {
-    if (!current?.youtubeQuery) {
-      setStreamResolving(false)
-      return undefined
-    }
-    if (current.youtubeVideoId || useSearchPlayback) {
-      setStreamResolving(false)
-      return undefined
-    }
-    if (!readStoredYoutubeApiKey() || readYoutubeDataApiBlocked()) {
-      setStreamResolving(false)
-      return undefined
-    }
-    setStreamResolving(true)
+    if (!playbackYoutubeVideoId || current?.library) return undefined
+    setCoverArtUrl(youtubeVideoThumbnailUrl(playbackYoutubeVideoId))
     return undefined
-  }, [current?.id, current?.youtubeQuery, current?.youtubeVideoId, useSearchPlayback])
+  }, [playbackYoutubeVideoId, current?.library, current?.id])
+  const youtubeStreamActive = Boolean(playbackYoutubeVideoId)
+  const needsYoutubeResolve = Boolean(current?.youtubeQuery?.trim() && !playbackYoutubeVideoId)
 
   useEffect(() => {
-    const videoId = current?.youtubeVideoId?.trim()
     const query = current?.youtubeQuery?.trim()
-    if (!videoId && !query) {
-      if (youtubePlayerRef.current) {
-        try {
-          youtubePlayerRef.current.destroy()
-        } catch {
-          /* ignore */
-        }
-        youtubePlayerRef.current = null
-      }
+    if (!query || current?.youtubeVideoId?.trim()) {
+      queueMicrotask(() => setStreamResolving(false))
       return undefined
     }
 
-    const basePlayerVars = {
-      autoplay: isPlaying ? 1 : 0,
-      controls: 0,
-      disablekb: 1,
-      fs: 0,
-      rel: 0,
-      modestbranding: 1,
-      iv_load_policy: 3,
-      origin: window.location.origin,
-    }
+    const controller = new AbortController()
+    queueMicrotask(() => setStreamResolving(true))
 
-    const ensurePlayer = (): void => {
-      if (!window.YT?.Player || !youtubeContainerRef.current) {
-        return
-      }
-      const existingPlayer = youtubePlayerRef.current
-      const createPlayer = (): void => {
-        if (!youtubeContainerRef.current) return
-        const playerVars = useSearchPlayback && query
-          ? { ...basePlayerVars, listType: 'search' as const, list: query }
-          : basePlayerVars
-        youtubePlayerRef.current = new window.YT.Player(youtubeContainerRef.current, {
-          height: '1',
-          width: '1',
-          ...(videoId && !useSearchPlayback ? { videoId } : {}),
-          playerVars,
-          events: {
-            onReady: (event: any) => {
-              try {
-                event.target.setVolume(Math.round(volume * 100))
-                const d = event.target.getDuration?.()
-                if (Number.isFinite(d) && d > 0) {
-                  setMediaDuration(d)
-                  bumpTrackDuration(current?.id ?? '', d)
-                }
-              } catch {
-                /* ignore */
-              }
-              setLoadError(null)
-              if (isPlaying) {
-                event.target.playVideo()
-              }
-            },
-            onStateChange: (event: any) => {
-              const state = event.data
-              if (state === window.YT.PlayerState.ENDED) {
-                goNext()
-                return
-              }
-              if (
-                isPlayingRef.current &&
-                (state === window.YT.PlayerState.CUED ||
-                  state === window.YT.PlayerState.PAUSED)
-              ) {
-                try {
-                  event.target.playVideo()
-                } catch {
-                  /* ignore */
-                }
-              }
-            },
-          },
-        })
-      }
-
-      if (existingPlayer) {
-        try {
-          if (useSearchPlayback && query) {
-            existingPlayer.loadPlaylist({ listType: 'search', list: query, index: 0 })
-          } else if (videoId) {
-            existingPlayer.loadVideoById(videoId)
-          }
-          if (isPlaying) existingPlayer.playVideo()
-          else existingPlayer.pauseVideo()
-          existingPlayer.setVolume(Math.round(volume * 100))
-        } catch {
-          existingPlayer.destroy()
-          createPlayer()
+    void resolveYoutubeVideoId(query, controller.signal)
+      .then((videoId) => {
+        if (controller.signal.aborted) return
+        if (videoId && current?.id) {
+          patchTrackById(current.id, (t) => ({ ...t, youtubeVideoId: videoId }))
+          setLoadError(null)
+        } else if (!videoId) {
+          setLoadError('Could not find a YouTube video for this track.')
         }
-        return
-      }
-
-      createPlayer()
-    }
-
-    if (window.YT?.Player) {
-      ensurePlayer()
-    } else {
-      if (!document.getElementById('youtube-iframe-api')) {
-        const script = document.createElement('script')
-        script.id = 'youtube-iframe-api'
-        script.src = 'https://www.youtube.com/iframe_api'
-        script.async = true
-        document.body.appendChild(script)
-      }
-      const previous = window.onYouTubeIframeAPIReady
-      window.onYouTubeIframeAPIReady = () => {
-        ensurePlayer()
-        if (typeof previous === 'function') {
-          previous()
-        }
-      }
-    }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setStreamResolving(false)
+      })
 
     return (): void => {
-      if (youtubePlayerRef.current) {
-        try {
-          youtubePlayerRef.current.destroy()
-        } catch {
-          /* ignore */
-        }
-        youtubePlayerRef.current = null
-      }
+      controller.abort()
     }
-  }, [current?.youtubeVideoId, current?.youtubeQuery, useSearchPlayback, goNext, bumpTrackDuration, current?.id])
+  }, [current?.id, current?.youtubeQuery, current?.youtubeVideoId, patchTrackById])
 
-  useEffect(() => {
-    const player = youtubePlayerRef.current
-    if (!player || !youtubeStreamActive) return
-    try {
-      if (isPlaying) player.playVideo()
-      else player.pauseVideo()
-    } catch {
-      /* ignore */
-    }
-  }, [isPlaying, youtubeStreamActive])
-
-  useEffect(() => {
-    const player = youtubePlayerRef.current
-    if (!player || !youtubeStreamActive) return
-    try {
-      player.setVolume(Math.round(volume * 100))
-    } catch {
-      /* ignore */
-    }
-  }, [volume, youtubeStreamActive])
+  const onYoutubeDuration = useCallback(
+    (seconds: number) => {
+      setMediaDuration(seconds)
+      if (current?.id) bumpTrackDuration(current.id, seconds)
+    },
+    [bumpTrackDuration, current?.id],
+  )
 
   useEffect(() => {
     if (!youtubeStreamActive) return undefined
     const tick = (): void => {
-      const player = youtubePlayerRef.current
-      if (!player?.getCurrentTime) return
-      try {
-        const t = player.getCurrentTime()
-        if (Number.isFinite(t) && t >= 0) {
-          setPositionSec(t)
-          reportPlayback(activeQueueIdRef.current, t)
-        }
-        const d = player.getDuration?.()
-        if (Number.isFinite(d) && d > 0) setMediaDuration(d)
-      } catch {
-        /* ignore */
+      const t = hiddenYoutubeRef.current?.getCurrentTime() ?? 0
+      if (Number.isFinite(t) && t >= 0) {
+        setPositionSec(t)
+        reportPlayback(activeQueueIdRef.current, t)
       }
+      const d = hiddenYoutubeRef.current?.getDuration() ?? 0
+      if (Number.isFinite(d) && d > 0) setMediaDuration(d)
     }
     tick()
     const id = window.setInterval(tick, 500)
@@ -950,26 +824,14 @@ export default function MusicPlayer() {
   const onSeekBarPointer = useCallback(
     (ratio: number) => {
       const r = Math.min(1, Math.max(0, ratio))
-      const yt = youtubePlayerRef.current
-      if (youtubeStreamActive && yt?.seekTo) {
+      if (youtubeStreamActive && hiddenYoutubeRef.current) {
         const total =
           durationSec > 0
             ? durationSec
-            : (() => {
-                try {
-                  const d = yt.getDuration?.()
-                  return Number.isFinite(d) && d > 0 ? d : 0
-                } catch {
-                  return 0
-                }
-              })()
+            : hiddenYoutubeRef.current.getDuration()
         if (total > 0) {
           const next = r * total
-          try {
-            yt.seekTo(next, true)
-          } catch {
-            /* ignore */
-          }
+          hiddenYoutubeRef.current.seekTo(next)
           setPositionSec(next)
           reportPlayback(activeQueueIdRef.current, next)
         }
@@ -1026,13 +888,20 @@ export default function MusicPlayer() {
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col bg-zinc-100 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
-      <YouTubeStreamNotification visible={streamResolving} trackTitle={current?.title} />
+      <YouTubeStreamNotification
+        visible={streamResolving || (needsYoutubeResolve && isPlaying)}
+        trackTitle={current?.title}
+      />
       <audio ref={audioRef} className="hidden" preload="metadata" />
-      <div
-        ref={youtubeContainerRef}
-        className="pointer-events-none fixed h-px w-px overflow-hidden opacity-0"
-        aria-hidden
-        tabIndex={-1}
+      <HiddenYoutubePlayer
+        ref={hiddenYoutubeRef}
+        videoId={playbackYoutubeVideoId}
+        isPlaying={isPlaying && youtubeStreamActive}
+        volume={volume}
+        onReady={() => setLoadError(null)}
+        onEnded={goNext}
+        onDuration={onYoutubeDuration}
+        onError={(message) => setLoadError(message)}
       />
 
       <header className="flex shrink-0 items-center justify-between border-b border-zinc-200 bg-white/90 px-6 py-4 backdrop-blur-sm dark:border-zinc-800/80 dark:bg-zinc-950/90">
@@ -1332,15 +1201,14 @@ export default function MusicPlayer() {
           onSessionMove={onQueuePlayerResizeMove}
           onSessionEnd={onPanelResizeEnd}
         />
-        <aside className="flex min-h-0 min-w-0 flex-1 flex-col gap-6 overflow-y-auto overflow-x-hidden bg-zinc-50 p-6 dark:bg-transparent lg:h-full lg:min-w-0 lg:flex-1">
-          <div className="mx-auto flex w-full max-w-[280px] flex-col gap-4">
+        <aside className="flex min-h-0 min-w-0 flex-1 flex-col justify-between gap-3 overflow-hidden bg-zinc-50 p-4 dark:bg-transparent lg:h-full lg:min-w-0 lg:flex-1">
+          <div className="mx-auto flex w-full max-w-[280px] shrink-0 flex-col gap-4">
             <div
               className="relative aspect-square w-full overflow-hidden rounded-2xl bg-linear-to-br from-amber-200/90 via-zinc-100 to-zinc-200 ring-1 ring-zinc-300/70 shadow-xl shadow-zinc-400/20 dark:from-amber-900/40 dark:via-zinc-800 dark:to-zinc-900 dark:ring-zinc-700/60 dark:shadow-2xl dark:shadow-black/40"
               aria-hidden
             >
               {coverArtUrl ? (
-                // Blob object URLs are not supported by next/image without a custom loader.
-                // eslint-disable-next-line @next/next/no-img-element -- local object URL from tags
+                // eslint-disable-next-line @next/next/no-img-element -- blob URL or YouTube CDN thumbnail
                 <img
                   src={coverArtUrl}
                   alt=""
@@ -1364,7 +1232,7 @@ export default function MusicPlayer() {
             </div>
           </div>
 
-          <div className="mt-auto space-y-3">
+          <div className="shrink-0 space-y-2.5">
             <div className="flex items-center justify-between text-xs tabular-nums text-zinc-500">
               <span>{formatDuration(positionSec)}</span>
               <span>{durationSec > 0 ? formatDuration(durationSec) : '—'}</span>
@@ -1405,7 +1273,7 @@ export default function MusicPlayer() {
               />
             </div>
 
-            <div className="flex items-center justify-between gap-4 pt-1">
+            <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-1">
                 <button
                   type="button"
@@ -1421,9 +1289,9 @@ export default function MusicPlayer() {
                   aria-label={isPlaying ? 'Pause' : 'Play'}
                   onClick={() => setIsPlaying((p) => !p)}
                   disabled={queue.length === 0 || !current}
-                  className="mx-1 flex h-14 w-14 items-center justify-center rounded-full bg-amber-500 text-zinc-950 shadow-lg shadow-amber-600/25 transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-40 dark:shadow-amber-900/30"
+                  className="mx-0.5 flex h-12 w-12 items-center justify-center rounded-full bg-amber-500 text-zinc-950 shadow-md shadow-amber-600/20 transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-40 dark:shadow-amber-900/30"
                 >
-                  {isPlaying ? <IconPause className="h-7 w-7" /> : <IconPlay className="h-7 w-7 pl-0.5" />}
+                  {isPlaying ? <IconPause className="h-6 w-6" /> : <IconPlay className="h-6 w-6 pl-0.5" />}
                 </button>
                 <button
                   type="button"
@@ -1451,7 +1319,7 @@ export default function MusicPlayer() {
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center justify-center gap-3 border-t border-zinc-200 pt-3 dark:border-zinc-800">
+            <div className="flex flex-wrap items-center justify-center gap-2 border-t border-zinc-200 pt-2 dark:border-zinc-800">
               <button
                 type="button"
                 onClick={() => cycleRepeatMode()}

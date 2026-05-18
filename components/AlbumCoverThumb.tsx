@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useLibrary } from '@/components/LibraryProvider'
 import type { Track } from '@/types/track'
 import { getCoverBytesForTrack } from '@/lib/library/cover-bytes-cache'
+import youtubeVideoThumbnailUrl from '@/lib/youtube/youtube-video-thumbnail-url'
 
 type AlbumCoverThumbProps = {
   /** Representative track (e.g. first on the album) — embedded art is read from its file */
@@ -24,10 +25,13 @@ export default function AlbumCoverThumb(props: AlbumCoverThumbProps) {
     let cancelled = false
     let createdUrl: string | null = null
 
+    const youtubeVideoId = track?.youtubeVideoId?.trim()
     if (!track?.library) {
-      void Promise.resolve().then(() => {
-        if (!cancelled) setCoverUrl(null)
-      })
+      if (youtubeVideoId) {
+        setCoverUrl(youtubeVideoThumbnailUrl(youtubeVideoId))
+      } else {
+        setCoverUrl(null)
+      }
       return (): void => {
         cancelled = true
       }

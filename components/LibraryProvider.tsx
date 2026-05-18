@@ -41,7 +41,6 @@ import writeStoredPlaybackSnapshot from '@/lib/playback/write-stored-playback-sn
 import buildQueueFromSnapshot from '@/lib/playback/build-queue-from-snapshot'
 import collectYoutubePrefetchTargets from '@/lib/youtube/collect-youtube-prefetch-targets'
 import prefetchYoutubeVideoIds from '@/lib/youtube/prefetch-youtube-video-ids'
-import readStoredYoutubeApiKey from '@/lib/youtube/read-stored-youtube-api-key'
 import readYoutubeDataApiBlocked from '@/lib/youtube/read-youtube-data-api-blocked'
 
 export type { LibraryRootMeta } from '@/types/library-root-meta'
@@ -567,14 +566,12 @@ export function LibraryProvider(props: { children: ReactNode }) {
   }, [])
 
   useEffect(() => {
-    const apiKey = readStoredYoutubeApiKey()
-    if (!apiKey || readYoutubeDataApiBlocked()) return undefined
+    if (readYoutubeDataApiBlocked()) return undefined
     const targets = collectYoutubePrefetchTargets(queue.map((row) => row.track)).slice(0, 8)
     if (targets.length === 0) return undefined
     const controller = new AbortController()
     void prefetchYoutubeVideoIds(
       targets,
-      apiKey,
       (trackId, videoId) => {
         patchTrackById(trackId, (t) => ({ ...t, youtubeVideoId: videoId }))
       },
