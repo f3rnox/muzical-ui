@@ -27,6 +27,7 @@ import QueueLoadingSpinner from '@/components/QueueLoadingSpinner'
 import RecentBrowseSearchChip from '@/components/RecentBrowseSearchChip'
 import YouTubeStreamNotification from '@/components/YouTubeStreamNotification'
 import isMusicBrainzStreamTrack from '@/lib/library/is-musicbrainz-stream-track'
+import readAppVersion from '@/lib/read-app-version'
 import resolveYoutubeVideoId from '@/lib/youtube/resolve-youtube-video-id'
 import youtubeVideoThumbnailUrl from '@/lib/youtube/youtube-video-thumbnail-url'
 
@@ -1012,7 +1013,9 @@ export default function MusicPlayer() {
           </div>
           <div className="min-w-0">
             <h1 className="text-sm font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">Muzical</h1>
-            <p className="text-xs text-zinc-500">Local library · browser playback</p>
+            <p className="text-xs text-zinc-500">
+              Local library · browser playback · v{readAppVersion()}
+            </p>
           </div>
         </div>
         <BrowseViewTabs />
