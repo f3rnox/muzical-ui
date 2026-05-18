@@ -824,7 +824,7 @@ export default function LibraryBrowser() {
                   <div className="flex gap-4">
                     <AlbumCoverThumb
                       track={selectedAlbumDetail.sample}
-                      className="h-[5.5rem] w-[5.5rem] shrink-0 overflow-hidden rounded-lg ring-1 ring-zinc-200/80 dark:ring-zinc-700/80"
+                      className="h-22 w-22 shrink-0 overflow-hidden rounded-lg ring-1 ring-zinc-200/80 dark:ring-zinc-700/80"
                     />
                     <div className="min-w-0 flex-1 py-0.5">
                       <h3 className="text-lg font-semibold leading-tight text-zinc-900 dark:text-zinc-50">

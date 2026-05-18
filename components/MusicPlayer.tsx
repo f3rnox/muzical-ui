@@ -769,7 +769,7 @@ export default function MusicPlayer() {
         className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden lg:flex-row"
       >
         <div
-          className="flex min-h-0 min-w-0 flex-col overflow-hidden max-lg:flex-[2] max-lg:w-full lg:h-full lg:min-w-0 lg:shrink-0"
+          className="flex min-h-0 min-w-0 flex-col overflow-hidden max-lg:flex-2 max-lg:w-full lg:h-full lg:min-w-0 lg:shrink-0"
           style={layoutLg ? { width: libraryPanelPx, flex: '0 0 auto' } : undefined}
         >
           <LibraryBrowser />
@@ -861,7 +861,17 @@ export default function MusicPlayer() {
                       {suggestedTracks.map((t) => (
                         <div
                           key={t.id}
-                          className={`flex min-w-0 items-center ${emptyQueueCardGapClass} rounded-xl border border-zinc-200 bg-white ${emptyQueueCardPadClass} shadow-sm dark:border-zinc-800 dark:bg-zinc-950/40 dark:shadow-none`}
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => addToQueue(t)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault()
+                              addToQueue(t)
+                            }
+                          }}
+                          aria-label={`Add ${t.title} to queue`}
+                          className={`flex w-full min-w-0 cursor-pointer items-center text-left ${emptyQueueCardGapClass} rounded-xl border border-zinc-200 bg-white ${emptyQueueCardPadClass} shadow-sm transition hover:border-amber-400/50 hover:bg-amber-50/50 dark:border-zinc-800 dark:bg-zinc-950/40 dark:hover:border-amber-500/30 dark:hover:bg-amber-950/20 dark:shadow-none`}
                         >
                           <div className="min-w-0 flex-1">
                             <p className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">{t.title}</p>
@@ -879,13 +889,6 @@ export default function MusicPlayer() {
                               onPress={() => toggleFavoriteTrack(t)}
                               label={isFavoriteSong(t.id) ? 'Remove song from favorites' : 'Add song to favorites'}
                             />
-                            <button
-                              type="button"
-                              onClick={() => addToQueue(t)}
-                              className="shrink-0 rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-medium text-amber-800 ring-1 ring-amber-500/25 transition hover:bg-amber-500/25 dark:text-amber-300 dark:ring-amber-500/40"
-                            >
-                              Add
-                            </button>
                           </div>
                         </div>
                       ))}
@@ -904,7 +907,7 @@ export default function MusicPlayer() {
                       key={row.queueId}
                       className={[
                         'group/row flex items-center gap-0',
-                        selected ? 'bg-amber-50/90 dark:bg-white/[0.06]' : '',
+                        selected ? 'bg-amber-50/90 dark:bg-white/6' : '',
                         isDropTarget ? 'ring-1 ring-amber-400/30' : '',
                       ].join(' ')}
                       onDragOver={(e) => {
@@ -975,7 +978,7 @@ export default function MusicPlayer() {
                         className={[
                           'flex shrink-0 items-center border-l pr-1 pl-0.5',
                           selected
-                            ? 'border-amber-200/80 dark:border-white/[0.08]'
+                            ? 'border-amber-200/80 dark:border-white/8'
                             : 'border-zinc-200 bg-zinc-50/80 dark:border-zinc-800 dark:bg-zinc-900/40',
                         ].join(' ')}
                       >
@@ -1021,7 +1024,7 @@ export default function MusicPlayer() {
         <aside className="flex min-h-0 min-w-0 flex-1 flex-col gap-6 overflow-y-auto overflow-x-hidden bg-zinc-50 p-6 dark:bg-transparent lg:h-full lg:min-w-0 lg:flex-1">
           <div className="mx-auto flex w-full max-w-[280px] flex-col gap-4">
             <div
-              className="relative aspect-square w-full overflow-hidden rounded-2xl bg-gradient-to-br from-amber-200/90 via-zinc-100 to-zinc-200 ring-1 ring-zinc-300/70 shadow-xl shadow-zinc-400/20 dark:from-amber-900/40 dark:via-zinc-800 dark:to-zinc-900 dark:ring-zinc-700/60 dark:shadow-2xl dark:shadow-black/40"
+              className="relative aspect-square w-full overflow-hidden rounded-2xl bg-linear-to-br from-amber-200/90 via-zinc-100 to-zinc-200 ring-1 ring-zinc-300/70 shadow-xl shadow-zinc-400/20 dark:from-amber-900/40 dark:via-zinc-800 dark:to-zinc-900 dark:ring-zinc-700/60 dark:shadow-2xl dark:shadow-black/40"
               aria-hidden
             >
               {coverArtUrl ? (
@@ -1082,7 +1085,7 @@ export default function MusicPlayer() {
               aria-label="Seek"
             >
               <div
-                className="pointer-events-none absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-amber-600 to-amber-400"
+                className="pointer-events-none absolute inset-y-0 left-0 rounded-full bg-linear-to-r from-amber-600 to-amber-400"
                 style={{
                   width: `${
                     durationSec > 0 ? (100 * positionSec) / durationSec : 0
@@ -1152,7 +1155,7 @@ export default function MusicPlayer() {
               >
                 <IconRepeatLoop dimmed={repeatMode === 'off'} className="h-5 w-5" />
                 {repeatMode === 'one' ? (
-                  <span className="absolute -right-0.5 -top-0.5 flex h-3.5 min-w-[0.875rem] items-center justify-center rounded bg-amber-500 px-0.5 text-[9px] font-bold leading-none text-zinc-950">
+                  <span className="absolute -right-0.5 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded bg-amber-500 px-0.5 text-[9px] font-bold leading-none text-zinc-950">
                     1
                   </span>
                 ) : null}
