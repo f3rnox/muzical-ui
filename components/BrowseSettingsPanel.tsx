@@ -67,7 +67,7 @@ export default function BrowseSettingsPanel() {
       <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900/40">
         <h3 className="text-xs font-medium uppercase tracking-wider text-zinc-500">Recent searches</h3>
         <p className="mt-2 text-sm leading-relaxed text-zinc-600 dark:text-zinc-400">
-          Clears the MusicBrainz and YouTube search chips shown on the home queue panel (
+          Clears recent Library, MusicBrainz, and YouTube search chips shown on the home queue panel (
           {recentBrowseSearches.length === 1 ? '1 saved' : `${recentBrowseSearches.length} saved`}).
         </p>
         <button

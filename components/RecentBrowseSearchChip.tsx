@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import buildBrowseViewSearchUrl from '@/lib/browse/build-browse-view-search-url'
+import browseSearchSourceLabel from '@/lib/browse/browse-search-source-label'
 import type { RecentBrowseSearch } from '@/types/browse-search'
 
 type RecentBrowseSearchChipProps = {
@@ -10,7 +11,7 @@ type RecentBrowseSearchChipProps = {
  * Home suggestion chip that opens a saved MusicBrainz or YouTube search.
  */
 export default function RecentBrowseSearchChip(props: RecentBrowseSearchChipProps) {
-  const sourceLabel = props.entry.source === 'youtube' ? 'YouTube' : 'MusicBrainz'
+  const sourceLabel = browseSearchSourceLabel(props.entry.source)
   return (
     <Link
       href={buildBrowseViewSearchUrl(props.entry)}

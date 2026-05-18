@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import { useLibrary } from '@/components/LibraryProvider'
 import useSyncBrowseSearchFromUrl from '@/lib/browse/use-sync-browse-search-from-url'
 import MusicBrainzTrackRow from '@/components/MusicBrainzTrackRow'
+import RecentBrowseSearchSuggestions from '@/components/RecentBrowseSearchSuggestions'
 import { groupTracksByAlbum } from '@/lib/musicbrainz/group-tracks-by-album'
 import { groupTracksByArtist } from '@/lib/musicbrainz/group-tracks-by-artist'
 import { searchMusicBrainz } from '@/lib/musicbrainz'
@@ -369,6 +370,7 @@ export default function MusicBrainzBrowser() {
           className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 shadow-sm outline-none ring-accent-500/0 transition focus:border-accent-400 focus:ring-2 focus:ring-accent-500/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100 dark:focus:border-accent-500/60"
           aria-label="Search MusicBrainz"
         />
+        <RecentBrowseSearchSuggestions source="musicbrainz" onSelect={onQueryChange} />
         <div className="flex flex-wrap gap-1">
           {BROWSE_MODES.map((m) => (
             <button

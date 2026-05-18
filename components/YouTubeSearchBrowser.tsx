@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useLibrary } from '@/components/LibraryProvider'
 import useSyncBrowseSearchFromUrl from '@/lib/browse/use-sync-browse-search-from-url'
+import RecentBrowseSearchSuggestions from '@/components/RecentBrowseSearchSuggestions'
 import MusicBrainzTrackRow from '@/components/MusicBrainzTrackRow'
 import searchYoutubeTracks from '@/lib/youtube/search-youtube-tracks'
 import useYoutubeApiKeyReady from '@/lib/youtube/use-youtube-api-key-ready'
@@ -23,7 +24,7 @@ export default function YouTubeSearchBrowser() {
   const [error, setError] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
   const debounceRef = useRef<number | null>(null)
-  const { checked: apiKeyChecked, blocked: apiBlocked } = useYoutubeApiKeyReady()
+  const { checked: apiKeyChecked, blocked: apiBlocked, hasKey: hasYoutubeApiKey } = useYoutubeApiKeyReady()
   const [searchSource, setSearchSource] = useState<'api' | 'scrape' | null>(null)
   const canSearch = apiKeyChecked
   const compact = compactLists
@@ -160,6 +161,7 @@ export default function YouTubeSearchBrowser() {
           className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 shadow-sm outline-none ring-accent-500/0 transition focus:border-accent-400 focus:ring-2 focus:ring-accent-500/20 disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100 dark:focus:border-accent-500/60"
           aria-label="Search YouTube"
         />
+        <RecentBrowseSearchSuggestions source="youtube" onSelect={onQueryChange} />
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto px-2 py-2">
@@ -168,7 +170,7 @@ export default function YouTubeSearchBrowser() {
             {error}
           </p>
         ) : null}
-        {canSearch && searchSource === 'scrape' && (apiBlocked || trimmed.length >= 2) ? (
+        {canSearch && !hasYoutubeApiKey && searchSource === 'scrape' && (apiBlocked || trimmed.length >= 2) ? (
           <p className="px-2 pb-2 text-center text-xs text-zinc-500">
             Using fallback search (API quota exceeded or unavailable). Durations may be missing.
             {apiBlocked ? (

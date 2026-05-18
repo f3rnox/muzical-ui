@@ -38,7 +38,11 @@ import { scanProgressPercent } from '@/lib/library/scan-progress-percent'
 import type { ScanProgressTick } from '@/lib/library/scan-progress-tick'
 import extractPersistedLibraryTracks from '@/lib/library/extract-persisted-library-tracks'
 import filterOutPersistedLibraryTracks from '@/lib/library/filter-out-persisted-library-tracks'
+import { albumCompositeKey } from '@/lib/library/favorite-keys'
 import tracksMatchingAlbumKey from '@/lib/library/tracks-matching-album-key'
+import tracksMatchingArtistName from '@/lib/library/tracks-matching-artist-name'
+import applyAlbumMetadataPatch from '@/lib/track/apply-album-metadata-patch'
+import type { AlbumMetadataFields } from '@/lib/track/apply-album-metadata-patch'
 import isPersistedLibraryTrack from '@/lib/library/is-persisted-library-track'
 import mergeScannedTracksWithSavedLibrary from '@/lib/library/merge-scanned-tracks-with-saved-library'
 import normalizeTrackForLibrarySave from '@/lib/library/normalize-track-for-library-save'
@@ -97,6 +101,7 @@ type LibraryContextValue = {
   addToLibrary: (items: Track | readonly Track[]) => void
   removeFromLibrary: (items: Track | readonly Track[]) => void
   removeAlbumFromLibrary: (albumKey: string) => void
+  removeArtistFromLibrary: (artistName: string) => void
   removeAllMusicBrainzFromLibrary: () => void
   removeFromQueue: (queueId: string) => void
   clearQueue: () => void
@@ -114,6 +119,7 @@ type LibraryContextValue = {
   resolveFileForTrack: (track: Track) => Promise<File | null>
   bumpTrackDuration: (trackId: string, durationSec: number) => void
   patchTrackById: (trackId: string, patch: (track: Track) => Track) => void
+  patchAlbumMetadataByKey: (albumKey: string, fields: AlbumMetadataFields) => string | null
   favoriteSongIds: readonly string[]
   favoriteArtistNames: readonly string[]
   favoriteAlbumKeys: readonly string[]
@@ -275,6 +281,7 @@ export function LibraryProvider(props: { children: ReactNode }) {
   const persistCatalogTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const scanDismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const favoritesReadyRef = useRef(false)
+  const recentBrowseSearchesReadyRef = useRef(false)
   const scanPrefsRef = useRef<LibraryScanPreferences>(readStoredLibraryScanPreferences())
   const logLibraryScanTimingRef = useRef(false)
   const rememberLastQueueRef = useRef(false)
@@ -338,10 +345,11 @@ export function LibraryProvider(props: { children: ReactNode }) {
   }, [])
 
   useEffect(() => {
-    void Promise.resolve().then(() => {
+    queueMicrotask(() => {
       setRecentBrowseSearches(
         readStoredRecentBrowseSearches().slice(0, RECENT_BROWSE_SEARCHES_LIMIT),
       )
+      recentBrowseSearchesReadyRef.current = true
     })
   }, [])
 
@@ -388,6 +396,7 @@ export function LibraryProvider(props: { children: ReactNode }) {
   }, [recentlyPlayedTrackIds])
 
   useEffect(() => {
+    if (!recentBrowseSearchesReadyRef.current) return
     writeStoredRecentBrowseSearches(recentBrowseSearches.slice(0, RECENT_BROWSE_SEARCHES_LIMIT))
   }, [recentBrowseSearches])
 
@@ -662,6 +671,34 @@ export function LibraryProvider(props: { children: ReactNode }) {
     persistCatalogDebounced()
   }, [persistCatalogDebounced])
 
+  const patchAlbumMetadataByKey = useCallback(
+    (albumKey: string, fields: AlbumMetadataFields): string | null => {
+      const key = albumKey.trim()
+      if (!key) return null
+      const artist = fields.artist.trim()
+      if (!artist) return null
+      const album = fields.album.trim()
+      const matchesKey = (t: Track): boolean => albumCompositeKey(t.album, t.artist) === key
+      const toPatch = tracksMatchingAlbumKey(libraryTracksRef.current, key)
+      if (toPatch.length === 0) return null
+      const newKey = albumCompositeKey(album || toPatch[0].album, artist)
+      const patchTrack = (t: Track): Track =>
+        matchesKey(t) ? applyAlbumMetadataPatch(t, { artist, album }) : t
+      setLibraryTracks((prev) => prev.map(patchTrack))
+      setQueue((prev) => prev.map((q) => ({ ...q, track: patchTrack(q.track) })))
+      setDetailsTrack((prev) => (prev && matchesKey(prev) ? patchTrack(prev) : prev))
+      setFavoriteAlbumKeys((prev) => {
+        if (!prev.includes(key)) return prev
+        const without = prev.filter((k) => k !== key)
+        if (without.includes(newKey)) return without
+        return [...without, newKey]
+      })
+      persistCatalogDebounced()
+      return newKey
+    },
+    [persistCatalogDebounced],
+  )
+
   useEffect(() => {
     if (!youtubePreferences.prefetchQueueVideoIds) return undefined
     if (readYoutubeDataApiBlocked()) return undefined
@@ -755,6 +792,18 @@ export function LibraryProvider(props: { children: ReactNode }) {
     [removeFromLibrary],
   )
 
+  const removeArtistFromLibrary = useCallback(
+    (artistName: string) => {
+      const name = artistName.trim()
+      if (!name) return
+      const toRemove = tracksMatchingArtistName(libraryTracksRef.current, name)
+      if (toRemove.length === 0) return
+      setFavoriteArtistNames((prev) => prev.filter((n) => n !== name))
+      removeFromLibrary(toRemove)
+    },
+    [removeFromLibrary],
+  )
+
   const removeAllMusicBrainzFromLibrary = useCallback(() => {
     const current = libraryTracksRef.current
     const removedIds = new Set(
@@ -810,11 +859,20 @@ export function LibraryProvider(props: { children: ReactNode }) {
   const recordRecentBrowseSearch = useCallback((source: BrowseSearchSource, query: string) => {
     const trimmed = query.trim()
     if (!trimmed) return
+    if (source === 'library' && trimmed.length < 2) return
     if (source === 'musicbrainz' && trimmed.length < 3) return
     if (source === 'youtube' && trimmed.length < 2) return
-    setRecentBrowseSearches((prev) =>
-      appendRecentBrowseSearch(prev, { source, query: trimmed }, RECENT_BROWSE_SEARCHES_LIMIT),
-    )
+    setRecentBrowseSearches((prev) => {
+      const next = appendRecentBrowseSearch(
+        prev,
+        { source, query: trimmed },
+        RECENT_BROWSE_SEARCHES_LIMIT,
+      )
+      if (recentBrowseSearchesReadyRef.current) {
+        writeStoredRecentBrowseSearches(next)
+      }
+      return next
+    })
   }, [])
 
   const clearRecentBrowseSearches = useCallback(() => {
@@ -1162,6 +1220,7 @@ export function LibraryProvider(props: { children: ReactNode }) {
       addToLibrary,
       removeFromLibrary,
       removeAlbumFromLibrary,
+      removeArtistFromLibrary,
       removeAllMusicBrainzFromLibrary,
       removeFromQueue,
       clearQueue,
@@ -1179,6 +1238,7 @@ export function LibraryProvider(props: { children: ReactNode }) {
       resolveFileForTrack,
       bumpTrackDuration,
       patchTrackById,
+      patchAlbumMetadataByKey,
       favoriteSongIds,
       favoriteArtistNames,
       favoriteAlbumKeys,
@@ -1221,6 +1281,7 @@ export function LibraryProvider(props: { children: ReactNode }) {
       addToLibrary,
       removeFromLibrary,
       removeAlbumFromLibrary,
+      removeArtistFromLibrary,
       removeAllMusicBrainzFromLibrary,
       removeFromQueue,
       clearQueue,
@@ -1238,6 +1299,7 @@ export function LibraryProvider(props: { children: ReactNode }) {
       resolveFileForTrack,
       bumpTrackDuration,
       patchTrackById,
+      patchAlbumMetadataByKey,
       favoriteSongIds,
       favoriteArtistNames,
       favoriteAlbumKeys,

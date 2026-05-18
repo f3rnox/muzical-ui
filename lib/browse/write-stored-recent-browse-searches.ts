@@ -2,7 +2,7 @@ import { RECENT_BROWSE_SEARCHES_STORAGE_KEY } from "@/lib/browse/browse-search-c
 import type { RecentBrowseSearch } from "@/types/browse-search";
 
 /**
- * Persist recent MusicBrainz / YouTube searches to localStorage.
+ * Persist recent browse searches to localStorage.
  */
 export default function writeStoredRecentBrowseSearches(
   list: readonly RecentBrowseSearch[],

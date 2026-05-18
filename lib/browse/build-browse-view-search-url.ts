@@ -7,7 +7,11 @@ export default function buildBrowseViewSearchUrl(
   entry: RecentBrowseSearch,
 ): string {
   const params = new URLSearchParams();
-  params.set("view", entry.source === "youtube" ? "youtube" : "musicbrainz");
+  if (entry.source === "youtube") {
+    params.set("view", "youtube");
+  } else if (entry.source === "musicbrainz") {
+    params.set("view", "musicbrainz");
+  }
   params.set("q", entry.query);
   return `/?${params.toString()}`;
 }

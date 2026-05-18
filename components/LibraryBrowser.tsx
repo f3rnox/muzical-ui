@@ -1,14 +1,19 @@
 'use client'
 
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { useLibrary } from '@/components/LibraryProvider'
+import RecentBrowseSearchSuggestions from '@/components/RecentBrowseSearchSuggestions'
+import useSyncBrowseSearchFromUrl from '@/lib/browse/use-sync-browse-search-from-url'
 import type { LibraryRootMeta } from '@/components/LibraryProvider'
 import type { Track } from '@/types/track'
 import AlbumCoverThumb from '@/components/AlbumCoverThumb'
 import FavoriteStarButton from '@/components/FavoriteStarButton'
 import LibrarySongTrackRow from '@/components/LibrarySongTrackRow'
+import AlbumMetadataDialog from '@/components/AlbumMetadataDialog'
 import TrackRowOverflowMenu from '@/components/TrackRowOverflowMenu'
 import buildAlbumOverflowMenuItems from '@/lib/library/build-album-overflow-menu-items'
+import buildArtistOverflowMenuItems from '@/lib/library/build-artist-overflow-menu-items'
 import { albumCompositeKey, artistDisplayName } from '@/lib/library/favorite-keys'
 import { formatDuration } from '@/lib/format-duration'
 
@@ -258,11 +263,26 @@ export default function LibraryBrowser() {
     toggleFavoriteArtist,
     toggleFavoriteAlbum,
     removeAlbumFromLibrary,
+    removeArtistFromLibrary,
+    recordRecentBrowseSearch,
   } = useLibrary()
+  const searchParams = useSearchParams()
   const [mode, setMode] = useState<BrowseMode>('artist')
   const [query, setQuery] = useState('')
+
+  useSyncBrowseSearchFromUrl(searchParams, setQuery)
+
+  useEffect(() => {
+    const q = query.trim()
+    if (q.length < 2) return undefined
+    const id = window.setTimeout(() => {
+      recordRecentBrowseSearch('library', q)
+    }, 800)
+    return () => window.clearTimeout(id)
+  }, [query, recordRecentBrowseSearch])
   const [artistPick, setArtistPick] = useState<string | null>(null)
   const [albumPick, setAlbumPick] = useState<string | null>(null)
+  const [albumMetadataEditKey, setAlbumMetadataEditKey] = useState<string | null>(null)
   const [folderRootId, setFolderRootId] = useState<string | null>(null)
   const [folderPath, setFolderPath] = useState('')
   const filtered = useMemo(() => filterTracksByQuery(libraryTracks, query), [libraryTracks, query])
@@ -474,6 +494,53 @@ export default function LibraryBrowser() {
     setFolderPath(path)
   }, [])
 
+  const handleRemoveArtistFromLibrary = useCallback(
+    (artistName: string) => {
+      removeArtistFromLibrary(artistName)
+      setArtistPick((pick) => (pick === artistName ? null : pick))
+    },
+    [removeArtistFromLibrary],
+  )
+
+  const handleRemoveAlbumFromLibrary = useCallback(
+    (albumKey: string) => {
+      removeAlbumFromLibrary(albumKey)
+      setAlbumPick((pick) => (pick === albumKey ? null : pick))
+    },
+    [removeAlbumFromLibrary],
+  )
+
+  const openAlbumMetadataEdit = useCallback((albumKey: string) => {
+    setAlbumMetadataEditKey(albumKey)
+  }, [])
+
+  const editingAlbumMeta = useMemo(() => {
+    if (!albumMetadataEditKey) return null
+    const tracks = libraryAlbumMap.get(albumMetadataEditKey) ?? []
+    if (tracks.length === 0) return null
+    const parts = albumMetadataEditKey.split('\u0000')
+    const title = parts[0] ?? ''
+    const artist = parts[1] ?? ''
+    const uniqueArtists = new Set(tracks.map((t) => artistDisplayName(t.artist)))
+    return {
+      albumKey: albumMetadataEditKey,
+      albumTitle: title,
+      artistName: artist,
+      trackCount: tracks.length,
+      multipleTrackArtists: uniqueArtists.size > 1,
+    }
+  }, [albumMetadataEditKey, libraryAlbumMap])
+
+  const albumOverflowMenuItems = useCallback(
+    (albumKey: string) =>
+      buildAlbumOverflowMenuItems({
+        albumKey,
+        onRemoveAlbumFromLibrary: handleRemoveAlbumFromLibrary,
+        onEditAlbumMetadata: openAlbumMetadataEdit,
+      }),
+    [handleRemoveAlbumFromLibrary, openAlbumMetadataEdit],
+  )
+
   return (
     <section className="flex h-full min-h-0 flex-1 flex-col overflow-hidden border-b border-zinc-200 bg-zinc-50/80 dark:border-zinc-800 dark:bg-zinc-900/30 lg:border-b-0 lg:border-r">
       <div className="shrink-0 space-y-3 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
@@ -486,6 +553,7 @@ export default function LibraryBrowser() {
           className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 shadow-sm outline-none ring-accent-500/0 transition focus:border-accent-400 focus:ring-2 focus:ring-accent-500/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100 dark:focus:border-accent-500/60"
           aria-label="Search library"
         />
+        <RecentBrowseSearchSuggestions source="library" onSelect={setQuery} />
         <div className="flex flex-wrap gap-1">
           {(['artist', 'album', 'folder', 'favorites'] as const).map((m) => (
             <button
@@ -549,6 +617,13 @@ export default function LibraryBrowser() {
                                 <span className="truncate font-medium text-zinc-900 dark:text-zinc-100">{hit.name}</span>
                                 <span className="shrink-0 text-xs tabular-nums text-zinc-500">{hit.tracks.length}</span>
                               </button>
+                              <TrackRowOverflowMenu
+                                triggerLabel={`Actions for ${hit.name}`}
+                                items={buildArtistOverflowMenuItems({
+                                  artistName: hit.name,
+                                  onRemoveArtistFromLibrary: handleRemoveArtistFromLibrary,
+                                })}
+                              />
                               <FavoriteStarButton
                                 filled={isFavoriteArtist(hit.name)}
                                 onPress={() => toggleFavoriteArtist(hit.name)}
@@ -593,10 +668,7 @@ export default function LibraryBrowser() {
                                 </button>
                                 <TrackRowOverflowMenu
                                   triggerLabel={`Actions for ${hit.album}`}
-                                  items={buildAlbumOverflowMenuItems({
-                                    albumKey: hit.key,
-                                    onRemoveAlbumFromLibrary: removeAlbumFromLibrary,
-                                  })}
+                                  items={albumOverflowMenuItems(hit.key)}
                                 />
                                 <FavoriteStarButton
                                   filled={isFavoriteAlbum(hit.key)}
@@ -679,6 +751,13 @@ export default function LibraryBrowser() {
                     <span className="truncate font-medium">{name}</span>
                     <span className="shrink-0 text-xs tabular-nums text-zinc-500">{artistMap.get(name)?.length ?? 0}</span>
                   </button>
+                  <TrackRowOverflowMenu
+                    triggerLabel={`Actions for ${name}`}
+                    items={buildArtistOverflowMenuItems({
+                      artistName: name,
+                      onRemoveArtistFromLibrary: handleRemoveArtistFromLibrary,
+                    })}
+                  />
                   <FavoriteStarButton
                     filled={isFavoriteArtist(name)}
                     onPress={() => toggleFavoriteArtist(name)}
@@ -713,13 +792,22 @@ export default function LibraryBrowser() {
                   Add all
                 </button>
                 {artistPick ? (
-                  <FavoriteStarButton
-                    filled={isFavoriteArtist(artistPick)}
-                    onPress={() => toggleFavoriteArtist(artistPick)}
-                    label={
-                      isFavoriteArtist(artistPick) ? 'Remove artist from favorites' : 'Add artist to favorites'
-                    }
-                  />
+                  <>
+                    <TrackRowOverflowMenu
+                      triggerLabel={`Actions for ${artistPick}`}
+                      items={buildArtistOverflowMenuItems({
+                        artistName: artistPick,
+                        onRemoveArtistFromLibrary: handleRemoveArtistFromLibrary,
+                      })}
+                    />
+                    <FavoriteStarButton
+                      filled={isFavoriteArtist(artistPick)}
+                      onPress={() => toggleFavoriteArtist(artistPick)}
+                      label={
+                        isFavoriteArtist(artistPick) ? 'Remove artist from favorites' : 'Add artist to favorites'
+                      }
+                    />
+                  </>
                 ) : null}
               </div>
               <ul className={ulSpaceYClass}>
@@ -754,10 +842,7 @@ export default function LibraryBrowser() {
                     </button>
                     <TrackRowOverflowMenu
                       triggerLabel={`Actions for ${album}`}
-                      items={buildAlbumOverflowMenuItems({
-                        albumKey: key,
-                        onRemoveAlbumFromLibrary: removeAlbumFromLibrary,
-                      })}
+                      items={albumOverflowMenuItems(key)}
                     />
                     <FavoriteStarButton
                       filled={isFavoriteAlbum(key)}
@@ -793,10 +878,41 @@ export default function LibraryBrowser() {
                       className="h-22 w-22 shrink-0 overflow-hidden rounded-lg ring-1 ring-zinc-200/80 dark:ring-zinc-700/80"
                     />
                     <div className="min-w-0 flex-1 py-0.5">
-                      <h3 className="text-lg font-semibold leading-tight text-zinc-900 dark:text-zinc-50">
-                        {selectedAlbumDetail.title}
-                      </h3>
-                      <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">{selectedAlbumDetail.artist}</p>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <h3 className="text-lg font-semibold leading-tight text-zinc-900 dark:text-zinc-50">
+                            {selectedAlbumDetail.title}
+                          </h3>
+                          <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+                            {selectedAlbumDetail.artist}
+                          </p>
+                        </div>
+                        {albumPick ? (
+                          <div className="flex shrink-0 items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => onAddMany(albumMap.get(albumPick) ?? [])}
+                              disabled={(albumMap.get(albumPick)?.length ?? 0) === 0}
+                              className="rounded-full border border-zinc-200 bg-white px-2 py-1 text-xs font-medium disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-900"
+                            >
+                              Add all
+                            </button>
+                            <TrackRowOverflowMenu
+                              triggerLabel={`Actions for ${selectedAlbumDetail.title}`}
+                              items={albumOverflowMenuItems(albumPick)}
+                            />
+                            <FavoriteStarButton
+                              filled={isFavoriteAlbum(albumPick)}
+                              onPress={() => toggleFavoriteAlbum(albumPick)}
+                              label={
+                                isFavoriteAlbum(albumPick)
+                                  ? 'Remove album from favorites'
+                                  : 'Add album to favorites'
+                              }
+                            />
+                          </div>
+                        ) : null}
+                      </div>
                       {selectedAlbumDetail.multipleTrackArtists ? (
                         <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-500">
                           Track-level artists differ on this album
@@ -827,31 +943,6 @@ export default function LibraryBrowser() {
                   </div>
                 </div>
               ) : null}
-              <div className="mb-2 flex flex-wrap items-center gap-2 px-2">
-                <button
-                  type="button"
-                  onClick={() => onAddMany(albumMap.get(albumPick) ?? [])}
-                  className="rounded-full border border-zinc-200 bg-white px-2 py-1 text-xs font-medium dark:border-zinc-700 dark:bg-zinc-900"
-                >
-                  Add all
-                </button>
-                {albumPick ? (
-                  <>
-                    <TrackRowOverflowMenu
-                      triggerLabel={`Actions for ${selectedAlbumDetail?.title ?? 'album'}`}
-                      items={buildAlbumOverflowMenuItems({
-                        albumKey: albumPick,
-                        onRemoveAlbumFromLibrary: removeAlbumFromLibrary,
-                      })}
-                    />
-                    <FavoriteStarButton
-                      filled={isFavoriteAlbum(albumPick)}
-                      onPress={() => toggleFavoriteAlbum(albumPick)}
-                      label={isFavoriteAlbum(albumPick) ? 'Remove album from favorites' : 'Add album to favorites'}
-                    />
-                  </>
-                ) : null}
-              </div>
               <ul className={ulSpaceYClass}>
                 {(albumMap.get(albumPick) ?? []).map((t) => (
                   <li key={t.id}>
@@ -898,6 +989,13 @@ export default function LibraryBrowser() {
                               {libraryArtistMap.get(name)?.length ?? 0}
                             </span>
                           </button>
+                          <TrackRowOverflowMenu
+                            triggerLabel={`Actions for ${name}`}
+                            items={buildArtistOverflowMenuItems({
+                              artistName: name,
+                              onRemoveArtistFromLibrary: handleRemoveArtistFromLibrary,
+                            })}
+                          />
                           <FavoriteStarButton
                             filled
                             onPress={() => toggleFavoriteArtist(name)}
@@ -947,10 +1045,7 @@ export default function LibraryBrowser() {
                             </button>
                             <TrackRowOverflowMenu
                               triggerLabel={`Actions for ${album}`}
-                              items={buildAlbumOverflowMenuItems({
-                                albumKey: key,
-                                onRemoveAlbumFromLibrary: removeAlbumFromLibrary,
-                              })}
+                              items={albumOverflowMenuItems(key)}
                             />
                             <FavoriteStarButton
                               filled
@@ -1094,6 +1189,20 @@ export default function LibraryBrowser() {
           </div>
         )}
       </div>
+      {editingAlbumMeta ? (
+        <AlbumMetadataDialog
+          albumKey={editingAlbumMeta.albumKey}
+          albumTitle={editingAlbumMeta.albumTitle}
+          artistName={editingAlbumMeta.artistName}
+          trackCount={editingAlbumMeta.trackCount}
+          multipleTrackArtists={editingAlbumMeta.multipleTrackArtists}
+          onClose={() => setAlbumMetadataEditKey(null)}
+          onSaved={(newKey) => {
+            setAlbumPick((pick) => (pick === albumMetadataEditKey ? newKey : pick))
+            setAlbumMetadataEditKey(null)
+          }}
+        />
+      ) : null}
     </section>
   )
 }

@@ -1,12 +1,6 @@
 import { RECENT_BROWSE_SEARCHES_STORAGE_KEY } from "@/lib/browse/browse-search-constants";
-import type {
-  BrowseSearchSource,
-  RecentBrowseSearch,
-} from "@/types/browse-search";
-
-function isBrowseSearchSource(value: unknown): value is BrowseSearchSource {
-  return value === "musicbrainz" || value === "youtube";
-}
+import isBrowseSearchSource from "@/lib/browse/is-browse-search-source";
+import type { RecentBrowseSearch } from "@/types/browse-search";
 
 function parseEntry(value: unknown): RecentBrowseSearch | null {
   if (typeof value !== "object" || value === null) return null;
@@ -19,7 +13,7 @@ function parseEntry(value: unknown): RecentBrowseSearch | null {
 }
 
 /**
- * Load recent MusicBrainz / YouTube searches from localStorage.
+ * Load recent browse searches from localStorage.
  */
 export default function readStoredRecentBrowseSearches(): RecentBrowseSearch[] {
   if (typeof window === "undefined") return [];
