@@ -7,6 +7,21 @@ const path = require('node:path')
 const packageRoot = path.resolve(__dirname, '..')
 const standaloneDir = path.join(packageRoot, '.next', 'standalone')
 const standaloneServerPath = path.join(standaloneDir, 'server.js')
+const cliArgs = process.argv.slice(2)
+
+/**
+ * Read the package version from package.json.
+ */
+function readPackageVersion() {
+  const pkgPath = path.join(packageRoot, 'package.json')
+  const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'))
+  return typeof pkg.version === 'string' ? pkg.version : '0.0.0'
+}
+
+if (cliArgs.includes('--version') || cliArgs.includes('-v') || cliArgs.includes('-V')) {
+  console.log(readPackageVersion())
+  process.exit(0)
+}
 
 /**
  * Standalone server expects static assets under `.next/standalone/.next/static`.
@@ -37,7 +52,7 @@ if (!fs.existsSync(standaloneServerPath)) {
 
 const child = spawn(
   process.execPath,
-  [standaloneServerPath, ...process.argv.slice(2)],
+  [standaloneServerPath, ...cliArgs],
   {
     cwd: standaloneDir,
     stdio: 'inherit',
