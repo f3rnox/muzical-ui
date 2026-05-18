@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.8](https://github.com/f3rnox/muzical-ui/compare/v0.1.7...v0.1.8) (2026-05-18)
+
+
+### Bug Fixes
+
+* bin script ([b41124b](https://github.com/f3rnox/muzical-ui/commit/b41124b34f033bc3dc97edc5664b1c6c725f7273))
+
 ### [0.1.7](https://github.com/f3rnox/muzical-ui/compare/v0.1.6...v0.1.7) (2026-05-18)
 
 ### [0.1.6](https://github.com/f3rnox/muzical-ui/compare/v0.1.5...v0.1.6) (2026-05-18)
