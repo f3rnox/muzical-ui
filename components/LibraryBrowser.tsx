@@ -1,10 +1,9 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useLibrary } from '@/components/LibraryProvider'
 import type { LibraryRootMeta } from '@/components/LibraryProvider'
 import type { Track } from '@/types/track'
-import Link from 'next/link'
 import AlbumCoverThumb from '@/components/AlbumCoverThumb'
 import FavoriteStarButton from '@/components/FavoriteStarButton'
 import { albumCompositeKey, artistDisplayName } from '@/lib/library/favorite-keys'
@@ -247,7 +246,6 @@ export default function LibraryBrowser() {
     roots,
     libraryTracks,
     addToQueue,
-    addToLibrary,
     compactLists,
     favoriteSongIds,
     favoriteArtistNames,
@@ -265,12 +263,8 @@ export default function LibraryBrowser() {
   const [albumPick, setAlbumPick] = useState<string | null>(null)
   const [folderRootId, setFolderRootId] = useState<string | null>(null)
   const [folderPath, setFolderPath] = useState('')
-  // MusicBrainz search moved to dedicated page
-
   const filtered = useMemo(() => filterTracksByQuery(libraryTracks, query), [libraryTracks, query])
   const searchActive = query.trim().length > 0
-
-  // MusicBrainz search moved to dedicated page
   const compact = compactLists
   const ulSpaceYClass = compact ? 'space-y-0.25' : 'space-y-0.5'
   const rowPadLgClass = compact ? 'px-2 py-2' : 'px-3 py-2.5'
@@ -499,7 +493,7 @@ export default function LibraryBrowser() {
               type="button"
               onClick={() => goMode(m)}
               className={[
-                'rounded-full px-3 py-1 text-xs font-medium capitalize transition',
+                'cursor-pointer rounded-full px-3 py-1 text-xs font-medium capitalize transition',
                 mode === m
                   ? 'bg-amber-500 text-zinc-950'
                   : 'bg-zinc-200 text-zinc-700 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700',
@@ -509,21 +503,10 @@ export default function LibraryBrowser() {
             </button>
           ))}
         </div>
-        <div className="space-y-2 pt-3">
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">MusicBrainz</p>
-            <span className="text-xs text-zinc-400">External song discovery</span>
-          </div>
-          <div>
-            <Link href="/musicbrainz" className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100">
-              Open MusicBrainz search
-            </Link>
-          </div>
-        </div>
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto px-2 py-2">
-        {libraryTracks.length === 0 && !showMbPanel ? (
+        {libraryTracks.length === 0 ? (
           <p className="px-2 py-6 text-center text-sm text-zinc-500">No library tracks yet. Configure folders in settings.</p>
         ) : searchActive ? (
           <div className="space-y-1">
@@ -698,7 +681,6 @@ export default function LibraryBrowser() {
                         </ul>
                       </>
                     ) : null}
-                    {/* MusicBrainz moved to dedicated page */}
                   </>
                 ) : null}
               </div>

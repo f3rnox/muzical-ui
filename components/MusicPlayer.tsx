@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
-import LibraryBrowser from '@/components/LibraryBrowser'
+import BrowsePanel from '@/components/BrowsePanel'
 import { useLibrary } from '@/components/LibraryProvider'
 
 declare global {
@@ -960,7 +960,7 @@ export default function MusicPlayer() {
           className="flex min-h-0 min-w-0 flex-col overflow-hidden max-lg:flex-2 max-lg:w-full lg:h-full lg:min-w-0 lg:shrink-0"
           style={layoutLg ? { width: libraryPanelPx, flex: '0 0 auto' } : undefined}
         >
-          <LibraryBrowser />
+          <BrowsePanel />
         </div>
         <PanelResizeHandle
           aria-label="Resize library and queue panels"
