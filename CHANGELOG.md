@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.17](https://github.com/f3rnox/muzical-ui/compare/v0.1.16...v0.1.17) (2026-05-18)
+
+
+### Features
+
+* add user playlists ([cdc1054](https://github.com/f3rnox/muzical-ui/commit/cdc1054e110bc93cd8c1e2c8b4bcf4ebf531479e))
+
 ### [0.1.16](https://github.com/f3rnox/muzical-ui/compare/v0.1.15...v0.1.16) (2026-05-18)
 
 
