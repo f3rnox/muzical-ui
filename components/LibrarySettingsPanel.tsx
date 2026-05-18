@@ -4,6 +4,7 @@ import { useLibrary } from '@/components/LibraryProvider'
 import formatLibraryRootAdded from '@/components/format-library-root-added'
 import LibraryScanOptionsSection from '@/components/LibraryScanOptionsSection'
 import LibraryStatistics from '@/components/LibraryStatistics'
+import MusicBrainzLibraryStatistics from '@/components/MusicBrainzLibraryStatistics'
 import SettingsSwitchRow from '@/components/SettingsSwitchRow'
 
 /**
@@ -21,6 +22,7 @@ export default function LibrarySettingsPanel() {
     rescanAll,
     autoRescanOnStartup,
     setAutoRescanOnStartup,
+    removeAllMusicBrainzFromLibrary,
   } = useLibrary()
 
   return (
@@ -33,6 +35,12 @@ export default function LibrarySettingsPanel() {
       </div>
 
       <LibraryStatistics roots={roots} libraryTracks={libraryTracks} />
+
+      <MusicBrainzLibraryStatistics
+        libraryTracks={libraryTracks}
+        onRemoveAll={removeAllMusicBrainzFromLibrary}
+        disabled={isScanning}
+      />
 
       {scanError ? (
         <p

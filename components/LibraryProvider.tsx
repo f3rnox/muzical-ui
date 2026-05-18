@@ -29,6 +29,8 @@ import { scanProgressLabel } from '@/lib/library/scan-progress-label'
 import { scanProgressPercent } from '@/lib/library/scan-progress-percent'
 import type { ScanProgressTick } from '@/lib/library/scan-progress-tick'
 import extractPersistedLibraryTracks from '@/lib/library/extract-persisted-library-tracks'
+import filterOutPersistedLibraryTracks from '@/lib/library/filter-out-persisted-library-tracks'
+import isPersistedLibraryTrack from '@/lib/library/is-persisted-library-track'
 import mergeScannedTracksWithSavedLibrary from '@/lib/library/merge-scanned-tracks-with-saved-library'
 import normalizeTrackForLibrarySave from '@/lib/library/normalize-track-for-library-save'
 import parsePersistedCatalogTracks from '@/lib/library/parse-persisted-catalog-tracks'
@@ -75,6 +77,7 @@ type LibraryContextValue = {
   rescanAll: () => Promise<void>
   addToQueue: (items: Track | readonly Track[]) => void
   addToLibrary: (items: Track | readonly Track[]) => void
+  removeAllMusicBrainzFromLibrary: () => void
   removeFromQueue: (queueId: string) => void
   clearQueue: () => void
   recordRecentlyPlayedTrack: (trackId: string) => void
@@ -622,6 +625,19 @@ export function LibraryProvider(props: { children: ReactNode }) {
     persistCatalogDebounced()
   }, [persistCatalogDebounced])
 
+  const removeAllMusicBrainzFromLibrary = useCallback(() => {
+    const current = libraryTracksRef.current
+    const removedIds = new Set(
+      current.filter(isPersistedLibraryTrack).map((track) => track.id),
+    )
+    if (removedIds.size === 0) return
+
+    setLibraryTracks(filterOutPersistedLibraryTracks(current))
+    setFavoriteSongIds((prev) => prev.filter((id) => !removedIds.has(id)))
+    setQueue((prev) => prev.filter((row) => !removedIds.has(row.track.id)))
+    persistCatalogDebounced()
+  }, [persistCatalogDebounced])
+
   const removeFromQueue = useCallback((queueId: string) => {
     setQueue((prev) => prev.filter((q) => q.queueId !== queueId))
   }, [])
@@ -958,6 +974,7 @@ export function LibraryProvider(props: { children: ReactNode }) {
       rescanAll,
       addToQueue,
       addToLibrary,
+      removeAllMusicBrainzFromLibrary,
       removeFromQueue,
       clearQueue,
       recordRecentlyPlayedTrack,
@@ -1001,6 +1018,7 @@ export function LibraryProvider(props: { children: ReactNode }) {
       rescanAll,
       addToQueue,
       addToLibrary,
+      removeAllMusicBrainzFromLibrary,
       removeFromQueue,
       clearQueue,
       recordRecentlyPlayedTrack,

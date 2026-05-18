@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import BrowsePanel from '@/components/BrowsePanel'
+import BrowseViewTabs from '@/components/BrowseViewTabs'
 import HiddenYoutubePlayer, {
   type HiddenYoutubePlayerHandle,
 } from '@/components/HiddenYoutubePlayer'
@@ -907,17 +908,18 @@ export default function MusicPlayer() {
         onError={(message) => setLoadError(message)}
       />
 
-      <header className="flex shrink-0 items-center justify-between border-b border-zinc-200 bg-white/90 px-6 py-4 backdrop-blur-sm dark:border-zinc-800/80 dark:bg-zinc-950/90">
-        <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-500/15 text-amber-700 ring-1 ring-amber-500/25 dark:text-amber-400 dark:ring-amber-500/30">
+      <header className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-3 border-b border-zinc-200 bg-white/90 px-6 py-3 backdrop-blur-sm dark:border-zinc-800/80 dark:bg-zinc-950/90">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-500/15 text-amber-700 ring-1 ring-amber-500/25 dark:text-amber-400 dark:ring-amber-500/30">
             <IconQueue className="h-5 w-5" />
           </div>
-          <div>
+          <div className="min-w-0">
             <h1 className="text-sm font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">Muzical</h1>
             <p className="text-xs text-zinc-500">Local library · browser playback</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <BrowseViewTabs />
+        <div className="ml-auto flex items-center gap-2">
           <Link
             href="/settings/library"
             className="hidden cursor-pointer rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-xs text-zinc-500 shadow-sm transition hover:border-zinc-300 hover:bg-zinc-100 hover:text-zinc-700 sm:inline dark:border-zinc-700/80 dark:bg-zinc-900/80 dark:text-zinc-400 dark:shadow-none dark:hover:border-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
