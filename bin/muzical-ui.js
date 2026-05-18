@@ -19,7 +19,11 @@ const child = spawn(
   {
     cwd: packageRoot,
     stdio: 'inherit',
-    env: process.env,
+    env: {
+      ...process.env,
+      // WSL/macOS often set HOSTNAME to the machine name; Next uses it in startup URLs.
+      HOSTNAME: 'localhost',
+    },
   },
 )
 
