@@ -1,44 +1,36 @@
 'use client'
 
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
-import type { AlbumMetadataFields } from '@/lib/track/apply-album-metadata-patch'
+import type { ArtistMetadataFields } from '@/lib/track/apply-artist-metadata-patch'
 
 const INPUT_CLASS =
   'mt-1 block w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 outline-none ring-accent-500/0 transition focus:border-accent-400 focus:ring-2 focus:ring-accent-500/20 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100'
 
-type AlbumMetadataEditorProps = {
+type ArtistMetadataEditorProps = {
   artist: string
-  album: string
   trackCount: number
-  multipleTrackArtists: boolean
+  albumCount: number
   hasYoutubeTracks: boolean
   saving: boolean
   saveError: string | null
-  onSave: (fields: AlbumMetadataFields) => Promise<void>
-}
-
-function fieldsEqual(a: AlbumMetadataFields, b: AlbumMetadataFields): boolean {
-  return a.artist === b.artist && a.album === b.album
+  onSave: (fields: ArtistMetadataFields) => Promise<void>
 }
 
 /**
- * Editable artist and album fields applied to every track on an album.
+ * Editable artist field applied to every track credited to this artist.
  */
-export default function AlbumMetadataEditor(props: AlbumMetadataEditorProps) {
-  const { artist, album, trackCount, multipleTrackArtists, hasYoutubeTracks, saving, saveError, onSave } =
-    props
-  const initial: AlbumMetadataFields = { artist, album }
-  const [draft, setDraft] = useState<AlbumMetadataFields>(initial)
-  const [saved, setSaved] = useState<AlbumMetadataFields>(initial)
+export default function ArtistMetadataEditor(props: ArtistMetadataEditorProps) {
+  const { artist, trackCount, albumCount, hasYoutubeTracks, saving, saveError, onSave } = props
+  const [draft, setDraft] = useState(artist)
+  const [saved, setSaved] = useState(artist)
 
   useEffect(() => {
-    const next = { artist, album }
-    setDraft(next)
-    setSaved(next)
-  }, [artist, album])
+    setDraft(artist)
+    setSaved(artist)
+  }, [artist])
 
-  const isDirty = !fieldsEqual(draft, saved)
-  const canSave = isDirty && draft.artist.trim() !== ''
+  const isDirty = draft !== saved
+  const canSave = isDirty && draft.trim() !== ''
 
   const onRevert = useCallback(() => {
     setDraft(saved)
@@ -48,47 +40,30 @@ export default function AlbumMetadataEditor(props: AlbumMetadataEditorProps) {
     async (event: FormEvent) => {
       event.preventDefault()
       if (!canSave || saving) return
-      const fields: AlbumMetadataFields = {
-        artist: draft.artist.trim(),
-        album: draft.album.trim() || saved.album,
-      }
+      const fields: ArtistMetadataFields = { artist: draft.trim() }
       await onSave(fields)
-      setSaved(fields)
-      setDraft(fields)
+      setSaved(fields.artist)
+      setDraft(fields.artist)
     },
-    [canSave, draft, onSave, saved.album, saving],
+    [canSave, draft, onSave, saving],
   )
 
   return (
     <form onSubmit={onSubmit} className="space-y-3">
       <p className="text-sm text-zinc-600 dark:text-zinc-400">
-        Updates artist and album on {trackCount} track{trackCount === 1 ? '' : 's'}. Song titles are unchanged.
+        Updates the artist on {trackCount} track{trackCount === 1 ? '' : 's'} across{' '}
+        {albumCount} album{albumCount === 1 ? '' : 's'}. Song titles and album names are unchanged.
         Saving also writes ID3 tags to each local MP3 file when write access is allowed.
       </p>
-      {multipleTrackArtists ? (
-        <p className="text-xs text-amber-700 dark:text-amber-400">
-          Tracks on this album currently have different artists; saving sets the same artist on all of them.
-        </p>
-      ) : null}
       <label className="block">
         <span className="text-xs font-medium text-zinc-500">Artist</span>
         <input
           type="text"
-          value={draft.artist}
-          onChange={(e) => setDraft((prev) => ({ ...prev, artist: e.target.value }))}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
           className={INPUT_CLASS}
           autoComplete="off"
           required
-        />
-      </label>
-      <label className="block">
-        <span className="text-xs font-medium text-zinc-500">Album</span>
-        <input
-          type="text"
-          value={draft.album}
-          onChange={(e) => setDraft((prev) => ({ ...prev, album: e.target.value }))}
-          className={INPUT_CLASS}
-          autoComplete="off"
         />
       </label>
       {hasYoutubeTracks ? (

@@ -19,4 +19,20 @@ declare global {
       mode?: "read" | "readwrite";
     }): Promise<PermissionState>;
   }
+
+  interface FileSystemFileHandle extends FileSystemHandle {
+    getFile(): Promise<File>;
+    createWritable(
+      options?: FileSystemCreateWritableOptions,
+    ): Promise<FileSystemWritableFileStream>;
+  }
+
+  interface FileSystemCreateWritableOptions {
+    keepExistingData?: boolean;
+  }
+
+  interface FileSystemWritableFileStream extends WritableStream {
+    write(data: BufferSource | Blob | string): Promise<void>;
+    close(): Promise<void>;
+  }
 }

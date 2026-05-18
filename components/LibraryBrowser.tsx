@@ -11,6 +11,7 @@ import AlbumCoverThumb from '@/components/AlbumCoverThumb'
 import FavoriteStarButton from '@/components/FavoriteStarButton'
 import LibrarySongTrackRow from '@/components/LibrarySongTrackRow'
 import AlbumMetadataDialog from '@/components/AlbumMetadataDialog'
+import ArtistMetadataDialog from '@/components/ArtistMetadataDialog'
 import TrackRowOverflowMenu from '@/components/TrackRowOverflowMenu'
 import buildAlbumOverflowMenuItems from '@/lib/library/build-album-overflow-menu-items'
 import buildArtistOverflowMenuItems from '@/lib/library/build-artist-overflow-menu-items'
@@ -283,6 +284,7 @@ export default function LibraryBrowser() {
   const [artistPick, setArtistPick] = useState<string | null>(null)
   const [albumPick, setAlbumPick] = useState<string | null>(null)
   const [albumMetadataEditKey, setAlbumMetadataEditKey] = useState<string | null>(null)
+  const [artistMetadataEditName, setArtistMetadataEditName] = useState<string | null>(null)
   const [folderRootId, setFolderRootId] = useState<string | null>(null)
   const [folderPath, setFolderPath] = useState('')
   const filtered = useMemo(() => filterTracksByQuery(libraryTracks, query), [libraryTracks, query])
@@ -353,6 +355,37 @@ export default function LibraryBrowser() {
       multipleTrackArtists: uniqueArtists.size > 1,
     }
   }, [albumPick, albumMap, roots])
+
+  const selectedArtistDetail = useMemo(() => {
+    if (artistPick === null) return null
+    const tracks = artistMap.get(artistPick) ?? []
+    let totalSec = 0
+    let withDuration = 0
+    for (const t of tracks) {
+      if (t.durationSec > 0) {
+        totalSec += t.durationSec
+        withDuration += 1
+      }
+    }
+    const rootIdSet = new Set<string>()
+    for (const t of tracks) {
+      const id = t.library?.rootId
+      if (id) rootIdSet.add(id)
+    }
+    const rootLabels = [...rootIdSet]
+      .map((id) => roots.find((r) => r.id === id)?.name ?? id)
+      .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
+    const albumKeySet = new Set(tracks.map((t) => albumCompositeKey(t.album, t.artist)))
+    return {
+      name: artistPick,
+      trackCount: tracks.length,
+      albumCount: albumKeySet.size,
+      totalSec,
+      withDurationCount: withDuration,
+      sample: tracks[0],
+      rootLabels,
+    }
+  }, [artistPick, artistMap, roots])
 
   const folderTracks = useMemo(() => {
     if (!folderRootId) return []
@@ -541,6 +574,32 @@ export default function LibraryBrowser() {
     [handleRemoveAlbumFromLibrary, openAlbumMetadataEdit],
   )
 
+  const openArtistMetadataEdit = useCallback((artistName: string) => {
+    setArtistMetadataEditName(artistName)
+  }, [])
+
+  const editingArtistMeta = useMemo(() => {
+    if (!artistMetadataEditName) return null
+    const tracks = libraryArtistMap.get(artistMetadataEditName) ?? []
+    if (tracks.length === 0) return null
+    const albumKeySet = new Set(tracks.map((t) => albumCompositeKey(t.album, t.artist)))
+    return {
+      artistName: artistMetadataEditName,
+      trackCount: tracks.length,
+      albumCount: albumKeySet.size,
+    }
+  }, [artistMetadataEditName, libraryArtistMap])
+
+  const artistOverflowMenuItems = useCallback(
+    (artistName: string) =>
+      buildArtistOverflowMenuItems({
+        artistName,
+        onRemoveArtistFromLibrary: handleRemoveArtistFromLibrary,
+        onEditArtistMetadata: openArtistMetadataEdit,
+      }),
+    [handleRemoveArtistFromLibrary, openArtistMetadataEdit],
+  )
+
   return (
     <section className="flex h-full min-h-0 flex-1 flex-col overflow-hidden border-b border-zinc-200 bg-zinc-50/80 dark:border-zinc-800 dark:bg-zinc-900/30 lg:border-b-0 lg:border-r">
       <div className="shrink-0 space-y-3 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
@@ -619,10 +678,7 @@ export default function LibraryBrowser() {
                               </button>
                               <TrackRowOverflowMenu
                                 triggerLabel={`Actions for ${hit.name}`}
-                                items={buildArtistOverflowMenuItems({
-                                  artistName: hit.name,
-                                  onRemoveArtistFromLibrary: handleRemoveArtistFromLibrary,
-                                })}
+                                items={artistOverflowMenuItems(hit.name)}
                               />
                               <FavoriteStarButton
                                 filled={isFavoriteArtist(hit.name)}
@@ -753,10 +809,7 @@ export default function LibraryBrowser() {
                   </button>
                   <TrackRowOverflowMenu
                     triggerLabel={`Actions for ${name}`}
-                    items={buildArtistOverflowMenuItems({
-                      artistName: name,
-                      onRemoveArtistFromLibrary: handleRemoveArtistFromLibrary,
-                    })}
+                    items={artistOverflowMenuItems(name)}
                   />
                   <FavoriteStarButton
                     filled={isFavoriteArtist(name)}
@@ -783,33 +836,80 @@ export default function LibraryBrowser() {
               >
                 ← Artists
               </button>
-              <div className="mb-2 flex flex-wrap items-center gap-2 px-2">
-                <button
-                  type="button"
-                  onClick={() => onAddMany(artistMap.get(artistPick) ?? [])}
-                  className="rounded-full border border-zinc-200 bg-white px-2 py-1 text-xs font-medium dark:border-zinc-700 dark:bg-zinc-900"
-                >
-                  Add all
-                </button>
-                {artistPick ? (
-                  <>
-                    <TrackRowOverflowMenu
-                      triggerLabel={`Actions for ${artistPick}`}
-                      items={buildArtistOverflowMenuItems({
-                        artistName: artistPick,
-                        onRemoveArtistFromLibrary: handleRemoveArtistFromLibrary,
-                      })}
-                    />
-                    <FavoriteStarButton
-                      filled={isFavoriteArtist(artistPick)}
-                      onPress={() => toggleFavoriteArtist(artistPick)}
-                      label={
-                        isFavoriteArtist(artistPick) ? 'Remove artist from favorites' : 'Add artist to favorites'
-                      }
-                    />
-                  </>
-                ) : null}
-              </div>
+              {selectedArtistDetail ? (
+                <div className="mb-4 border-b border-zinc-200 px-2 pb-4 dark:border-zinc-800">
+                  <div className="flex gap-4">
+                    {selectedArtistDetail.sample ? (
+                      <AlbumCoverThumb
+                        track={selectedArtistDetail.sample}
+                        className="h-22 w-22 shrink-0 overflow-hidden rounded-lg ring-1 ring-zinc-200/80 dark:ring-zinc-700/80"
+                      />
+                    ) : null}
+                    <div className="min-w-0 flex-1 py-0.5">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <h3 className="text-lg font-semibold leading-tight text-zinc-900 dark:text-zinc-50">
+                            {selectedArtistDetail.name}
+                          </h3>
+                        </div>
+                        {artistPick ? (
+                          <div className="flex shrink-0 items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => onAddMany(artistMap.get(artistPick) ?? [])}
+                              disabled={(artistMap.get(artistPick)?.length ?? 0) === 0}
+                              className="rounded-full border border-zinc-200 bg-white px-2 py-1 text-xs font-medium disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-900"
+                            >
+                              Add all
+                            </button>
+                            <TrackRowOverflowMenu
+                              triggerLabel={`Actions for ${selectedArtistDetail.name}`}
+                              items={artistOverflowMenuItems(artistPick)}
+                            />
+                            <FavoriteStarButton
+                              filled={isFavoriteArtist(artistPick)}
+                              onPress={() => toggleFavoriteArtist(artistPick)}
+                              label={
+                                isFavoriteArtist(artistPick)
+                                  ? 'Remove artist from favorites'
+                                  : 'Add artist to favorites'
+                              }
+                            />
+                          </div>
+                        ) : null}
+                      </div>
+                      <p className="mt-2 text-xs tabular-nums text-zinc-500 dark:text-zinc-400">
+                        {selectedArtistDetail.trackCount} track
+                        {selectedArtistDetail.trackCount === 1 ? '' : 's'}
+                        {selectedArtistDetail.albumCount > 0
+                          ? ` · ${selectedArtistDetail.albumCount} album${selectedArtistDetail.albumCount === 1 ? '' : 's'}`
+                          : ''}
+                        {selectedArtistDetail.totalSec > 0
+                          ? ` · ${formatDuration(selectedArtistDetail.totalSec)} total`
+                          : selectedArtistDetail.trackCount > 0
+                            ? ' · unknown total length'
+                            : ''}
+                        {selectedArtistDetail.withDurationCount > 0 &&
+                        selectedArtistDetail.withDurationCount < selectedArtistDetail.trackCount ? (
+                          <span className="text-zinc-400">
+                            {' '}
+                            ({selectedArtistDetail.withDurationCount} timed)
+                          </span>
+                        ) : null}
+                      </p>
+                      {selectedArtistDetail.rootLabels.length > 1 ? (
+                        <p className="mt-1.5 text-xs leading-snug text-zinc-500 dark:text-zinc-500">
+                          Libraries: {selectedArtistDetail.rootLabels.join(' · ')}
+                        </p>
+                      ) : selectedArtistDetail.rootLabels.length === 1 ? (
+                        <p className="mt-1.5 text-xs text-zinc-500 dark:text-zinc-500">
+                          Library: {selectedArtistDetail.rootLabels[0]}
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
               <ul className={ulSpaceYClass}>
                 {(artistMap.get(artistPick) ?? []).map((t) => (
                   <li key={t.id}>
@@ -991,10 +1091,7 @@ export default function LibraryBrowser() {
                           </button>
                           <TrackRowOverflowMenu
                             triggerLabel={`Actions for ${name}`}
-                            items={buildArtistOverflowMenuItems({
-                              artistName: name,
-                              onRemoveArtistFromLibrary: handleRemoveArtistFromLibrary,
-                            })}
+                            items={artistOverflowMenuItems(name)}
                           />
                           <FavoriteStarButton
                             filled
@@ -1200,6 +1297,18 @@ export default function LibraryBrowser() {
           onSaved={(newKey) => {
             setAlbumPick((pick) => (pick === albumMetadataEditKey ? newKey : pick))
             setAlbumMetadataEditKey(null)
+          }}
+        />
+      ) : null}
+      {editingArtistMeta ? (
+        <ArtistMetadataDialog
+          artistName={editingArtistMeta.artistName}
+          trackCount={editingArtistMeta.trackCount}
+          albumCount={editingArtistMeta.albumCount}
+          onClose={() => setArtistMetadataEditName(null)}
+          onSaved={(newName) => {
+            setArtistPick((pick) => (pick === artistMetadataEditName ? newName : pick))
+            setArtistMetadataEditName(null)
           }}
         />
       ) : null}

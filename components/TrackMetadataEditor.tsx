@@ -10,7 +10,10 @@ const INPUT_CLASS =
 
 type TrackMetadataEditorProps = {
   track: Track
-  onSave: (fields: TrackMetadataFields) => void
+  canWriteToFile: boolean
+  saving: boolean
+  saveError: string | null
+  onSave: (fields: TrackMetadataFields) => Promise<void>
 }
 
 function fieldsFromTrack(track: Track): TrackMetadataFields {
@@ -29,7 +32,7 @@ function fieldsEqual(a: TrackMetadataFields, b: TrackMetadataFields): boolean {
  * Editable title, artist, and album fields for the track details dialog.
  */
 export default function TrackMetadataEditor(props: TrackMetadataEditorProps) {
-  const { track, onSave } = props
+  const { track, canWriteToFile, saving, saveError, onSave } = props
   const [draft, setDraft] = useState<TrackMetadataFields>(() => fieldsFromTrack(track))
   const [saved, setSaved] = useState<TrackMetadataFields>(() => fieldsFromTrack(track))
 
@@ -47,20 +50,20 @@ export default function TrackMetadataEditor(props: TrackMetadataEditorProps) {
   }, [saved])
 
   const onSubmit = useCallback(
-    (event: FormEvent) => {
+    async (event: FormEvent) => {
       event.preventDefault()
-      if (!canSave) return
+      if (!canSave || saving) return
       const normalized = applyTrackMetadataPatch(track, draft)
       const fields: TrackMetadataFields = {
         title: normalized.title,
         artist: normalized.artist,
         album: normalized.album,
       }
-      onSave(fields)
+      await onSave(fields)
       setSaved(fields)
       setDraft(fields)
     },
-    [canSave, draft, onSave, track],
+    [canSave, draft, onSave, saving, track],
   )
 
   return (
@@ -98,22 +101,32 @@ export default function TrackMetadataEditor(props: TrackMetadataEditorProps) {
           autoComplete="off"
         />
       </label>
+      {canWriteToFile ? (
+        <p className="text-xs text-zinc-500">
+          Saving also writes ID3 tags to MP3 files when the library folder allows write access.
+        </p>
+      ) : null}
       {track.youtubeQuery?.trim() ? (
         <p className="text-xs text-zinc-500">
           Saving updates the YouTube search query and clears any resolved video id for this track.
         </p>
       ) : null}
+      {saveError ? (
+        <p className="text-xs text-red-600 dark:text-red-400" role="alert">
+          {saveError}
+        </p>
+      ) : null}
       <div className="flex flex-wrap gap-2 pt-1">
         <button
           type="submit"
-          disabled={!canSave}
+          disabled={!canSave || saving}
           className="rounded-full bg-accent-500 px-4 py-2 text-sm font-medium text-zinc-950 transition hover:bg-accent-400 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          Save
+          {saving ? 'Saving…' : 'Save'}
         </button>
         <button
           type="button"
-          disabled={!isDirty}
+          disabled={!isDirty || saving}
           onClick={onRevert}
           className="rounded-full border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-800 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
         >

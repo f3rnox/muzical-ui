@@ -16,7 +16,10 @@ import type { Track } from '@/types/track'
 import { formatDuration } from '@/lib/format-duration'
 import { getCoverBytesForTrack } from '@/lib/library/cover-bytes-cache'
 import ThemeToggle from '@/components/ThemeToggle'
+import AlbumCoverThumb from '@/components/AlbumCoverThumb'
 import FavoriteStarButton from '@/components/FavoriteStarButton'
+import { albumCompositeKey } from '@/lib/library/favorite-keys'
+import { groupTracksByArtist } from '@/lib/musicbrainz/group-tracks-by-artist'
 import TrackRowOverflowMenu from '@/components/TrackRowOverflowMenu'
 import buildTrackOverflowMenuItems from '@/lib/track/build-track-overflow-menu-items'
 import PanelResizeHandle from '@/components/PanelResizeHandle'
@@ -172,6 +175,23 @@ function IconShuffle(props: { className?: string }) {
   )
 }
 
+function IconChevronRight(props: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      className={props.className}
+    >
+      <path d="m9 18 6-6-6-6" />
+    </svg>
+  )
+}
+
 /**
  * Local-library player: queue from scanned folders, `<audio>` playback via object URLs.
  */
@@ -198,8 +218,16 @@ export default function MusicPlayer() {
     removeFromLibrary,
     openTrackDetails,
     favoriteSongIds,
+    favoriteArtistNames,
+    favoriteAlbumKeys,
+    isFavoriteArtist,
+    isFavoriteAlbum,
+    toggleFavoriteArtist,
+    toggleFavoriteAlbum,
     playbackRestore,
     consumePlaybackRestore,
+    playNowRequest,
+    consumePlayNowRequest,
     reportPlayback,
     isQueueReady,
     patchTrackById,
@@ -235,6 +263,7 @@ export default function MusicPlayer() {
   const queuePanelPxRef = useRef(300)
   const [dragOverQueueId, setDragOverQueueId] = useState<string | null>(null)
   const [draggingQueueId, setDraggingQueueId] = useState<string | null>(null)
+  const [favoritesSuggestionsOpen, setFavoritesSuggestionsOpen] = useState(true)
   const panelResizeSessionRef = useRef<
     | { kind: 'library-queue'; startLib: number; startQ: number }
     | { kind: 'queue-player'; startQ: number }
@@ -300,6 +329,19 @@ export default function MusicPlayer() {
   }, [playbackRestore, consumePlaybackRestore])
 
   useEffect(() => {
+    if (!playNowRequest) return
+    const { activeQueueId: nextActiveId } = playNowRequest
+    consumePlayNowRequest()
+    shuffleHistoryRef.current = []
+    void Promise.resolve().then(() => {
+      setActiveQueueId(nextActiveId)
+      setPositionSec(0)
+      setLoadError(null)
+      setIsPlaying(true)
+    })
+  }, [playNowRequest, consumePlayNowRequest])
+
+  useEffect(() => {
     const el = audioRef.current
     const pos = el && Number.isFinite(el.currentTime) ? el.currentTime : 0
     reportPlayback(activeQueueId, pos)
@@ -339,25 +381,94 @@ export default function MusicPlayer() {
     return out
   }, [recentlyPlayedTrackIds, libraryTracks])
 
+  const libraryArtistMap = useMemo(() => groupTracksByArtist(libraryTracks), [libraryTracks])
+
+  const libraryAlbumMap = useMemo(() => {
+    const m = new Map<string, Track[]>()
+    for (const t of libraryTracks) {
+      const key = albumCompositeKey(t.album, t.artist)
+      const arr = m.get(key) ?? []
+      arr.push(t)
+      m.set(key, arr)
+    }
+    for (const arr of m.values()) {
+      arr.sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base' }))
+    }
+    return m
+  }, [libraryTracks])
+
+  const favoritedArtistsList = useMemo(() => {
+    return favoriteArtistNames
+      .filter((n) => libraryArtistMap.has(n))
+      .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
+  }, [favoriteArtistNames, libraryArtistMap])
+
+  const favoritedAlbumsList = useMemo(() => {
+    return favoriteAlbumKeys
+      .filter((k) => libraryAlbumMap.has(k))
+      .sort((a, b) => {
+        const [albumA, artistA] = a.split('\u0000')
+        const [albumB, artistB] = b.split('\u0000')
+        const c = albumA.localeCompare(albumB, undefined, { sensitivity: 'base' })
+        return c !== 0 ? c : artistA.localeCompare(artistB, undefined, { sensitivity: 'base' })
+      })
+  }, [favoriteAlbumKeys, libraryAlbumMap])
+
+  const favoritedTracks = useMemo(() => {
+    const set = new Set(favoriteSongIds)
+    return libraryTracks
+      .filter((t) => set.has(t.id))
+      .sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base' }))
+  }, [libraryTracks, favoriteSongIds])
+
+  const allFavoriteTracksUnion = useMemo(() => {
+    const seen = new Set<string>()
+    const out: Track[] = []
+    const push = (t: Track): void => {
+      if (seen.has(t.id)) return
+      seen.add(t.id)
+      out.push(t)
+    }
+    for (const id of favoriteSongIds) {
+      const t = libraryTracks.find((x) => x.id === id)
+      if (t) push(t)
+    }
+    for (const name of favoriteArtistNames) {
+      const list = libraryArtistMap.get(name)
+      if (list) for (const t of list) push(t)
+    }
+    for (const k of favoriteAlbumKeys) {
+      const list = libraryAlbumMap.get(k)
+      if (list) for (const t of list) push(t)
+    }
+    out.sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base' }))
+    return out
+  }, [favoriteSongIds, favoriteArtistNames, favoriteAlbumKeys, libraryTracks, libraryArtistMap, libraryAlbumMap])
+
+  const hasFavoriteSuggestions =
+    favoritedArtistsList.length > 0 || favoritedAlbumsList.length > 0 || favoritedTracks.length > 0
+
+  const favoriteSuggestionsSummary = useMemo((): string => {
+    const bits: string[] = []
+    const nArtists = favoritedArtistsList.length
+    const nAlbums = favoritedAlbumsList.length
+    const nSongs = favoritedTracks.length
+    if (nArtists > 0) bits.push(`${nArtists} artist${nArtists === 1 ? '' : 's'}`)
+    if (nAlbums > 0) bits.push(`${nAlbums} album${nAlbums === 1 ? '' : 's'}`)
+    if (nSongs > 0) bits.push(`${nSongs} song${nSongs === 1 ? '' : 's'}`)
+    return bits.join(' · ')
+  }, [favoritedArtistsList.length, favoritedAlbumsList.length, favoritedTracks.length])
+
   const suggestedTracks = useMemo(() => {
     if (libraryTracks.length === 0) return []
-    const byId = new Map<string, Track>()
-    for (const t of libraryTracks) byId.set(t.id, t)
-
     const seen = new Set<string>()
     const out: Track[] = []
 
     for (const t of recentlyPlayedTracks) {
       seen.add(t.id)
     }
-
     for (const id of favoriteSongIds) {
-      const t = byId.get(id)
-      if (!t) continue
-      if (seen.has(t.id)) continue
-      seen.add(t.id)
-      out.push(t)
-      if (out.length >= 12) return out
+      seen.add(id)
     }
 
     for (let i = 0; i < libraryTracks.length; i++) {
@@ -1024,6 +1135,165 @@ export default function MusicPlayer() {
                         </div>
                       ))}
                     </div>
+                  </div>
+                ) : null}
+
+                {hasFavoriteSuggestions ? (
+                  <div className="mt-5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setFavoritesSuggestionsOpen((open) => !open)}
+                        aria-expanded={favoritesSuggestionsOpen}
+                        className="flex min-w-0 items-center gap-1 rounded-md py-0.5 text-left text-xs font-medium uppercase tracking-wider text-zinc-500 transition hover:text-zinc-700 dark:hover:text-zinc-300"
+                      >
+                        <IconChevronRight
+                          className={[
+                            'h-3.5 w-3.5 shrink-0 text-zinc-400 transition-transform',
+                            favoritesSuggestionsOpen ? 'rotate-90' : '',
+                          ].join(' ')}
+                        />
+                        <span>Favorites</span>
+                        {!favoritesSuggestionsOpen && favoriteSuggestionsSummary ? (
+                          <span className="truncate font-normal normal-case tracking-normal text-zinc-400">
+                            · {favoriteSuggestionsSummary}
+                          </span>
+                        ) : null}
+                      </button>
+                      {allFavoriteTracksUnion.length > 0 ? (
+                        <button
+                          type="button"
+                          onClick={() => addToQueue(allFavoriteTracksUnion)}
+                          className="rounded-full border border-zinc-200 bg-white px-2.5 py-1 text-xs font-medium text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                        >
+                          Add all ({allFavoriteTracksUnion.length})
+                        </button>
+                      ) : null}
+                    </div>
+                    {favoritesSuggestionsOpen ? (
+                    <div className="mt-3 space-y-4">
+                    {favoritedArtistsList.length > 0 ? (
+                      <div>
+                        <p className="mb-2 text-[11px] font-medium uppercase tracking-wider text-zinc-400">Artists</p>
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                          {favoritedArtistsList.map((name) => {
+                            const tracks = libraryArtistMap.get(name) ?? []
+                            return (
+                              <div
+                                key={name}
+                                className={`flex min-w-0 items-center ${emptyQueueCardGapClass} rounded-xl border border-zinc-200 bg-white ${emptyQueueCardPadClass} shadow-sm dark:border-zinc-800 dark:bg-zinc-950/40 dark:shadow-none`}
+                              >
+                                <div className="min-w-0 flex-1">
+                                  <p className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">{name}</p>
+                                  <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                                    {tracks.length} track{tracks.length === 1 ? '' : 's'}
+                                  </p>
+                                </div>
+                                <div className="flex shrink-0 items-center gap-2">
+                                  <FavoriteStarButton
+                                    className="rounded-full"
+                                    filled={isFavoriteArtist(name)}
+                                    onPress={() => toggleFavoriteArtist(name)}
+                                    label="Remove artist from favorites"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => addToQueue(tracks)}
+                                    disabled={tracks.length === 0}
+                                    className="shrink-0 rounded-full bg-accent-500/15 px-2.5 py-1 text-xs font-medium text-accent-800 ring-1 ring-accent-500/25 transition hover:bg-accent-500/25 disabled:opacity-40 dark:text-accent-300 dark:ring-accent-500/40"
+                                  >
+                                    Add all
+                                  </button>
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    ) : null}
+                    {favoritedAlbumsList.length > 0 ? (
+                      <div>
+                        <p className="mb-2 text-[11px] font-medium uppercase tracking-wider text-zinc-400">Albums</p>
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                          {favoritedAlbumsList.map((key) => {
+                            const [album, artist] = key.split('\u0000')
+                            const tracks = libraryAlbumMap.get(key) ?? []
+                            const sample = tracks[0]
+                            return (
+                              <div
+                                key={key}
+                                className={`flex min-w-0 items-center ${emptyQueueCardGapClass} rounded-xl border border-zinc-200 bg-white ${emptyQueueCardPadClass} shadow-sm dark:border-zinc-800 dark:bg-zinc-950/40 dark:shadow-none`}
+                              >
+                                <AlbumCoverThumb track={sample} className="h-10 w-10 shrink-0 rounded-md" />
+                                <div className="min-w-0 flex-1">
+                                  <p className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">{album}</p>
+                                  <p className="truncate text-xs text-zinc-500 dark:text-zinc-400">{artist}</p>
+                                  <p className="text-[11px] text-zinc-400 dark:text-zinc-500">
+                                    {tracks.length} track{tracks.length === 1 ? '' : 's'}
+                                  </p>
+                                </div>
+                                <div className="flex shrink-0 items-center gap-2">
+                                  <FavoriteStarButton
+                                    className="rounded-full"
+                                    filled={isFavoriteAlbum(key)}
+                                    onPress={() => toggleFavoriteAlbum(key)}
+                                    label="Remove album from favorites"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => addToQueue(tracks)}
+                                    disabled={tracks.length === 0}
+                                    className="shrink-0 rounded-full bg-accent-500/15 px-2.5 py-1 text-xs font-medium text-accent-800 ring-1 ring-accent-500/25 transition hover:bg-accent-500/25 disabled:opacity-40 dark:text-accent-300 dark:ring-accent-500/40"
+                                  >
+                                    Add all
+                                  </button>
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    ) : null}
+                    {favoritedTracks.length > 0 ? (
+                      <div>
+                        <p className="mb-2 text-[11px] font-medium uppercase tracking-wider text-zinc-400">Songs</p>
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                          {favoritedTracks.map((t) => (
+                            <div
+                              key={t.id}
+                              className={`flex min-w-0 items-center ${emptyQueueCardGapClass} rounded-xl border border-zinc-200 bg-white ${emptyQueueCardPadClass} shadow-sm dark:border-zinc-800 dark:bg-zinc-950/40 dark:shadow-none`}
+                            >
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">{t.title}</p>
+                                <p className="truncate text-xs text-zinc-500 dark:text-zinc-400">
+                                  {t.artist} · {t.album}
+                                </p>
+                              </div>
+                              <div className="flex shrink-0 items-center gap-2">
+                                <span className="text-[11px] tabular-nums text-zinc-400 dark:text-zinc-500">
+                                  {t.durationSec > 0 ? formatDuration(t.durationSec) : '—'}
+                                </span>
+                                <FavoriteStarButton
+                                  className="rounded-full"
+                                  filled={isFavoriteSong(t.id)}
+                                  onPress={() => toggleFavoriteTrack(t)}
+                                  label="Remove song from favorites"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => addToQueue(t)}
+                                  className="shrink-0 rounded-full bg-accent-500/15 px-2.5 py-1 text-xs font-medium text-accent-800 ring-1 ring-accent-500/25 transition hover:bg-accent-500/25 dark:text-accent-300 dark:ring-accent-500/40"
+                                >
+                                  Add
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                    </div>
+                    ) : null}
                   </div>
                 ) : null}
 

@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      browser-id3-writer:
+        specifier: ^6.3.1
+        version: 6.3.1
       music-metadata:
         specifier: ^11.12.3
         version: 11.12.3
@@ -1450,6 +1453,9 @@ packages:
   braces@3.0.3:
     resolution: {integrity: sha512-yQbXgO/OSZVD2IsiLlro+7Hf6Q18EJrKSEsdoMzKePKXct3gvD8oLcOQdIzGupr5Fj+EDe8gO/lxc1BzfMpxvA==}
     engines: {node: '>=8'}
+
+  browser-id3-writer@6.3.1:
+    resolution: {integrity: sha512-sRA4Uq9Q3NsmXiVpLvIDxzomtgCdbw6SY85A6fw7dUQGRVoOBg1/buFv6spPhYiSo6FlVtN5OJQTvvhbmfx9rQ==}
 
   browserslist@4.28.2:
     resolution: {integrity: sha512-48xSriZYYg+8qXna9kwqjIVzuQxi+KYWp2+5nCYnYKPTr0LvD89Jqk2Or5ogxz0NUMfIjhh2lIUX/LyX9B4oIg==}
@@ -5360,6 +5366,8 @@ snapshots:
   braces@3.0.3:
     dependencies:
       fill-range: 7.1.1
+
+  browser-id3-writer@6.3.1: {}
 
   browserslist@4.28.2:
     dependencies:

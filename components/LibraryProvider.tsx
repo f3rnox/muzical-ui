@@ -38,11 +38,18 @@ import { scanProgressPercent } from '@/lib/library/scan-progress-percent'
 import type { ScanProgressTick } from '@/lib/library/scan-progress-tick'
 import extractPersistedLibraryTracks from '@/lib/library/extract-persisted-library-tracks'
 import filterOutPersistedLibraryTracks from '@/lib/library/filter-out-persisted-library-tracks'
-import { albumCompositeKey } from '@/lib/library/favorite-keys'
+import { albumCompositeKey, artistDisplayName } from '@/lib/library/favorite-keys'
 import tracksMatchingAlbumKey from '@/lib/library/tracks-matching-album-key'
 import tracksMatchingArtistName from '@/lib/library/tracks-matching-artist-name'
 import applyAlbumMetadataPatch from '@/lib/track/apply-album-metadata-patch'
 import type { AlbumMetadataFields } from '@/lib/track/apply-album-metadata-patch'
+import applyArtistMetadataPatch from '@/lib/track/apply-artist-metadata-patch'
+import type { ArtistMetadataFields } from '@/lib/track/apply-artist-metadata-patch'
+import applyTrackMetadataPatch from '@/lib/track/apply-track-metadata-patch'
+import type { TrackMetadataFields } from '@/lib/track/apply-track-metadata-patch'
+import writeAudioTagsToFile from '@/lib/library/write-audio-tags-to-file'
+import writeAudioTagsToTracks from '@/lib/library/write-audio-tags-to-tracks'
+import type { WriteAudioTagsBulkResult, WriteAudioTagsResult } from '@/types/write-audio-tags-result'
 import isPersistedLibraryTrack from '@/lib/library/is-persisted-library-track'
 import mergeScannedTracksWithSavedLibrary from '@/lib/library/merge-scanned-tracks-with-saved-library'
 import normalizeTrackForLibrarySave from '@/lib/library/normalize-track-for-library-save'
@@ -73,6 +80,10 @@ export type PlaybackRestore = {
   positionSec: number
 }
 
+export type PlayNowRequest = {
+  activeQueueId: string
+}
+
 type LibraryContextValue = {
   roots: LibraryRootMeta[]
   /** Full catalog from scans — not the playback queue */
@@ -86,6 +97,7 @@ type LibraryContextValue = {
   scanPreferences: LibraryScanPreferences
   rememberLastQueue: boolean
   playbackRestore: PlaybackRestore | null
+  playNowRequest: PlayNowRequest | null
   isQueueReady: boolean
   isScanning: boolean
   youtubePrefetchActive: boolean
@@ -98,6 +110,7 @@ type LibraryContextValue = {
   removeLibraryFolder: (id: string) => Promise<void>
   rescanAll: () => Promise<void>
   addToQueue: (items: Track | readonly Track[]) => void
+  playNow: (items: Track | readonly Track[]) => void
   addToLibrary: (items: Track | readonly Track[]) => void
   removeFromLibrary: (items: Track | readonly Track[]) => void
   removeAlbumFromLibrary: (albumKey: string) => void
@@ -114,12 +127,16 @@ type LibraryContextValue = {
   setScanPreferences: (next: LibraryScanPreferences) => void
   setRememberLastQueue: (next: boolean) => void
   consumePlaybackRestore: () => void
+  consumePlayNowRequest: () => void
   reportPlayback: (activeQueueId: string | null, positionSec: number) => void
   reorderQueueItems: (fromIndex: number, toIndex: number) => void
   resolveFileForTrack: (track: Track) => Promise<File | null>
   bumpTrackDuration: (trackId: string, durationSec: number) => void
   patchTrackById: (trackId: string, patch: (track: Track) => Track) => void
+  saveTrackMetadata: (trackId: string, fields: TrackMetadataFields) => Promise<WriteAudioTagsResult>
+  writeLibraryTracksToFiles: (tracks: readonly Track[]) => Promise<WriteAudioTagsBulkResult>
   patchAlbumMetadataByKey: (albumKey: string, fields: AlbumMetadataFields) => string | null
+  patchArtistMetadataByKey: (artistName: string, fields: ArtistMetadataFields) => string | null
   favoriteSongIds: readonly string[]
   favoriteArtistNames: readonly string[]
   favoriteAlbumKeys: readonly string[]
@@ -304,6 +321,7 @@ export function LibraryProvider(props: { children: ReactNode }) {
   )
   const [rememberLastQueue, setRememberLastQueueState] = useState(false)
   const [playbackRestore, setPlaybackRestore] = useState<PlaybackRestore | null>(null)
+  const [playNowRequest, setPlayNowRequest] = useState<PlayNowRequest | null>(null)
   const [catalogInitDone, setCatalogInitDone] = useState(false)
   const [isQueueReady, setIsQueueReady] = useState(false)
   const [isScanning, setIsScanning] = useState(false)
@@ -671,6 +689,32 @@ export function LibraryProvider(props: { children: ReactNode }) {
     persistCatalogDebounced()
   }, [persistCatalogDebounced])
 
+  const saveTrackMetadata = useCallback(
+    async (trackId: string, fields: TrackMetadataFields): Promise<WriteAudioTagsResult> => {
+      const id = trackId.trim()
+      if (!id) return { ok: false, reason: 'Invalid track.' }
+      const existing = libraryTracksRef.current.find((t) => t.id === id)
+      if (!existing) return { ok: false, reason: 'Track not found.' }
+      const patched = applyTrackMetadataPatch(existing, fields)
+      patchTrackById(id, () => patched)
+      if (!patched.library) return { ok: true }
+      return writeAudioTagsToFile(
+        patched,
+        { title: patched.title, artist: patched.artist, album: patched.album },
+        rootHandlesRef.current,
+        true,
+      )
+    },
+    [patchTrackById],
+  )
+
+  const writeLibraryTracksToFiles = useCallback(
+    async (tracks: readonly Track[]): Promise<WriteAudioTagsBulkResult> => {
+      return writeAudioTagsToTracks(tracks, rootHandlesRef.current, true)
+    },
+    [],
+  )
+
   const patchAlbumMetadataByKey = useCallback(
     (albumKey: string, fields: AlbumMetadataFields): string | null => {
       const key = albumKey.trim()
@@ -695,6 +739,44 @@ export function LibraryProvider(props: { children: ReactNode }) {
       })
       persistCatalogDebounced()
       return newKey
+    },
+    [persistCatalogDebounced],
+  )
+
+  const patchArtistMetadataByKey = useCallback(
+    (artistName: string, fields: ArtistMetadataFields): string | null => {
+      const oldName = artistName.trim()
+      const newName = fields.artist.trim()
+      if (!oldName || !newName) return null
+      const matchesArtist = (t: Track): boolean => artistDisplayName(t.artist) === oldName
+      const toPatch = tracksMatchingArtistName(libraryTracksRef.current, oldName)
+      if (toPatch.length === 0) return null
+      const patchTrack = (t: Track): Track =>
+        matchesArtist(t) ? applyArtistMetadataPatch(t, { artist: newName }) : t
+      setLibraryTracks((prev) => prev.map(patchTrack))
+      setQueue((prev) => prev.map((q) => ({ ...q, track: patchTrack(q.track) })))
+      setDetailsTrack((prev) => (prev && matchesArtist(prev) ? patchTrack(prev) : prev))
+      setFavoriteArtistNames((prev) => {
+        if (!prev.includes(oldName)) return prev
+        const without = prev.filter((n) => n !== oldName)
+        if (without.includes(newName)) return without
+        return [...without, newName]
+      })
+      setFavoriteAlbumKeys((prev) => {
+        let changed = false
+        const next = prev.map((key) => {
+          const parts = key.split('\u0000')
+          const album = parts[0] ?? ''
+          const artist = parts[1] ?? ''
+          if (artistDisplayName(artist) !== oldName) return key
+          changed = true
+          return albumCompositeKey(album, newName)
+        })
+        if (!changed) return prev
+        return [...new Set(next)]
+      })
+      persistCatalogDebounced()
+      return newName
     },
     [persistCatalogDebounced],
   )
@@ -739,6 +821,35 @@ export function LibraryProvider(props: { children: ReactNode }) {
       track,
     }))
     setQueue((prev) => [...prev, ...rows])
+  }, [])
+
+  const playNow = useCallback((items: Track | readonly Track[]) => {
+    const list = Array.isArray(items) ? [...items] : [items]
+    if (list.length === 0) return
+    const rows: QueuedTrack[] = list.map((track) => ({
+      queueId: crypto.randomUUID(),
+      track,
+    }))
+    const firstId = rows[0]!.queueId
+    playbackReportRef.current = { activeQueueId: firstId, positionSec: 0 }
+    setQueue(rows)
+    setPlayNowRequest({ activeQueueId: firstId })
+    if (rememberLastQueueRef.current) {
+      if (persistPlaybackTimerRef.current) {
+        clearTimeout(persistPlaybackTimerRef.current)
+        persistPlaybackTimerRef.current = null
+      }
+      writeStoredPlaybackSnapshot({
+        trackIds: list.map((t) => t.id),
+        tracks: list,
+        activeTrackId: list[0]!.id,
+        positionSec: 0,
+      })
+    }
+  }, [])
+
+  const consumePlayNowRequest = useCallback(() => {
+    setPlayNowRequest(null)
   }, [])
 
   const addToLibrary = useCallback((items: Track | readonly Track[]) => {
@@ -1043,7 +1154,7 @@ export function LibraryProvider(props: { children: ReactNode }) {
     setScanError(null)
     let pickerPromise: Promise<FileSystemDirectoryHandle>
     try {
-      pickerPromise = window.showDirectoryPicker({ mode: 'read' })
+      pickerPromise = window.showDirectoryPicker({ mode: 'readwrite' })
     } catch (e) {
       const msg = formatFsAccessErrorMessage(e)
       if (msg) setScanError(msg)
@@ -1205,6 +1316,7 @@ export function LibraryProvider(props: { children: ReactNode }) {
       scanPreferences,
       rememberLastQueue,
       playbackRestore,
+      playNowRequest,
       isQueueReady,
       isScanning,
       youtubePrefetchActive,
@@ -1217,6 +1329,7 @@ export function LibraryProvider(props: { children: ReactNode }) {
       removeLibraryFolder,
       rescanAll,
       addToQueue,
+      playNow,
       addToLibrary,
       removeFromLibrary,
       removeAlbumFromLibrary,
@@ -1233,12 +1346,16 @@ export function LibraryProvider(props: { children: ReactNode }) {
       setScanPreferences,
       setRememberLastQueue,
       consumePlaybackRestore,
+      consumePlayNowRequest,
       reportPlayback,
       reorderQueueItems,
       resolveFileForTrack,
       bumpTrackDuration,
       patchTrackById,
+      saveTrackMetadata,
+      writeLibraryTracksToFiles,
       patchAlbumMetadataByKey,
+      patchArtistMetadataByKey,
       favoriteSongIds,
       favoriteArtistNames,
       favoriteAlbumKeys,
@@ -1266,6 +1383,7 @@ export function LibraryProvider(props: { children: ReactNode }) {
       scanPreferences,
       rememberLastQueue,
       playbackRestore,
+      playNowRequest,
       isQueueReady,
       isScanning,
       youtubePrefetchActive,
@@ -1278,6 +1396,7 @@ export function LibraryProvider(props: { children: ReactNode }) {
       removeLibraryFolder,
       rescanAll,
       addToQueue,
+      playNow,
       addToLibrary,
       removeFromLibrary,
       removeAlbumFromLibrary,
@@ -1294,12 +1413,16 @@ export function LibraryProvider(props: { children: ReactNode }) {
       setScanPreferences,
       setRememberLastQueue,
       consumePlaybackRestore,
+      consumePlayNowRequest,
       reportPlayback,
       reorderQueueItems,
       resolveFileForTrack,
       bumpTrackDuration,
       patchTrackById,
+      saveTrackMetadata,
+      writeLibraryTracksToFiles,
       patchAlbumMetadataByKey,
+      patchArtistMetadataByKey,
       favoriteSongIds,
       favoriteArtistNames,
       favoriteAlbumKeys,
