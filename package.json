@@ -1,6 +1,6 @@
 {
   "name": "muzical-ui",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Local Node.JS music player with library browse, queue playback, and MusicBrainz discovery.",
   "author": "f3rnox",
   "license": "MIT",
