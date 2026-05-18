@@ -3,7 +3,7 @@ import { parseBlob } from "music-metadata";
 export type ExtractedCoverBytes = {
   mime: string;
   /** Image bytes (no object URL) for efficient reuse */
-  data: Uint8Array;
+  data: Uint8Array<ArrayBuffer>;
 };
 
 /**
@@ -33,7 +33,7 @@ export async function extractCoverBytesFromAudioFile(
 
     return {
       mime,
-      data: new Uint8Array(chosen.data),
+      data: Uint8Array.from(chosen.data),
     };
   } catch {
     return null;

@@ -64,7 +64,7 @@ export default function AlbumCoverThumb(props: AlbumCoverThumbProps) {
   return (
     <div
       className={[
-        'relative bg-gradient-to-br from-amber-200/70 via-zinc-100 to-zinc-200 dark:from-amber-900/35 dark:via-zinc-800 dark:to-zinc-900',
+        'relative bg-linear-to-br from-amber-200/70 via-zinc-100 to-zinc-200 dark:from-amber-900/35 dark:via-zinc-800 dark:to-zinc-900',
         className,
       ].join(' ')}
       aria-hidden
