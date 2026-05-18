@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.16](https://github.com/f3rnox/muzical-ui/compare/v0.1.15...v0.1.16) (2026-05-18)
+
+
+### Features
+
+* add color palettes instead of accent colors ([51cfc4f](https://github.com/f3rnox/muzical-ui/commit/51cfc4f47795213ef868f69d024e6ef85738aafd))
+
 ### [0.1.15](https://github.com/f3rnox/muzical-ui/compare/v0.1.14...v0.1.15) (2026-05-18)
 
 
