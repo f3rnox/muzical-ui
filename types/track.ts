@@ -18,6 +18,10 @@ export type Track = {
   durationSec: number;
   /** Stream URL once API serves files or signed URLs */
   audioUrl?: string | null;
+  /** YouTube search query for browser playback */
+  youtubeQuery?: string;
+  /** Origin source for the track */
+  source?: 'library' | 'musicbrainz' | 'youtube';
   /** Set when the row comes from a configured local scan directory */
   library?: LibraryTrackRef;
 };

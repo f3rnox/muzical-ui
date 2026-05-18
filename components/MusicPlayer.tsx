@@ -4,6 +4,13 @@ import Link from 'next/link'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import LibraryBrowser from '@/components/LibraryBrowser'
 import { useLibrary } from '@/components/LibraryProvider'
+
+declare global {
+  interface Window {
+    onYouTubeIframeAPIReady?: () => void
+    YT?: any
+  }
+}
 import type { Track } from '@/types/track'
 import { formatDuration } from '@/lib/format-duration'
 import { getCoverBytesForTrack } from '@/lib/library/cover-bytes-cache'
@@ -259,6 +266,8 @@ export default function MusicPlayer() {
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const objectUrlRef = useRef<string | null>(null)
   const coverObjectUrlRef = useRef<string | null>(null)
+  const youtubePlayerRef = useRef<any | null>(null)
+  const youtubeContainerRef = useRef<HTMLDivElement | null>(null)
   const isPlayingRef = useRef(isPlaying)
   const playbackRateRef = useRef(playbackRate)
 
@@ -548,7 +557,20 @@ export default function MusicPlayer() {
       setCoverArtUrl(null)
     })
 
-    if (!current || !current.library) {
+    if (!current || (!current.library && !current.youtubeQuery && !current.audioUrl)) {
+      const el = audioRef.current
+      if (el) {
+        el.pause()
+        el.removeAttribute('src')
+        el.load()
+      }
+      if (objectUrlRef.current) {
+        URL.revokeObjectURL(objectUrlRef.current)
+        objectUrlRef.current = null
+      }
+      return undefined
+    }
+    if (!current.library) {
       const el = audioRef.current
       if (el) {
         el.pause()
@@ -613,6 +635,127 @@ export default function MusicPlayer() {
       }
     }
   }, [current, resolveFileForTrack])
+
+  useEffect(() => {
+    const query = current?.youtubeQuery
+    if (!query) {
+      if (youtubePlayerRef.current) {
+        try {
+          youtubePlayerRef.current.destroy()
+        } catch {
+          /* ignore */
+        }
+        youtubePlayerRef.current = null
+      }
+      return undefined
+    }
+
+    const ensurePlayer = (): void => {
+      if (!window.YT?.Player || !youtubeContainerRef.current) {
+        return
+      }
+      const existingPlayer = youtubePlayerRef.current
+      const createPlayer = (): void => {
+        if (!youtubeContainerRef.current) return
+        youtubePlayerRef.current = new window.YT.Player(youtubeContainerRef.current, {
+          height: '100%',
+          width: '100%',
+          playerVars: {
+            autoplay: isPlaying ? 1 : 0,
+            controls: 1,
+            rel: 0,
+            modestbranding: 1,
+            listType: 'search',
+            list: query,
+            origin: window.location.origin,
+          },
+          events: {
+            onReady: (event: any) => {
+              try {
+                event.target.setVolume(Math.round(volume * 100))
+              } catch {
+                /* ignore */
+              }
+              if (isPlaying) {
+                event.target.playVideo()
+              }
+            },
+            onStateChange: (event: any) => {
+              if (event.data === window.YT.PlayerState.ENDED) {
+                goNext()
+              }
+            },
+          },
+        })
+      }
+
+      if (existingPlayer) {
+        try {
+          existingPlayer.loadPlaylist({ listType: 'search', list: query, index: 0, suggestedQuality: 'small' })
+          if (isPlaying) existingPlayer.playVideo()
+          else existingPlayer.pauseVideo()
+          existingPlayer.setVolume(Math.round(volume * 100))
+        } catch {
+          existingPlayer.destroy()
+          createPlayer()
+        }
+        return
+      }
+
+      createPlayer()
+    }
+
+    if (window.YT?.Player) {
+      ensurePlayer()
+    } else {
+      if (!document.getElementById('youtube-iframe-api')) {
+        const script = document.createElement('script')
+        script.id = 'youtube-iframe-api'
+        script.src = 'https://www.youtube.com/iframe_api'
+        script.async = true
+        document.body.appendChild(script)
+      }
+      const previous = window.onYouTubeIframeAPIReady
+      window.onYouTubeIframeAPIReady = () => {
+        ensurePlayer()
+        if (typeof previous === 'function') {
+          previous()
+        }
+      }
+    }
+
+    return (): void => {
+      if (!current?.youtubeQuery && youtubePlayerRef.current) {
+        try {
+          youtubePlayerRef.current.destroy()
+        } catch {
+          /* ignore */
+        }
+        youtubePlayerRef.current = null
+      }
+    }
+  }, [current?.youtubeQuery, isPlaying, volume, goNext])
+
+  useEffect(() => {
+    const player = youtubePlayerRef.current
+    if (!player || !current?.youtubeQuery) return
+    try {
+      if (isPlaying) player.playVideo()
+      else player.pauseVideo()
+    } catch {
+      /* ignore */
+    }
+  }, [isPlaying, current?.youtubeQuery])
+
+  useEffect(() => {
+    const player = youtubePlayerRef.current
+    if (!player || !current?.youtubeQuery) return
+    try {
+      player.setVolume(Math.round(volume * 100))
+    } catch {
+      /* ignore */
+    }
+  }, [volume, current?.youtubeQuery])
 
   useEffect(() => {
     const el = audioRef.current
@@ -1044,6 +1187,11 @@ export default function MusicPlayer() {
                 </div>
               )}
             </div>
+            {current?.youtubeQuery ? (
+              <div className="mt-4 overflow-hidden rounded-3xl border border-zinc-200 bg-black dark:border-zinc-800">
+                <div ref={youtubeContainerRef} className="aspect-video bg-black" />
+              </div>
+            ) : null}
             <div className="text-center">
               <p className="truncate text-lg font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
                 {current?.title ?? '—'}

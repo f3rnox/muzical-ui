@@ -49,6 +49,7 @@ type LibraryContextValue = {
   removeLibraryFolder: (id: string) => Promise<void>
   rescanAll: () => Promise<void>
   addToQueue: (items: Track | readonly Track[]) => void
+  addToLibrary: (track: Track) => void
   removeFromQueue: (queueId: string) => void
   clearQueue: () => void
   recordRecentlyPlayedTrack: (trackId: string) => void
@@ -393,6 +394,14 @@ export function LibraryProvider(props: { children: ReactNode }) {
     setQueue((prev) => [...prev, ...rows])
   }, [])
 
+  const addToLibrary = useCallback((track: Track) => {
+    setLibraryTracks((prev) => {
+      if (prev.some((item) => item.id === track.id)) return prev
+      return [...prev, track]
+    })
+    persistCatalogDebounced()
+  }, [persistCatalogDebounced])
+
   const removeFromQueue = useCallback((queueId: string) => {
     setQueue((prev) => prev.filter((q) => q.queueId !== queueId))
   }, [])
@@ -672,6 +681,7 @@ export function LibraryProvider(props: { children: ReactNode }) {
       removeLibraryFolder,
       rescanAll,
       addToQueue,
+      addToLibrary,
       removeFromQueue,
       clearQueue,
       recordRecentlyPlayedTrack,
@@ -703,6 +713,7 @@ export function LibraryProvider(props: { children: ReactNode }) {
       removeLibraryFolder,
       rescanAll,
       addToQueue,
+      addToLibrary,
       removeFromQueue,
       clearQueue,
       recordRecentlyPlayedTrack,
