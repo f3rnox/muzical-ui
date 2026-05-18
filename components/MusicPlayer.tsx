@@ -14,6 +14,7 @@ import { getCoverBytesForTrack } from '@/lib/library/cover-bytes-cache'
 import ThemeToggle from '@/components/ThemeToggle'
 import FavoriteStarButton from '@/components/FavoriteStarButton'
 import TrackRowOverflowMenu from '@/components/TrackRowOverflowMenu'
+import buildTrackOverflowMenuItems from '@/lib/track/build-track-overflow-menu-items'
 import PanelResizeHandle from '@/components/PanelResizeHandle'
 import QueueLoadingSpinner from '@/components/QueueLoadingSpinner'
 import YouTubeStreamNotification from '@/components/YouTubeStreamNotification'
@@ -239,6 +240,8 @@ export default function MusicPlayer() {
     toggleFavoriteTrack,
     addToQueue,
     addToLibrary,
+    removeFromLibrary,
+    openTrackDetails,
     favoriteSongIds,
     playbackRestore,
     consumePlaybackRestore,
@@ -910,7 +913,7 @@ export default function MusicPlayer() {
 
       <header className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-3 border-b border-zinc-200 bg-white/90 px-6 py-3 backdrop-blur-sm dark:border-zinc-800/80 dark:bg-zinc-950/90">
         <div className="flex min-w-0 items-center gap-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-500/15 text-amber-700 ring-1 ring-amber-500/25 dark:text-amber-400 dark:ring-amber-500/30">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent-500/15 text-accent-700 ring-1 ring-accent-500/25 dark:text-accent-400 dark:ring-accent-500/30">
             <IconQueue className="h-5 w-5" />
           </div>
           <div className="min-w-0">
@@ -996,7 +999,7 @@ export default function MusicPlayer() {
                   Add something to start playback.
                   <Link
                     href="/settings"
-                    className="ml-2 font-medium text-amber-700 underline-offset-2 hover:underline dark:text-amber-400"
+                    className="ml-2 font-medium text-accent-700 underline-offset-2 hover:underline dark:text-accent-400"
                   >
                     Library folders
                   </Link>
@@ -1030,7 +1033,7 @@ export default function MusicPlayer() {
                             <button
                               type="button"
                               onClick={() => addToQueue(t)}
-                              className="shrink-0 rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-medium text-amber-800 ring-1 ring-amber-500/25 transition hover:bg-amber-500/25 dark:text-amber-300 dark:ring-amber-500/40"
+                              className="shrink-0 rounded-full bg-accent-500/15 px-2.5 py-1 text-xs font-medium text-accent-800 ring-1 ring-accent-500/25 transition hover:bg-accent-500/25 dark:text-accent-300 dark:ring-accent-500/40"
                             >
                               Add
                             </button>
@@ -1058,7 +1061,7 @@ export default function MusicPlayer() {
                             }
                           }}
                           aria-label={`Add ${t.title} to queue`}
-                          className={`flex w-full min-w-0 cursor-pointer items-center text-left ${emptyQueueCardGapClass} rounded-xl border border-zinc-200 bg-white ${emptyQueueCardPadClass} shadow-sm transition hover:border-amber-400/50 hover:bg-amber-50/50 dark:border-zinc-800 dark:bg-zinc-950/40 dark:hover:border-amber-500/30 dark:hover:bg-amber-950/20 dark:shadow-none`}
+                          className={`flex w-full min-w-0 cursor-pointer items-center text-left ${emptyQueueCardGapClass} rounded-xl border border-zinc-200 bg-white ${emptyQueueCardPadClass} shadow-sm transition hover:border-accent-400/50 hover:bg-accent-50/50 dark:border-zinc-800 dark:bg-zinc-950/40 dark:hover:border-accent-500/30 dark:hover:bg-accent-950/20 dark:shadow-none`}
                         >
                           <div className="min-w-0 flex-1">
                             <p className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">{t.title}</p>
@@ -1096,8 +1099,8 @@ export default function MusicPlayer() {
                       key={row.queueId}
                       className={[
                         'group/row flex items-center gap-0',
-                        selected ? 'bg-amber-50/90 dark:bg-white/6' : '',
-                        isDropTarget ? 'ring-1 ring-amber-400/30' : '',
+                        selected ? 'bg-accent-50/90 dark:bg-white/6' : '',
+                        isDropTarget ? 'ring-1 ring-accent-400/30' : '',
                       ].join(' ')}
                       onDragOver={(e) => {
                         if (!draggingQueueId) return
@@ -1142,10 +1145,10 @@ export default function MusicPlayer() {
                         className={[
                           `flex min-w-0 flex-1 items-center ${queueRowGapClass} border-l-2 border-transparent ${queueRowPadClass} text-left transition-colors`,
                           selected
-                            ? 'border-amber-500 dark:border-amber-400'
+                            ? 'border-accent-500 dark:border-accent-400'
                             : 'hover:bg-zinc-50 dark:hover:bg-zinc-900/60',
                           'cursor-grab active:cursor-grabbing',
-                          isDropTarget ? 'border-amber-500/20 dark:border-amber-400/20' : '',
+                          isDropTarget ? 'border-accent-500/20 dark:border-accent-400/20' : '',
                         ].join(' ')}
                       >
                         <span className="w-5 shrink-0 text-right text-[11px] tabular-nums text-zinc-400 dark:text-zinc-500">
@@ -1167,7 +1170,7 @@ export default function MusicPlayer() {
                         className={[
                           'flex shrink-0 items-center border-l pr-1 pl-0.5',
                           selected
-                            ? 'border-amber-200/80 dark:border-white/8'
+                            ? 'border-accent-200/80 dark:border-white/8'
                             : 'border-zinc-200 bg-zinc-50/80 dark:border-zinc-800 dark:bg-zinc-900/40',
                         ].join(' ')}
                       >
@@ -1177,19 +1180,20 @@ export default function MusicPlayer() {
                           onPress={() => toggleFavoriteTrack(track)}
                           label={isFavoriteSong(track.id) ? 'Remove song from favorites' : 'Add song to favorites'}
                         />
-                        {isStreamTrack ? (
-                          <TrackRowOverflowMenu
-                            triggerLabel={`Actions for ${track.title}`}
-                            items={[
-                              {
-                                id: 'save',
-                                label: isSavedInLibrary ? 'In library' : 'Add to library',
-                                disabled: isSavedInLibrary,
-                                onSelect: () => addToLibrary(track),
-                              },
-                            ]}
-                          />
-                        ) : null}
+                        <TrackRowOverflowMenu
+                          triggerLabel={`Actions for ${track.title}`}
+                          items={buildTrackOverflowMenuItems({
+                            track,
+                            onViewDetails: openTrackDetails,
+                            onSave:
+                              isStreamTrack && !isSavedInLibrary
+                                ? () => addToLibrary(track)
+                                : undefined,
+                            onRemoveFromLibrary: isSavedInLibrary
+                              ? () => removeFromLibrary(track)
+                              : undefined,
+                          })}
+                        />
                         <button
                           type="button"
                           aria-label={`Remove ${track.title} from queue`}
@@ -1228,7 +1232,7 @@ export default function MusicPlayer() {
         <aside className="flex min-h-0 min-w-0 flex-1 flex-col justify-between gap-3 overflow-hidden bg-zinc-50 p-4 dark:bg-transparent lg:h-full lg:min-w-0 lg:flex-1">
           <div className="mx-auto flex w-full max-w-[280px] shrink-0 flex-col gap-4">
             <div
-              className="relative aspect-square w-full overflow-hidden rounded-2xl bg-linear-to-br from-amber-200/90 via-zinc-100 to-zinc-200 ring-1 ring-zinc-300/70 shadow-xl shadow-zinc-400/20 dark:from-amber-900/40 dark:via-zinc-800 dark:to-zinc-900 dark:ring-zinc-700/60 dark:shadow-2xl dark:shadow-black/40"
+              className="relative aspect-square w-full overflow-hidden rounded-2xl bg-linear-to-br from-accent-200/90 via-zinc-100 to-zinc-200 ring-1 ring-zinc-300/70 shadow-xl shadow-zinc-400/20 dark:from-accent-900/40 dark:via-zinc-800 dark:to-zinc-900 dark:ring-zinc-700/60 dark:shadow-2xl dark:shadow-black/40"
               aria-hidden
             >
               {coverArtUrl ? (
@@ -1241,7 +1245,7 @@ export default function MusicPlayer() {
                 />
               ) : (
                 <div className="flex h-full w-full items-center justify-center p-8">
-                  <span className="select-none text-6xl font-bold tracking-tighter text-amber-800/20 dark:text-zinc-700/90">
+                  <span className="select-none text-6xl font-bold tracking-tighter text-accent-800/20 dark:text-zinc-700/90">
                     {current?.album ? current.album.charAt(0) : '♪'}
                   </span>
                 </div>
@@ -1288,7 +1292,7 @@ export default function MusicPlayer() {
               aria-label="Seek"
             >
               <div
-                className="pointer-events-none absolute inset-y-0 left-0 rounded-full bg-linear-to-r from-amber-600 to-amber-400"
+                className="pointer-events-none absolute inset-y-0 left-0 rounded-full bg-linear-to-r from-accent-600 to-accent-400"
                 style={{
                   width: `${
                     durationSec > 0 ? (100 * positionSec) / durationSec : 0
@@ -1313,7 +1317,7 @@ export default function MusicPlayer() {
                   aria-label={isPlaying ? 'Pause' : 'Play'}
                   onClick={() => setIsPlaying((p) => !p)}
                   disabled={queue.length === 0 || !current}
-                  className="mx-0.5 flex h-12 w-12 items-center justify-center rounded-full bg-amber-500 text-zinc-950 shadow-md shadow-amber-600/20 transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-40 dark:shadow-amber-900/30"
+                  className="mx-0.5 flex h-12 w-12 items-center justify-center rounded-full bg-accent-500 text-zinc-950 shadow-md shadow-accent-600/20 transition hover:bg-accent-400 disabled:cursor-not-allowed disabled:opacity-40 dark:shadow-accent-900/30"
                 >
                   {isPlaying ? <IconPause className="h-6 w-6" /> : <IconPlay className="h-6 w-6 pl-0.5" />}
                 </button>
@@ -1337,7 +1341,7 @@ export default function MusicPlayer() {
                   step={0.01}
                   value={volume}
                   onChange={(e) => setVolume(Number(e.target.value))}
-                  className="h-1 w-full min-w-0 cursor-pointer accent-amber-500"
+                  className="h-1 w-full min-w-0 cursor-pointer accent-accent-500"
                   aria-label="Volume"
                 />
               </div>
@@ -1358,7 +1362,7 @@ export default function MusicPlayer() {
               >
                 <IconRepeatLoop dimmed={repeatMode === 'off'} className="h-5 w-5" />
                 {repeatMode === 'one' ? (
-                  <span className="absolute -right-0.5 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded bg-amber-500 px-0.5 text-[9px] font-bold leading-none text-zinc-950">
+                  <span className="absolute -right-0.5 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded bg-accent-500 px-0.5 text-[9px] font-bold leading-none text-zinc-950">
                     1
                   </span>
                 ) : null}
@@ -1371,7 +1375,7 @@ export default function MusicPlayer() {
                 className={[
                   'flex h-9 w-9 items-center justify-center rounded-full border transition',
                   shuffle
-                    ? 'border-amber-500/50 bg-amber-500/15 text-amber-800 dark:text-amber-300'
+                    ? 'border-accent-500/50 bg-accent-500/15 text-accent-800 dark:text-accent-300'
                     : 'border-zinc-200 bg-white text-zinc-600 hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:border-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-100',
                 ].join(' ')}
               >
@@ -1389,7 +1393,7 @@ export default function MusicPlayer() {
                     setPlaybackRate(v)
                     persistPlaybackRate(v)
                   }}
-                  className="cursor-pointer rounded-md border border-zinc-200 bg-white px-2 py-1 text-xs font-medium text-zinc-800 outline-none ring-amber-500/0 transition focus:border-amber-400 focus:ring-2 focus:ring-amber-500/20 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
+                  className="cursor-pointer rounded-md border border-zinc-200 bg-white px-2 py-1 text-xs font-medium text-zinc-800 outline-none ring-accent-500/0 transition focus:border-accent-400 focus:ring-2 focus:ring-accent-500/20 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
                   aria-label="Playback speed"
                 >
                   {PLAYBACK_RATES.map((r) => (

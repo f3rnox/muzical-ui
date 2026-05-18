@@ -6,6 +6,9 @@ import type { LibraryRootMeta } from '@/components/LibraryProvider'
 import type { Track } from '@/types/track'
 import AlbumCoverThumb from '@/components/AlbumCoverThumb'
 import FavoriteStarButton from '@/components/FavoriteStarButton'
+import LibrarySongTrackRow from '@/components/LibrarySongTrackRow'
+import TrackRowOverflowMenu from '@/components/TrackRowOverflowMenu'
+import buildAlbumOverflowMenuItems from '@/lib/library/build-album-overflow-menu-items'
 import { albumCompositeKey, artistDisplayName } from '@/lib/library/favorite-keys'
 import { formatDuration } from '@/lib/format-duration'
 
@@ -250,12 +253,11 @@ export default function LibraryBrowser() {
     favoriteSongIds,
     favoriteArtistNames,
     favoriteAlbumKeys,
-    isFavoriteSong,
     isFavoriteArtist,
     isFavoriteAlbum,
     toggleFavoriteArtist,
     toggleFavoriteAlbum,
-    toggleFavoriteTrack,
+    removeAlbumFromLibrary,
   } = useLibrary()
   const [mode, setMode] = useState<BrowseMode>('artist')
   const [query, setQuery] = useState('')
@@ -268,8 +270,6 @@ export default function LibraryBrowser() {
   const compact = compactLists
   const ulSpaceYClass = compact ? 'space-y-0.25' : 'space-y-0.5'
   const rowPadLgClass = compact ? 'px-2 py-2' : 'px-3 py-2.5'
-  const rowPadSmClass = compact ? 'px-1.5 py-1.5' : 'px-2 py-2'
-  const rowGapSmClass = compact ? 'gap-1.5' : 'gap-2'
   const rowGapLgClass = compact ? 'gap-2' : 'gap-3'
   const folderRowPadClass = compact ? 'py-2 pr-2 pl-5' : 'py-2.5 pr-3 pl-6'
 
@@ -483,7 +483,7 @@ export default function LibraryBrowser() {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Artists, albums, folders, or song titles…"
-          className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 shadow-sm outline-none ring-amber-500/0 transition focus:border-amber-400 focus:ring-2 focus:ring-amber-500/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100 dark:focus:border-amber-500/60"
+          className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 shadow-sm outline-none ring-accent-500/0 transition focus:border-accent-400 focus:ring-2 focus:ring-accent-500/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100 dark:focus:border-accent-500/60"
           aria-label="Search library"
         />
         <div className="flex flex-wrap gap-1">
@@ -495,7 +495,7 @@ export default function LibraryBrowser() {
               className={[
                 'cursor-pointer rounded-full px-3 py-1 text-xs font-medium capitalize transition',
                 mode === m
-                  ? 'bg-amber-500 text-zinc-950'
+                  ? 'bg-accent-500 text-zinc-950'
                   : 'bg-zinc-200 text-zinc-700 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700',
               ].join(' ')}
             >
@@ -558,7 +558,7 @@ export default function LibraryBrowser() {
                                 type="button"
                                 onClick={() => onAddMany(hit.tracks)}
                                 disabled={hit.tracks.length === 0}
-                                className="shrink-0 self-center rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-medium text-amber-800 ring-1 ring-amber-500/25 transition hover:bg-amber-500/25 disabled:opacity-40 dark:text-amber-300 dark:ring-amber-500/40"
+                                className="shrink-0 self-center rounded-full bg-accent-500/15 px-2.5 py-1 text-xs font-medium text-accent-800 ring-1 ring-accent-500/25 transition hover:bg-accent-500/25 disabled:opacity-40 dark:text-accent-300 dark:ring-accent-500/40"
                               >
                                 Add all
                               </button>
@@ -591,6 +591,13 @@ export default function LibraryBrowser() {
                                     </span>
                                   </div>
                                 </button>
+                                <TrackRowOverflowMenu
+                                  triggerLabel={`Actions for ${hit.album}`}
+                                  items={buildAlbumOverflowMenuItems({
+                                    albumKey: hit.key,
+                                    onRemoveAlbumFromLibrary: removeAlbumFromLibrary,
+                                  })}
+                                />
                                 <FavoriteStarButton
                                   filled={isFavoriteAlbum(hit.key)}
                                   onPress={() => toggleFavoriteAlbum(hit.key)}
@@ -602,7 +609,7 @@ export default function LibraryBrowser() {
                                   type="button"
                                   onClick={() => onAddMany(hit.tracks)}
                                   disabled={hit.tracks.length === 0}
-                                  className="shrink-0 self-center rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-medium text-amber-800 ring-1 ring-amber-500/25 transition hover:bg-amber-500/25 disabled:opacity-40 dark:text-amber-300 dark:ring-amber-500/40"
+                                  className="shrink-0 self-center rounded-full bg-accent-500/15 px-2.5 py-1 text-xs font-medium text-accent-800 ring-1 ring-accent-500/25 transition hover:bg-accent-500/25 disabled:opacity-40 dark:text-accent-300 dark:ring-accent-500/40"
                                 >
                                   Add all
                                 </button>
@@ -635,7 +642,7 @@ export default function LibraryBrowser() {
                                 type="button"
                                 onClick={() => onAddMany(hit.tracks)}
                                 disabled={hit.tracks.length === 0}
-                                className="shrink-0 self-center rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-medium text-amber-800 ring-1 ring-amber-500/25 transition hover:bg-amber-500/25 disabled:opacity-40 dark:text-amber-300 dark:ring-amber-500/40"
+                                className="shrink-0 self-center rounded-full bg-accent-500/15 px-2.5 py-1 text-xs font-medium text-accent-800 ring-1 ring-accent-500/25 transition hover:bg-accent-500/25 disabled:opacity-40 dark:text-accent-300 dark:ring-accent-500/40"
                               >
                                 Add all
                               </button>
@@ -650,32 +657,7 @@ export default function LibraryBrowser() {
                         <ul className={ulSpaceYClass}>
                           {searchResults.songs.map((t) => (
                             <li key={t.id}>
-                              <div
-                                className={`flex items-center ${rowGapSmClass} rounded-lg ${rowPadSmClass} hover:bg-zinc-100 dark:hover:bg-zinc-800/80`}
-                              >
-                                <div className="min-w-0 flex-1">
-                                  <p className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">{t.title}</p>
-                                  <p className="truncate text-xs text-zinc-500">
-                                    {t.artist} · {t.album}
-                                    {t.library?.relativePath ? ` · ${t.library.relativePath}` : ''}
-                                  </p>
-                                </div>
-                                <span className="shrink-0 text-xs tabular-nums text-zinc-500">
-                                  {t.durationSec > 0 ? formatDuration(t.durationSec) : '—'}
-                                </span>
-                                <FavoriteStarButton
-                                  filled={isFavoriteSong(t.id)}
-                                  onPress={() => toggleFavoriteTrack(t)}
-                                  label={isFavoriteSong(t.id) ? 'Remove song from favorites' : 'Add song to favorites'}
-                                />
-                                <button
-                                  type="button"
-                                  onClick={() => onAdd(t)}
-                                  className="shrink-0 rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-medium text-amber-800 ring-1 ring-amber-500/25 transition hover:bg-amber-500/25 dark:text-amber-300 dark:ring-amber-500/40"
-                                >
-                                  Add
-                                </button>
-                              </div>
+                              <LibrarySongTrackRow track={t} compact={compact} onAdd={onAdd} />
                             </li>
                           ))}
                         </ul>
@@ -706,7 +688,7 @@ export default function LibraryBrowser() {
                     type="button"
                     onClick={() => onAddMany(artistMap.get(name) ?? [])}
                     disabled={(artistMap.get(name)?.length ?? 0) === 0}
-                    className="shrink-0 self-center rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-medium text-amber-800 ring-1 ring-amber-500/25 transition hover:bg-amber-500/25 disabled:opacity-40 dark:text-amber-300 dark:ring-amber-500/40"
+                    className="shrink-0 self-center rounded-full bg-accent-500/15 px-2.5 py-1 text-xs font-medium text-accent-800 ring-1 ring-accent-500/25 transition hover:bg-accent-500/25 disabled:opacity-40 dark:text-accent-300 dark:ring-accent-500/40"
                   >
                     Add all
                   </button>
@@ -718,7 +700,7 @@ export default function LibraryBrowser() {
               <button
                 type="button"
                 onClick={() => setArtistPick(null)}
-                className="mb-2 px-2 text-xs font-medium text-amber-700 hover:underline dark:text-amber-400"
+                className="mb-2 px-2 text-xs font-medium text-accent-700 hover:underline dark:text-accent-400"
               >
                 ← Artists
               </button>
@@ -743,29 +725,7 @@ export default function LibraryBrowser() {
               <ul className={ulSpaceYClass}>
                 {(artistMap.get(artistPick) ?? []).map((t) => (
                   <li key={t.id}>
-                    <div
-                      className={`flex items-center ${rowGapSmClass} rounded-lg ${rowPadSmClass} hover:bg-zinc-100 dark:hover:bg-zinc-800/80`}
-                    >
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium">{t.title}</p>
-                        <p className="truncate text-xs text-zinc-500">{t.album}</p>
-                      </div>
-                      <span className="shrink-0 text-xs tabular-nums text-zinc-500">
-                        {t.durationSec > 0 ? formatDuration(t.durationSec) : '—'}
-                      </span>
-                      <FavoriteStarButton
-                        filled={isFavoriteSong(t.id)}
-                        onPress={() => toggleFavoriteTrack(t)}
-                        label={isFavoriteSong(t.id) ? 'Remove song from favorites' : 'Add song to favorites'}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => onAdd(t)}
-                        className="shrink-0 rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-medium text-amber-800 ring-1 ring-amber-500/25 dark:text-amber-300"
-                      >
-                        Add
-                      </button>
-                    </div>
+                    <LibrarySongTrackRow track={t} compact={compact} onAdd={onAdd} showArtist={false} />
                   </li>
                 ))}
               </ul>
@@ -792,6 +752,13 @@ export default function LibraryBrowser() {
                         <span className="mt-0.5 text-xs text-zinc-400">{n} track{n === 1 ? '' : 's'}</span>
                       </div>
                     </button>
+                    <TrackRowOverflowMenu
+                      triggerLabel={`Actions for ${album}`}
+                      items={buildAlbumOverflowMenuItems({
+                        albumKey: key,
+                        onRemoveAlbumFromLibrary: removeAlbumFromLibrary,
+                      })}
+                    />
                     <FavoriteStarButton
                       filled={isFavoriteAlbum(key)}
                       onPress={() => toggleFavoriteAlbum(key)}
@@ -801,7 +768,7 @@ export default function LibraryBrowser() {
                       type="button"
                       onClick={() => onAddMany(albumMap.get(key) ?? [])}
                       disabled={n === 0}
-                      className="shrink-0 self-center rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-medium text-amber-800 ring-1 ring-amber-500/25 transition hover:bg-amber-500/25 disabled:opacity-40 dark:text-amber-300 dark:ring-amber-500/40"
+                      className="shrink-0 self-center rounded-full bg-accent-500/15 px-2.5 py-1 text-xs font-medium text-accent-800 ring-1 ring-accent-500/25 transition hover:bg-accent-500/25 disabled:opacity-40 dark:text-accent-300 dark:ring-accent-500/40"
                     >
                       Add all
                     </button>
@@ -814,7 +781,7 @@ export default function LibraryBrowser() {
               <button
                 type="button"
                 onClick={() => setAlbumPick(null)}
-                className="mb-2 px-2 text-xs font-medium text-amber-700 hover:underline dark:text-amber-400"
+                className="mb-2 px-2 text-xs font-medium text-accent-700 hover:underline dark:text-accent-400"
               >
                 ← Albums
               </button>
@@ -869,39 +836,26 @@ export default function LibraryBrowser() {
                   Add all
                 </button>
                 {albumPick ? (
-                  <FavoriteStarButton
-                    filled={isFavoriteAlbum(albumPick)}
-                    onPress={() => toggleFavoriteAlbum(albumPick)}
-                    label={isFavoriteAlbum(albumPick) ? 'Remove album from favorites' : 'Add album to favorites'}
-                  />
+                  <>
+                    <TrackRowOverflowMenu
+                      triggerLabel={`Actions for ${selectedAlbumDetail?.title ?? 'album'}`}
+                      items={buildAlbumOverflowMenuItems({
+                        albumKey: albumPick,
+                        onRemoveAlbumFromLibrary: removeAlbumFromLibrary,
+                      })}
+                    />
+                    <FavoriteStarButton
+                      filled={isFavoriteAlbum(albumPick)}
+                      onPress={() => toggleFavoriteAlbum(albumPick)}
+                      label={isFavoriteAlbum(albumPick) ? 'Remove album from favorites' : 'Add album to favorites'}
+                    />
+                  </>
                 ) : null}
               </div>
               <ul className={ulSpaceYClass}>
                 {(albumMap.get(albumPick) ?? []).map((t) => (
                   <li key={t.id}>
-                    <div
-                      className={`flex items-center ${rowGapSmClass} rounded-lg ${rowPadSmClass} hover:bg-zinc-100 dark:hover:bg-zinc-800/80`}
-                    >
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium">{t.title}</p>
-                        <p className="truncate text-xs text-zinc-500">{t.artist}</p>
-                      </div>
-                      <span className="shrink-0 text-xs tabular-nums text-zinc-500">
-                        {t.durationSec > 0 ? formatDuration(t.durationSec) : '—'}
-                      </span>
-                      <FavoriteStarButton
-                        filled={isFavoriteSong(t.id)}
-                        onPress={() => toggleFavoriteTrack(t)}
-                        label={isFavoriteSong(t.id) ? 'Remove song from favorites' : 'Add song to favorites'}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => onAdd(t)}
-                        className="shrink-0 rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-medium text-amber-800 ring-1 ring-amber-500/25 dark:text-amber-300"
-                      >
-                        Add
-                      </button>
-                    </div>
+                    <LibrarySongTrackRow track={t} compact={compact} onAdd={onAdd} />
                   </li>
                 ))}
               </ul>
@@ -953,7 +907,7 @@ export default function LibraryBrowser() {
                             type="button"
                             onClick={() => onAddMany(libraryArtistMap.get(name) ?? [])}
                             disabled={(libraryArtistMap.get(name)?.length ?? 0) === 0}
-                            className="shrink-0 self-center rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-medium text-amber-800 ring-1 ring-amber-500/25 transition hover:bg-amber-500/25 disabled:opacity-40 dark:text-amber-300 dark:ring-amber-500/40"
+                            className="shrink-0 self-center rounded-full bg-accent-500/15 px-2.5 py-1 text-xs font-medium text-accent-800 ring-1 ring-accent-500/25 transition hover:bg-accent-500/25 disabled:opacity-40 dark:text-accent-300 dark:ring-accent-500/40"
                           >
                             Add all
                           </button>
@@ -991,6 +945,13 @@ export default function LibraryBrowser() {
                                 </span>
                               </div>
                             </button>
+                            <TrackRowOverflowMenu
+                              triggerLabel={`Actions for ${album}`}
+                              items={buildAlbumOverflowMenuItems({
+                                albumKey: key,
+                                onRemoveAlbumFromLibrary: removeAlbumFromLibrary,
+                              })}
+                            />
                             <FavoriteStarButton
                               filled
                               onPress={() => toggleFavoriteAlbum(key)}
@@ -1000,7 +961,7 @@ export default function LibraryBrowser() {
                               type="button"
                               onClick={() => onAddMany(list)}
                               disabled={list.length === 0}
-                              className="shrink-0 self-center rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-medium text-amber-800 ring-1 ring-amber-500/25 transition hover:bg-amber-500/25 disabled:opacity-40 dark:text-amber-300 dark:ring-amber-500/40"
+                              className="shrink-0 self-center rounded-full bg-accent-500/15 px-2.5 py-1 text-xs font-medium text-accent-800 ring-1 ring-accent-500/25 transition hover:bg-accent-500/25 disabled:opacity-40 dark:text-accent-300 dark:ring-accent-500/40"
                             >
                               Add all
                             </button>
@@ -1016,32 +977,7 @@ export default function LibraryBrowser() {
                     <ul className={ulSpaceYClass}>
                       {favoritedTracks.map((t) => (
                         <li key={t.id}>
-                          <div
-                            className={`flex items-center ${rowGapSmClass} rounded-lg ${rowPadSmClass} hover:bg-zinc-100 dark:hover:bg-zinc-800/80`}
-                          >
-                            <div className="min-w-0 flex-1">
-                              <p className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">{t.title}</p>
-                              <p className="truncate text-xs text-zinc-500">
-                                {t.artist} · {t.album}
-                                {t.library?.relativePath ? ` · ${t.library.relativePath}` : ''}
-                              </p>
-                            </div>
-                            <span className="shrink-0 text-xs tabular-nums text-zinc-500">
-                              {t.durationSec > 0 ? formatDuration(t.durationSec) : '—'}
-                            </span>
-                            <FavoriteStarButton
-                              filled
-                              onPress={() => toggleFavoriteTrack(t)}
-                              label="Remove song from favorites"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => onAdd(t)}
-                              className="shrink-0 rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-medium text-amber-800 ring-1 ring-amber-500/25 transition hover:bg-amber-500/25 dark:text-amber-300 dark:ring-amber-500/40"
-                            >
-                              Add
-                            </button>
-                          </div>
+                          <LibrarySongTrackRow track={t} compact={compact} onAdd={onAdd} />
                         </li>
                       ))}
                     </ul>
@@ -1071,7 +1007,7 @@ export default function LibraryBrowser() {
                     type="button"
                     onClick={() => onAddMany(rootTracks)}
                     disabled={rootTracks.length === 0}
-                    className="shrink-0 self-center rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-medium text-amber-800 ring-1 ring-amber-500/25 transition hover:bg-amber-500/25 disabled:opacity-40 dark:text-amber-300 dark:ring-amber-500/40"
+                    className="shrink-0 self-center rounded-full bg-accent-500/15 px-2.5 py-1 text-xs font-medium text-accent-800 ring-1 ring-accent-500/25 transition hover:bg-accent-500/25 disabled:opacity-40 dark:text-accent-300 dark:ring-accent-500/40"
                   >
                     Add all
                   </button>
@@ -1092,7 +1028,7 @@ export default function LibraryBrowser() {
                   setFolderPath(parts.join('/'))
                 }
               }}
-              className="mb-2 px-2 text-xs font-medium text-amber-700 hover:underline dark:text-amber-400"
+              className="mb-2 px-2 text-xs font-medium text-accent-700 hover:underline dark:text-accent-400"
             >
               ← {folderPath === '' ? 'Libraries' : 'Up'}
             </button>
@@ -1136,7 +1072,7 @@ export default function LibraryBrowser() {
                       type="button"
                       onClick={() => onAddMany(subtree)}
                       disabled={subtree.length === 0}
-                      className="shrink-0 self-center rounded-full bg-amber-500/15 px-2 py-1 text-[11px] font-medium text-amber-800 ring-1 ring-amber-500/25 transition hover:bg-amber-500/25 disabled:opacity-40 dark:text-amber-300 dark:ring-amber-500/40"
+                      className="shrink-0 self-center rounded-full bg-accent-500/15 px-2 py-1 text-[11px] font-medium text-accent-800 ring-1 ring-accent-500/25 transition hover:bg-accent-500/25 disabled:opacity-40 dark:text-accent-300 dark:ring-accent-500/40"
                     >
                       Add all
                     </button>
@@ -1145,30 +1081,13 @@ export default function LibraryBrowser() {
               })}
               {folderChildren.files.map((t) => (
                 <li key={t.id}>
-                  <div
-                    className={`flex items-center ${rowGapSmClass} rounded-lg ${rowPadSmClass} ${
-                      compact ? 'pl-3' : 'pl-4'
-                    } hover:bg-zinc-100 dark:hover:bg-zinc-800/80`}
-                  >
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium">{t.title}</p>
-                    </div>
-                    <span className="shrink-0 text-xs tabular-nums text-zinc-500">
-                      {t.durationSec > 0 ? formatDuration(t.durationSec) : '—'}
-                    </span>
-                    <FavoriteStarButton
-                      filled={isFavoriteSong(t.id)}
-                      onPress={() => toggleFavoriteTrack(t)}
-                      label={isFavoriteSong(t.id) ? 'Remove song from favorites' : 'Add song to favorites'}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => onAdd(t)}
-                      className="shrink-0 rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-medium text-amber-800 ring-1 ring-amber-500/25 dark:text-amber-300"
-                    >
-                      Add
-                    </button>
-                  </div>
+                  <LibrarySongTrackRow
+                    track={t}
+                    compact={compact}
+                    onAdd={onAdd}
+                    showArtist={false}
+                    indentClass={compact ? 'pl-3' : 'pl-4'}
+                  />
                 </li>
               ))}
             </ul>

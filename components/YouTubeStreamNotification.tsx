@@ -23,7 +23,7 @@ export default function YouTubeStreamNotification(props: YouTubeStreamNotificati
         <p className="mt-1 truncate text-xs text-zinc-600 dark:text-zinc-400">{props.trackTitle}</p>
       ) : null}
       <div className="mt-3 h-1 overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-800">
-        <div className="h-full w-1/3 animate-pulse rounded-full bg-amber-500 dark:bg-amber-400" />
+        <div className="h-full w-1/3 animate-pulse rounded-full bg-accent-500 dark:bg-accent-400" />
       </div>
     </div>
   )

@@ -21,7 +21,7 @@ export default function SettingsOverview() {
           <li key={item.href}>
             <Link
               href={item.href}
-              className="block rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm transition hover:border-amber-500/40 hover:bg-amber-50/30 dark:border-zinc-800 dark:bg-zinc-900/40 dark:hover:border-amber-500/30 dark:hover:bg-amber-500/5"
+              className="block rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm transition hover:border-accent-500/40 hover:bg-accent-50/30 dark:border-zinc-800 dark:bg-zinc-900/40 dark:hover:border-accent-500/30 dark:hover:bg-accent-500/5"
             >
               <span className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">{item.label}</span>
               <p className="mt-1 text-sm leading-relaxed text-zinc-600 dark:text-zinc-400">{item.description}</p>

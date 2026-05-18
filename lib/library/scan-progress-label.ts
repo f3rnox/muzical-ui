@@ -11,7 +11,11 @@ export function scanProgressLabel(tick: ScanProgressTick): string {
   }
   const total = tick.filesTotal ?? 0;
   const done = tick.filesDone ?? 0;
+  const skipped = tick.filesSkipped ?? 0;
   if (total > 0) {
+    if (skipped > 0) {
+      return `${prefix}Reading tags (${done}/${total}, ${skipped} unchanged) · ${tick.rootName}`;
+    }
     return `${prefix}Reading tags (${done}/${total}) · ${tick.rootName}`;
   }
   return `${prefix}Reading tags · ${tick.rootName}`;

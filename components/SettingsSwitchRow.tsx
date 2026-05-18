@@ -22,8 +22,8 @@ export default function SettingsSwitchRow(props: SettingsSwitchRowProps) {
         aria-checked={props.checked}
         aria-label={props.ariaLabel}
         onClick={() => props.onChange(!props.checked)}
-        className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent p-0.5 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/30 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-zinc-900 ${
-          props.checked ? 'bg-amber-500' : 'bg-zinc-300 dark:bg-zinc-600'
+        className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent p-0.5 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-500/30 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-zinc-900 ${
+          props.checked ? 'bg-accent-500' : 'bg-zinc-300 dark:bg-zinc-600'
         }`}
       >
         <span

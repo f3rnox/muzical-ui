@@ -1,7 +1,9 @@
 'use client'
 
+import { useLibrary } from '@/components/LibraryProvider'
 import TrackRowOverflowMenu from '@/components/TrackRowOverflowMenu'
 import { formatDuration } from '@/lib/format-duration'
+import buildTrackOverflowMenuItems from '@/lib/track/build-track-overflow-menu-items'
 import type { Track } from '@/types/track'
 
 type MusicBrainzTrackRowProps = {
@@ -17,6 +19,7 @@ type MusicBrainzTrackRowProps = {
  * Single MusicBrainz search result row with queue and save actions.
  */
 export default function MusicBrainzTrackRow(props: MusicBrainzTrackRowProps) {
+  const { openTrackDetails, removeFromLibrary } = useLibrary()
   const rowPadSmClass = props.compact ? 'px-1.5 py-1.5' : 'px-2 py-2'
   const rowGapSmClass = props.compact ? 'gap-1.5' : 'gap-2'
   const subtitle =
@@ -35,19 +38,19 @@ export default function MusicBrainzTrackRow(props: MusicBrainzTrackRowProps) {
       </span>
       <TrackRowOverflowMenu
         triggerLabel={`Actions for ${props.track.title}`}
-        items={[
-          {
-            id: 'save',
-            label: props.alreadySaved ? 'In library' : 'Add to library',
-            disabled: props.alreadySaved,
-            onSelect: () => props.onSave(props.track),
-          },
-        ]}
+        items={buildTrackOverflowMenuItems({
+          track: props.track,
+          onViewDetails: openTrackDetails,
+          onSave: props.alreadySaved ? undefined : () => props.onSave(props.track),
+          onRemoveFromLibrary: props.alreadySaved
+            ? () => removeFromLibrary(props.track)
+            : undefined,
+        })}
       />
       <button
         type="button"
         onClick={() => props.onQueue(props.track)}
-        className="shrink-0 cursor-pointer rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-medium text-amber-800 ring-1 ring-amber-500/25 transition hover:bg-amber-500/25 dark:text-amber-300 dark:ring-amber-500/40"
+        className="shrink-0 cursor-pointer rounded-full bg-accent-500/15 px-2.5 py-1 text-xs font-medium text-accent-800 ring-1 ring-accent-500/25 transition hover:bg-accent-500/25 dark:text-accent-300 dark:ring-accent-500/40"
       >
         Add
       </button>

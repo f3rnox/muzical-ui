@@ -19,7 +19,13 @@ const DEPTH_OPTIONS: readonly { value: number; label: string }[] = [
  * Scan depth, symlink follow, and per-extension include toggles.
  */
 export default function LibraryScanOptionsSection() {
-  const { scanPreferences, setScanPreferences, isScanning } = useLibrary()
+  const {
+    scanPreferences,
+    setScanPreferences,
+    logLibraryScanTiming,
+    setLogLibraryScanTiming,
+    isScanning,
+  } = useLibrary()
 
   const patch = (partial: Partial<LibraryScanPreferences>): void => {
     setScanPreferences({ ...scanPreferences, ...partial })
@@ -69,6 +75,16 @@ export default function LibraryScanOptionsSection() {
 
       <div className="mt-6 border-t border-zinc-200 pt-6 dark:border-zinc-800">
         <SettingsSwitchRow
+          title="Log scan timing"
+          description="Write per-file scan duration to the browser console (cached vs parsed). Useful for tuning scan performance."
+          checked={logLibraryScanTiming}
+          onChange={setLogLibraryScanTiming}
+          ariaLabel="Log per-song library scan timing to the console"
+        />
+      </div>
+
+      <div className="mt-6 border-t border-zinc-200 pt-6 dark:border-zinc-800">
+        <SettingsSwitchRow
           title="Follow symlinks"
           description="Follow directory links when the browser exposes them as folders. May increase scan time."
           checked={scanPreferences.followSymlinks}
@@ -89,7 +105,7 @@ export default function LibraryScanOptionsSection() {
             type="button"
             disabled={isScanning}
             onClick={resetExtensions}
-            className="shrink-0 text-xs font-medium text-amber-700 hover:text-amber-600 disabled:opacity-50 dark:text-amber-400 dark:hover:text-amber-300"
+            className="shrink-0 text-xs font-medium text-accent-700 hover:text-accent-600 disabled:opacity-50 dark:text-accent-400 dark:hover:text-accent-300"
           >
             Enable all
           </button>
@@ -109,7 +125,7 @@ export default function LibraryScanOptionsSection() {
                     checked={on}
                     disabled={isScanning}
                     onChange={() => toggleExtension(ext)}
-                    className="h-4 w-4 rounded border-zinc-300 text-amber-500 focus:ring-2 focus:ring-amber-500/20 dark:border-zinc-700 dark:bg-zinc-900"
+                    className="h-4 w-4 rounded border-zinc-300 text-accent-500 focus:ring-2 focus:ring-accent-500/20 dark:border-zinc-700 dark:bg-zinc-900"
                   />
                   <span className="font-mono text-xs text-zinc-800 dark:text-zinc-200">{ext}</span>
                 </label>

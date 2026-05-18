@@ -2,8 +2,9 @@ import type { Metadata } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import Script from 'next/script'
 import { LibraryProvider } from '@/components/LibraryProvider'
+import { AccentProvider } from '@/components/AccentProvider'
 import { ThemeProvider } from '@/components/ThemeProvider'
-import { getThemeInitScript } from '@/lib/theme-init-script'
+import getAppInitScript from '@/lib/app-init-script'
 import './globals.css'
 
 const geistSans = Geist({
@@ -34,13 +35,15 @@ export default function RootLayout({
     >
       <body className="flex h-full min-h-0 flex-col overflow-hidden bg-background font-sans text-foreground">
         <Script
-          id="theme-init"
+          id="app-init"
           strategy="beforeInteractive"
-          dangerouslySetInnerHTML={{ __html: getThemeInitScript() }}
+          dangerouslySetInnerHTML={{ __html: getAppInitScript() }}
         />
         <div className="flex min-h-0 flex-1 flex-col">
           <ThemeProvider>
-            <LibraryProvider>{children}</LibraryProvider>
+            <AccentProvider>
+              <LibraryProvider>{children}</LibraryProvider>
+            </AccentProvider>
           </ThemeProvider>
         </div>
       </body>

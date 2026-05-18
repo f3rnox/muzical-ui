@@ -53,7 +53,7 @@ export default function PanelResizeHandle(props: PanelResizeHandleProps) {
       className="group relative z-10 flex w-0 shrink-0 cursor-col-resize justify-center outline-none max-lg:hidden"
     >
       <div
-        className="absolute top-0 bottom-0 left-1/2 w-3 -translate-x-1/2 bg-transparent transition-colors group-hover:bg-amber-500/15 group-active:bg-amber-500/25"
+        className="absolute top-0 bottom-0 left-1/2 w-3 -translate-x-1/2 bg-transparent transition-colors group-hover:bg-accent-500/15 group-active:bg-accent-500/25"
         aria-hidden
       />
       <div

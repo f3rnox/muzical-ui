@@ -222,7 +222,7 @@ export default function MusicBrainzBrowser() {
                     type="button"
                     onClick={() => onAddMany(artistMap.get(name) ?? [])}
                     disabled={n === 0}
-                    className="shrink-0 cursor-pointer self-center rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-medium text-amber-800 ring-1 ring-amber-500/25 transition hover:bg-amber-500/25 disabled:opacity-40 dark:text-amber-300 dark:ring-amber-500/40"
+                    className="shrink-0 cursor-pointer self-center rounded-full bg-accent-500/15 px-2.5 py-1 text-xs font-medium text-accent-800 ring-1 ring-accent-500/25 transition hover:bg-accent-500/25 disabled:opacity-40 dark:text-accent-300 dark:ring-accent-500/40"
                   >
                     Add all
                   </button>
@@ -239,7 +239,7 @@ export default function MusicBrainzBrowser() {
           <button
             type="button"
             onClick={() => setArtistPick(null)}
-            className="mb-2 cursor-pointer px-2 text-xs font-medium text-amber-700 hover:underline dark:text-amber-400"
+            className="mb-2 cursor-pointer px-2 text-xs font-medium text-accent-700 hover:underline dark:text-accent-400"
           >
             ← Artists
           </button>
@@ -291,7 +291,7 @@ export default function MusicBrainzBrowser() {
                   type="button"
                   onClick={() => onAddMany(albumMap.get(key) ?? [])}
                   disabled={n === 0}
-                  className="shrink-0 cursor-pointer self-center rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-medium text-amber-800 ring-1 ring-amber-500/25 transition hover:bg-amber-500/25 disabled:opacity-40 dark:text-amber-300 dark:ring-amber-500/40"
+                  className="shrink-0 cursor-pointer self-center rounded-full bg-accent-500/15 px-2.5 py-1 text-xs font-medium text-accent-800 ring-1 ring-accent-500/25 transition hover:bg-accent-500/25 disabled:opacity-40 dark:text-accent-300 dark:ring-accent-500/40"
                 >
                   Add all
                 </button>
@@ -308,7 +308,7 @@ export default function MusicBrainzBrowser() {
         <button
           type="button"
           onClick={() => setAlbumPick(null)}
-          className="mb-2 cursor-pointer px-2 text-xs font-medium text-amber-700 hover:underline dark:text-amber-400"
+          className="mb-2 cursor-pointer px-2 text-xs font-medium text-accent-700 hover:underline dark:text-accent-400"
         >
           ← Albums
         </button>
@@ -349,7 +349,7 @@ export default function MusicBrainzBrowser() {
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
           placeholder="Songs, artists, or releases…"
-          className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 shadow-sm outline-none ring-amber-500/0 transition focus:border-amber-400 focus:ring-2 focus:ring-amber-500/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100 dark:focus:border-amber-500/60"
+          className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 shadow-sm outline-none ring-accent-500/0 transition focus:border-accent-400 focus:ring-2 focus:ring-accent-500/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100 dark:focus:border-accent-500/60"
           aria-label="Search MusicBrainz"
         />
         <div className="flex flex-wrap gap-1">
@@ -361,7 +361,7 @@ export default function MusicBrainzBrowser() {
               className={[
                 'cursor-pointer rounded-full px-3 py-1 text-xs font-medium capitalize transition',
                 mode === m
-                  ? 'bg-amber-500 text-zinc-950'
+                  ? 'bg-accent-500 text-zinc-950'
                   : 'bg-zinc-200 text-zinc-700 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700',
               ].join(' ')}
             >

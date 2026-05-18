@@ -41,7 +41,7 @@ export default function YouTubeSettingsPanel() {
             href="https://console.cloud.google.com/apis/credentials"
             target="_blank"
             rel="noopener noreferrer"
-            className="font-medium text-amber-700 underline decoration-amber-500/40 underline-offset-2 hover:text-amber-600 dark:text-amber-400"
+            className="font-medium text-accent-700 underline decoration-accent-500/40 underline-offset-2 hover:text-accent-600 dark:text-accent-400"
           >
             Google Cloud Console
           </a>{' '}
@@ -56,14 +56,14 @@ export default function YouTubeSettingsPanel() {
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}
             placeholder="AIza…"
-            className="w-full rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-2.5 font-mono text-sm text-zinc-900 outline-none ring-amber-500/30 placeholder:text-zinc-400 focus:border-amber-500/50 focus:ring-2 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
+            className="w-full rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-2.5 font-mono text-sm text-zinc-900 outline-none ring-accent-500/30 placeholder:text-zinc-400 focus:border-accent-500/50 focus:ring-2 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
           />
         </label>
         <div className="mt-4 flex flex-wrap items-center gap-3">
           <button
             type="button"
             onClick={onSave}
-            className="rounded-full bg-amber-500 px-4 py-2 text-sm font-medium text-zinc-950 shadow-sm transition hover:bg-amber-400"
+            className="rounded-full bg-accent-500 px-4 py-2 text-sm font-medium text-zinc-950 shadow-sm transition hover:bg-accent-400"
           >
             Save key
           </button>

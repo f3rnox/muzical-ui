@@ -22,9 +22,9 @@ export default async function prefetchYoutubeVideoIds(
   if (targets.length === 0 || readYoutubeDataApiBlocked()) return;
 
   const maxConcurrent =
-    typeof options.maxConcurrent === "number" && options.maxConcurrent > 0
+    typeof options.maxConcurrent === 'number' && options.maxConcurrent > 0
       ? Math.floor(options.maxConcurrent)
-      : 3;
+      : 2
   const signal = options.signal;
   let index = 0;
 

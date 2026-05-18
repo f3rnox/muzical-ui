@@ -2,11 +2,16 @@ import {
   isAudioFilename,
   stripAudioExtension,
 } from "@/lib/library/audio-filename";
+import attachLibraryFileFingerprint from "@/lib/library/attach-library-file-fingerprint";
+import buildLibraryTrackScanCache from "@/lib/library/build-library-track-scan-cache";
+import isLibraryFileUnchanged from "@/lib/library/is-library-file-unchanged";
+import logLibraryScanSongTiming from "@/lib/library/log-library-scan-song-timing";
+import readTrackLibraryFingerprint from "@/lib/library/read-track-library-fingerprint";
 import { extractTagsFromAudioFile } from "@/lib/library/read-audio-metadata";
 import type { ScanTreeOptions } from "@/types/scan-tree-options";
 import type { Track } from "@/types/track";
 
-const METADATA_PARSE_CONCURRENCY = 6;
+const METADATA_PARSE_CONCURRENCY = 8;
 
 export type PendingAudioFile = {
   rootId: string;
@@ -78,18 +83,66 @@ function folderAlbumFallback(
   return rootDisplayName;
 }
 
-async function pendingFileToTrack(
+function fallbackTrack(
   p: PendingAudioFile,
   enabledExtensions: ReadonlySet<string>,
-): Promise<Track> {
+): Track {
   const fileName = basenameFromRelativePath(p.relativePath);
   const fallbackTitle = stripAudioExtension(fileName, enabledExtensions);
   const albumFolder = folderAlbumFallback(p.relativePath, p.rootDisplayName);
+  return {
+    id: `lib:${p.rootId}:${p.relativePath}`,
+    title: fallbackTitle,
+    artist: "Unknown artist",
+    album: albumFolder,
+    durationSec: 0,
+    audioUrl: null,
+    library: { rootId: p.rootId, relativePath: p.relativePath },
+  };
+}
+
+async function pendingFileToTrack(
+  p: PendingAudioFile,
+  enabledExtensions: ReadonlySet<string>,
+  scanCache: Map<string, Track>,
+  logScanTiming: boolean,
+): Promise<Track> {
+  const trackId = `lib:${p.rootId}:${p.relativePath}`;
+  const cached = scanCache.get(trackId);
+  const cachedFingerprint = cached ? readTrackLibraryFingerprint(cached) : null;
+  const startedAt = logScanTiming ? performance.now() : 0;
+
+  const finish = (
+    outcome: "cached" | "parsed" | "error",
+    track: Track,
+  ): Track => {
+    if (logScanTiming) {
+      logLibraryScanSongTiming({
+        relativePath: p.relativePath,
+        rootDisplayName: p.rootDisplayName,
+        durationMs: performance.now() - startedAt,
+        outcome,
+      });
+    }
+    return track;
+  };
+
   try {
     const file = await p.handle.getFile();
+    if (
+      cached &&
+      cachedFingerprint &&
+      isLibraryFileUnchanged(file, cachedFingerprint)
+    ) {
+      return finish("cached", cached);
+    }
+
+    const fileName = basenameFromRelativePath(p.relativePath);
+    const fallbackTitle = stripAudioExtension(fileName, enabledExtensions);
+    const albumFolder = folderAlbumFallback(p.relativePath, p.rootDisplayName);
     const tags = await extractTagsFromAudioFile(file);
-    return {
-      id: `lib:${p.rootId}:${p.relativePath}`,
+    const track: Track = {
+      id: trackId,
       title: tags?.title ? tags.title : fallbackTitle,
       artist: tags?.artist ? tags.artist : "Unknown artist",
       album: tags?.album ? tags.album : albumFolder,
@@ -98,27 +151,26 @@ async function pendingFileToTrack(
       audioUrl: null,
       library: { rootId: p.rootId, relativePath: p.relativePath },
     };
+    return finish("parsed", attachLibraryFileFingerprint(track, file));
   } catch {
-    return {
-      id: `lib:${p.rootId}:${p.relativePath}`,
-      title: fallbackTitle,
-      artist: "Unknown artist",
-      album: albumFolder,
-      durationSec: 0,
-      audioUrl: null,
-      library: { rootId: p.rootId, relativePath: p.relativePath },
-    };
+    return finish("error", fallbackTrack(p, enabledExtensions));
   }
 }
 
 export type MetadataScanProgress = {
   filesDone: number;
   filesTotal: number;
+  filesSkipped: number;
 };
 
 export type DirectoryScanProgress =
   | { phase: "walk" }
-  | { phase: "metadata"; filesDone: number; filesTotal: number };
+  | {
+      phase: "metadata";
+      filesDone: number;
+      filesTotal: number;
+      filesSkipped: number;
+    };
 
 /**
  * Opens files in bounded parallel, parses tags, and returns `Track` rows sorted by path.
@@ -126,16 +178,19 @@ export type DirectoryScanProgress =
 export async function buildTracksFromPending(
   pending: readonly PendingAudioFile[],
   enabledExtensions: ReadonlySet<string>,
+  scanCache: Map<string, Track>,
+  logScanTiming: boolean,
   onProgress?: (progress: MetadataScanProgress) => void,
 ): Promise<Track[]> {
   if (pending.length === 0) return [];
   const tracks: Track[] = new Array(pending.length);
   let nextIndex = 0;
   let filesDone = 0;
+  let filesSkipped = 0;
   const filesTotal = pending.length;
 
   const report = (): void => {
-    onProgress?.({ filesDone, filesTotal });
+    onProgress?.({ filesDone, filesTotal, filesSkipped });
   };
 
   report();
@@ -144,10 +199,18 @@ export async function buildTracksFromPending(
     for (;;) {
       const i = nextIndex++;
       if (i >= pending.length) break;
+      const pendingFile = pending[i] as PendingAudioFile;
+      const trackId = `lib:${pendingFile.rootId}:${pendingFile.relativePath}`;
+      const hadCache = scanCache.has(trackId);
       tracks[i] = await pendingFileToTrack(
-        pending[i] as PendingAudioFile,
+        pendingFile,
         enabledExtensions,
+        scanCache,
+        logScanTiming,
       );
+      if (hadCache && tracks[i] === scanCache.get(trackId)) {
+        filesSkipped += 1;
+      }
       filesDone += 1;
       report();
     }
@@ -166,6 +229,8 @@ export async function scanDirectoryForTracks(
   rootDisplayName: string,
   dir: FileSystemDirectoryHandle,
   options: ScanTreeOptions,
+  existingTracks: readonly Track[],
+  logScanTiming: boolean,
   onProgress?: (progress: DirectoryScanProgress) => void,
 ): Promise<Track[]> {
   onProgress?.({ phase: "walk" });
@@ -180,10 +245,28 @@ export async function scanDirectoryForTracks(
     new Set<string>(),
     pending,
   );
-  onProgress?.({ phase: "metadata", filesDone: 0, filesTotal: pending.length });
+
+  const scanCache = buildLibraryTrackScanCache(
+    existingTracks.filter((t) => t.library?.rootId === rootId),
+  );
+
+  onProgress?.({
+    phase: "metadata",
+    filesDone: 0,
+    filesTotal: pending.length,
+    filesSkipped: 0,
+  });
+  if (logScanTiming && pending.length > 0) {
+    console.info(
+      `[muzical scan] ${rootDisplayName}: reading metadata for ${pending.length} file${pending.length === 1 ? "" : "s"}…`,
+    );
+  }
+
   return buildTracksFromPending(
     pending,
     options.enabledExtensions,
+    scanCache,
+    logScanTiming,
     (metadata) => {
       onProgress?.({ phase: "metadata", ...metadata });
     },

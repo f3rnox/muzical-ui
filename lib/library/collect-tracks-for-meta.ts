@@ -27,6 +27,8 @@ export async function collectTracksForMeta(
   meta: readonly LibraryRootMeta[],
   handles: ReadonlyMap<string, FileSystemDirectoryHandle>,
   scanOptions: ScanTreeOptions,
+  existingTracks: readonly Track[],
+  logScanTiming: boolean,
   onProgress?: (tick: ScanProgressTick) => void,
 ): Promise<CollectTracksResult> {
   const list: Track[] = [];
@@ -34,13 +36,23 @@ export async function collectTracksForMeta(
   let firstError: string | null = null;
   const roots = meta.filter((r) => handles.has(r.id));
   const rootCount = roots.length;
+  const scanStartedAt = logScanTiming ? performance.now() : 0;
+
+  if (logScanTiming && rootCount > 0) {
+    console.info(
+      `[muzical scan] Starting scan of ${rootCount} root${rootCount === 1 ? "" : "s"}…`,
+    );
+  }
 
   for (let rootIndex = 0; rootIndex < roots.length; rootIndex++) {
     const r = roots[rootIndex];
     const h = handles.get(r.id);
     if (!h) continue;
     const emit = (
-      partial: Pick<ScanProgressTick, "phase" | "filesDone" | "filesTotal">,
+      partial: Pick<
+        ScanProgressTick,
+        "phase" | "filesDone" | "filesTotal" | "filesSkipped"
+      >,
     ): void => {
       onProgress?.({
         rootIndex,
@@ -49,6 +61,7 @@ export async function collectTracksForMeta(
         phase: partial.phase,
         filesDone: partial.filesDone,
         filesTotal: partial.filesTotal,
+        filesSkipped: partial.filesSkipped,
       });
     };
     emit({ phase: "walk" });
@@ -58,6 +71,8 @@ export async function collectTracksForMeta(
         r.name,
         h,
         scanOptions,
+        existingTracks,
+        logScanTiming,
         (inner) => {
           if (inner.phase === "walk") {
             emit({ phase: "walk" });
@@ -66,6 +81,7 @@ export async function collectTracksForMeta(
               phase: "metadata",
               filesDone: inner.filesDone,
               filesTotal: inner.filesTotal,
+              filesSkipped: inner.filesSkipped,
             });
           }
         },
@@ -86,6 +102,13 @@ export async function collectTracksForMeta(
     const pb = b.library?.relativePath ?? b.title;
     return pa.localeCompare(pb, undefined, { sensitivity: "base" });
   });
+
+  if (logScanTiming) {
+    const elapsedMs = performance.now() - scanStartedAt;
+    console.info(
+      `[muzical scan] Finished: ${list.length} track${list.length === 1 ? "" : "s"} in ${elapsedMs.toFixed(0)} ms`,
+    );
+  }
 
   return { tracks: list, failedRootCount, firstError };
 }

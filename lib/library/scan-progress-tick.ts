@@ -6,4 +6,5 @@ export type ScanProgressTick = {
   phase: "walk" | "metadata";
   filesDone?: number;
   filesTotal?: number;
+  filesSkipped?: number;
 };

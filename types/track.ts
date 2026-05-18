@@ -4,6 +4,10 @@
 export type LibraryTrackRef = {
   rootId: string;
   relativePath: string;
+  /** `File.lastModified` when metadata was last parsed */
+  fileLastModified?: number;
+  /** `File.size` when metadata was last parsed */
+  fileSize?: number;
 };
 
 /**
@@ -23,7 +27,7 @@ export type Track = {
   /** Resolved YouTube video id (YouTube Data API v3) */
   youtubeVideoId?: string;
   /** Origin source for the track */
-  source?: 'library' | 'musicbrainz' | 'youtube';
+  source?: "library" | "musicbrainz" | "youtube";
   /** Set when the row comes from a configured local scan directory */
   library?: LibraryTrackRef;
 };

@@ -68,7 +68,7 @@ export default function AlbumCoverThumb(props: AlbumCoverThumbProps) {
   return (
     <div
       className={[
-        'relative bg-linear-to-br from-amber-200/70 via-zinc-100 to-zinc-200 dark:from-amber-900/35 dark:via-zinc-800 dark:to-zinc-900',
+        'relative bg-linear-to-br from-accent-200/70 via-zinc-100 to-zinc-200 dark:from-accent-900/35 dark:via-zinc-800 dark:to-zinc-900',
         className,
       ].join(' ')}
       aria-hidden
@@ -77,7 +77,7 @@ export default function AlbumCoverThumb(props: AlbumCoverThumbProps) {
         // eslint-disable-next-line @next/next/no-img-element -- blob URL from tags
         <img src={coverUrl} alt="" className="absolute inset-0 h-full w-full object-cover" decoding="async" />
       ) : (
-        <span className="flex h-full w-full items-center justify-center text-lg font-semibold tracking-tight text-amber-900/25 dark:text-zinc-600/90">
+        <span className="flex h-full w-full items-center justify-center text-lg font-semibold tracking-tight text-accent-900/25 dark:text-zinc-600/90">
           {letter}
         </span>
       )}

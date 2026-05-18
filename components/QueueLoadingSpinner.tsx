@@ -10,7 +10,7 @@ export default function QueueLoadingSpinner() {
       aria-label="Loading queue"
     >
       <span
-        className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-300 border-t-amber-500 dark:border-zinc-600 dark:border-t-amber-400"
+        className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-300 border-t-accent-500 dark:border-zinc-600 dark:border-t-accent-400"
         aria-hidden
       />
       <p className="text-sm text-zinc-500 dark:text-zinc-400">Loading queue…</p>

@@ -58,7 +58,7 @@ export default function LibrarySettingsPanel() {
           IndexedDB on this device so you do not have to pick them again on return visits.
         </p>
         {!hasDirectoryPicker ? (
-          <p className="mt-3 text-sm text-amber-800 dark:text-amber-300">
+          <p className="mt-3 text-sm text-accent-800 dark:text-accent-300">
             Folder selection is not available in this environment. Use Chrome or Edge on desktop.
           </p>
         ) : null}
@@ -67,7 +67,7 @@ export default function LibrarySettingsPanel() {
             type="button"
             onClick={() => addLibraryFolder()}
             disabled={!hasDirectoryPicker || isScanning}
-            className="rounded-full bg-amber-500 px-4 py-2 text-sm font-medium text-zinc-950 shadow-sm transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded-full bg-accent-500 px-4 py-2 text-sm font-medium text-zinc-950 shadow-sm transition hover:bg-accent-400 disabled:cursor-not-allowed disabled:opacity-50"
           >
             Add folder…
           </button>

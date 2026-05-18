@@ -1,7 +1,8 @@
 import {
   readCachedYoutubeVideoId,
   writeCachedYoutubeVideoId,
-} from "@/lib/youtube/youtube-video-id-cache";
+} from '@/lib/youtube/youtube-video-id-cache'
+import waitYoutubeScrapeRateLimit from '@/lib/youtube/wait-youtube-scrape-rate-limit'
 
 const VIDEO_ID_PATTERN = /"videoId":"([a-zA-Z0-9_-]{11})"/g;
 
@@ -17,9 +18,10 @@ export default async function scrapeYoutubeVideoId(
   const cached = readCachedYoutubeVideoId(q);
   if (cached) return cached;
 
-  const url = new URL("https://www.youtube.com/results");
-  url.searchParams.set("search_query", q);
+  const url = new URL('https://www.youtube.com/results')
+  url.searchParams.set('search_query', q)
 
+  await waitYoutubeScrapeRateLimit()
   const response = await fetch(url.toString(), {
     headers: {
       "User-Agent": "Mozilla/5.0 (compatible; MuzicalUI/1.0)",

@@ -6,6 +6,7 @@ import type { Track } from "@/types/track";
 export default function isPersistedLibraryTrack(track: Track): boolean {
   if (track.library) return false;
   if (track.source === "musicbrainz" || track.source === "youtube") return true;
-  if (track.id.startsWith("musicbrainz:")) return true;
+  if (track.id.startsWith("musicbrainz:") || track.id.startsWith("youtube:"))
+    return true;
   return Boolean(track.youtubeQuery?.trim());
 }

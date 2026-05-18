@@ -9,6 +9,14 @@ export default function normalizeTrackForLibrarySave(track: Track): Track {
     return { ...track, source: track.source ?? "library" };
   }
 
+  if (track.source === "youtube" || track.id.startsWith("youtube:")) {
+    return {
+      ...track,
+      source: "youtube",
+      library: undefined,
+    };
+  }
+
   if (track.source === "musicbrainz" || track.id.startsWith("musicbrainz:")) {
     return {
       ...track,

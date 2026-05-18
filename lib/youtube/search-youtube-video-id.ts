@@ -1,6 +1,7 @@
-import isYoutubeQuotaErrorMessage from "@/lib/youtube/is-youtube-quota-error-message";
-import markYoutubeDataApiBlocked from "@/lib/youtube/mark-youtube-data-api-blocked";
-import readYoutubeDataApiBlocked from "@/lib/youtube/read-youtube-data-api-blocked";
+import isYoutubeQuotaErrorMessage from '@/lib/youtube/is-youtube-quota-error-message'
+import markYoutubeDataApiBlocked from '@/lib/youtube/mark-youtube-data-api-blocked'
+import readYoutubeDataApiBlocked from '@/lib/youtube/read-youtube-data-api-blocked'
+import waitYoutubeDataApiRateLimit from '@/lib/youtube/wait-youtube-data-api-rate-limit'
 import {
   readCachedYoutubeVideoId,
   writeCachedYoutubeVideoId,
@@ -37,7 +38,8 @@ export default async function searchYoutubeVideoId(
   url.searchParams.set("q", q);
   url.searchParams.set("key", key);
 
-  const response = await fetch(url, { signal });
+  await waitYoutubeDataApiRateLimit()
+  const response = await fetch(url, { signal })
   const body = (await response.json()) as YoutubeSearchResponse;
   if (!response.ok) {
     const message = body.error?.message?.trim() ?? "";

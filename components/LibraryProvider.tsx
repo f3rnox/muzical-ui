@@ -30,12 +30,14 @@ import { scanProgressPercent } from '@/lib/library/scan-progress-percent'
 import type { ScanProgressTick } from '@/lib/library/scan-progress-tick'
 import extractPersistedLibraryTracks from '@/lib/library/extract-persisted-library-tracks'
 import filterOutPersistedLibraryTracks from '@/lib/library/filter-out-persisted-library-tracks'
+import tracksMatchingAlbumKey from '@/lib/library/tracks-matching-album-key'
 import isPersistedLibraryTrack from '@/lib/library/is-persisted-library-track'
 import mergeScannedTracksWithSavedLibrary from '@/lib/library/merge-scanned-tracks-with-saved-library'
 import normalizeTrackForLibrarySave from '@/lib/library/normalize-track-for-library-save'
 import parsePersistedCatalogTracks from '@/lib/library/parse-persisted-catalog-tracks'
 import { resolveTrackToFile } from '@/lib/library/resolve-track-file'
 import LibraryScanNotification from '@/components/LibraryScanNotification'
+import TrackDetailsDialog from '@/components/TrackDetailsDialog'
 import type { LibraryRootMeta } from '@/types/library-root-meta'
 import type { LibraryScanProgress } from '@/types/library-scan-progress'
 import type { LibraryScanPreferences } from '@/types/library-scan-preferences'
@@ -65,6 +67,7 @@ type LibraryContextValue = {
   recentlyPlayedTrackIds: readonly string[]
   compactLists: boolean
   autoRescanOnStartup: boolean
+  logLibraryScanTiming: boolean
   scanPreferences: LibraryScanPreferences
   rememberLastQueue: boolean
   playbackRestore: PlaybackRestore | null
@@ -77,12 +80,15 @@ type LibraryContextValue = {
   rescanAll: () => Promise<void>
   addToQueue: (items: Track | readonly Track[]) => void
   addToLibrary: (items: Track | readonly Track[]) => void
+  removeFromLibrary: (items: Track | readonly Track[]) => void
+  removeAlbumFromLibrary: (albumKey: string) => void
   removeAllMusicBrainzFromLibrary: () => void
   removeFromQueue: (queueId: string) => void
   clearQueue: () => void
   recordRecentlyPlayedTrack: (trackId: string) => void
   setCompactLists: (next: boolean) => void
   setAutoRescanOnStartup: (next: boolean) => void
+  setLogLibraryScanTiming: (next: boolean) => void
   setScanPreferences: (next: LibraryScanPreferences) => void
   setRememberLastQueue: (next: boolean) => void
   consumePlaybackRestore: () => void
@@ -101,6 +107,9 @@ type LibraryContextValue = {
   toggleFavoriteArtist: (name: string) => void
   toggleFavoriteAlbum: (albumKey: string) => void
   toggleFavoriteTrack: (track: Track) => void
+  detailsTrack: Track | null
+  openTrackDetails: (track: Track) => void
+  closeTrackDetails: () => void
 }
 
 const LibraryContext = createContext<LibraryContextValue | null>(null)
@@ -109,6 +118,7 @@ const STORAGE_RECENTLY_PLAYED_TRACK_IDS = 'muzical.recentlyPlayedTrackIds'
 const RECENTLY_PLAYED_LIMIT = 24
 const STORAGE_COMPACT_LISTS = 'muzical.compactLists'
 const STORAGE_AUTO_RESCAN_ON_STARTUP = 'muzical.autoRescanOnStartup'
+const STORAGE_LOG_LIBRARY_SCAN_TIMING = 'muzical.logLibraryScanTiming'
 const STORAGE_REMEMBER_LAST_QUEUE = 'muzical.rememberLastQueue'
 
 function safeReadStoredBoolean(key: string): boolean {
@@ -243,6 +253,7 @@ export function LibraryProvider(props: { children: ReactNode }) {
   const scanDismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const favoritesReadyRef = useRef(false)
   const scanPrefsRef = useRef<LibraryScanPreferences>(readStoredLibraryScanPreferences())
+  const logLibraryScanTimingRef = useRef(false)
   const rememberLastQueueRef = useRef(false)
   const queueHydratedRef = useRef(false)
   const playbackReportRef = useRef({ activeQueueId: null as string | null, positionSec: 0 })
@@ -256,6 +267,7 @@ export function LibraryProvider(props: { children: ReactNode }) {
   const [recentlyPlayedTrackIds, setRecentlyPlayedTrackIds] = useState<string[]>([])
   const [compactLists, setCompactListsState] = useState(false)
   const [autoRescanOnStartup, setAutoRescanOnStartupState] = useState(true)
+  const [logLibraryScanTiming, setLogLibraryScanTimingState] = useState(false)
   const [scanPreferences, setScanPreferencesState] = useState<LibraryScanPreferences>(
     readStoredLibraryScanPreferences,
   )
@@ -267,6 +279,7 @@ export function LibraryProvider(props: { children: ReactNode }) {
   const [scanProgress, setScanProgress] = useState<LibraryScanProgress | null>(null)
   const [scanError, setScanError] = useState<string | null>(null)
   const [hasDirectoryPicker, setHasDirectoryPicker] = useState(false)
+  const [detailsTrack, setDetailsTrack] = useState<Track | null>(null)
 
   useEffect(() => {
     void Promise.resolve().then(() => {
@@ -291,6 +304,14 @@ export function LibraryProvider(props: { children: ReactNode }) {
       setAutoRescanOnStartupState(
         safeReadStoredBooleanOrDefault(STORAGE_AUTO_RESCAN_ON_STARTUP, true),
       )
+    })
+  }, [])
+
+  useEffect(() => {
+    void Promise.resolve().then(() => {
+      const enabled = safeReadStoredBoolean(STORAGE_LOG_LIBRARY_SCAN_TIMING)
+      setLogLibraryScanTimingState(enabled)
+      logLibraryScanTimingRef.current = enabled
     })
   }, [])
 
@@ -508,7 +529,14 @@ export function LibraryProvider(props: { children: ReactNode }) {
           await reconfirmReadAccessForHandles(map, withUserActivation)
         }
         const treeOpts = scanPreferencesToTreeOptions(scanPrefsRef.current)
-        const result = await collectTracksForMeta(meta, map, treeOpts, applyScanProgressTick)
+        const result = await collectTracksForMeta(
+          meta,
+          map,
+          treeOpts,
+          libraryTracksRef.current,
+          logLibraryScanTimingRef.current,
+          applyScanProgressTick,
+        )
         setScanProgress({
           percent: 100,
           label:
@@ -625,6 +653,32 @@ export function LibraryProvider(props: { children: ReactNode }) {
     persistCatalogDebounced()
   }, [persistCatalogDebounced])
 
+  const removeFromLibrary = useCallback(
+    (items: Track | readonly Track[]) => {
+      const list = Array.isArray(items) ? items : [items]
+      const removedIds = new Set(list.map((t) => t.id).filter(Boolean))
+      if (removedIds.size === 0) return
+
+      setLibraryTracks((prev) => prev.filter((t) => !removedIds.has(t.id)))
+      setFavoriteSongIds((prev) => prev.filter((id) => !removedIds.has(id)))
+      setQueue((prev) => prev.filter((row) => !removedIds.has(row.track.id)))
+      persistCatalogDebounced()
+    },
+    [persistCatalogDebounced],
+  )
+
+  const removeAlbumFromLibrary = useCallback(
+    (albumKey: string) => {
+      const key = albumKey.trim()
+      if (!key) return
+      const toRemove = tracksMatchingAlbumKey(libraryTracksRef.current, key)
+      if (toRemove.length === 0) return
+      setFavoriteAlbumKeys((prev) => prev.filter((k) => k !== key))
+      removeFromLibrary(toRemove)
+    },
+    [removeFromLibrary],
+  )
+
   const removeAllMusicBrainzFromLibrary = useCallback(() => {
     const current = libraryTracksRef.current
     const removedIds = new Set(
@@ -677,6 +731,20 @@ export function LibraryProvider(props: { children: ReactNode }) {
   const setAutoRescanOnStartup = useCallback((next: boolean) => {
     setAutoRescanOnStartupState(next)
     safeWriteStoredBoolean(STORAGE_AUTO_RESCAN_ON_STARTUP, next)
+  }, [])
+
+  const setLogLibraryScanTiming = useCallback((next: boolean) => {
+    logLibraryScanTimingRef.current = next
+    setLogLibraryScanTimingState(next)
+    safeWriteStoredBoolean(STORAGE_LOG_LIBRARY_SCAN_TIMING, next)
+  }, [])
+
+  const openTrackDetails = useCallback((track: Track) => {
+    setDetailsTrack(track)
+  }, [])
+
+  const closeTrackDetails = useCallback(() => {
+    setDetailsTrack(null)
   }, [])
 
   const setScanPreferences = useCallback((next: LibraryScanPreferences) => {
@@ -962,6 +1030,7 @@ export function LibraryProvider(props: { children: ReactNode }) {
       recentlyPlayedTrackIds,
       compactLists,
       autoRescanOnStartup,
+      logLibraryScanTiming,
       scanPreferences,
       rememberLastQueue,
       playbackRestore,
@@ -974,12 +1043,15 @@ export function LibraryProvider(props: { children: ReactNode }) {
       rescanAll,
       addToQueue,
       addToLibrary,
+      removeFromLibrary,
+      removeAlbumFromLibrary,
       removeAllMusicBrainzFromLibrary,
       removeFromQueue,
       clearQueue,
       recordRecentlyPlayedTrack,
       setCompactLists,
       setAutoRescanOnStartup,
+      setLogLibraryScanTiming,
       setScanPreferences,
       setRememberLastQueue,
       consumePlaybackRestore,
@@ -998,6 +1070,9 @@ export function LibraryProvider(props: { children: ReactNode }) {
       toggleFavoriteArtist,
       toggleFavoriteAlbum,
       toggleFavoriteTrack,
+      detailsTrack,
+      openTrackDetails,
+      closeTrackDetails,
     }),
     [
       roots,
@@ -1006,6 +1081,7 @@ export function LibraryProvider(props: { children: ReactNode }) {
       recentlyPlayedTrackIds,
       compactLists,
       autoRescanOnStartup,
+      logLibraryScanTiming,
       scanPreferences,
       rememberLastQueue,
       playbackRestore,
@@ -1018,12 +1094,15 @@ export function LibraryProvider(props: { children: ReactNode }) {
       rescanAll,
       addToQueue,
       addToLibrary,
+      removeFromLibrary,
+      removeAlbumFromLibrary,
       removeAllMusicBrainzFromLibrary,
       removeFromQueue,
       clearQueue,
       recordRecentlyPlayedTrack,
       setCompactLists,
       setAutoRescanOnStartup,
+      setLogLibraryScanTiming,
       setScanPreferences,
       setRememberLastQueue,
       consumePlaybackRestore,
@@ -1042,6 +1121,9 @@ export function LibraryProvider(props: { children: ReactNode }) {
       toggleFavoriteArtist,
       toggleFavoriteAlbum,
       toggleFavoriteTrack,
+      detailsTrack,
+      openTrackDetails,
+      closeTrackDetails,
     ],
   )
 
@@ -1049,6 +1131,7 @@ export function LibraryProvider(props: { children: ReactNode }) {
     <LibraryContext.Provider value={value}>
       {props.children}
       <LibraryScanNotification progress={scanProgress} onDismiss={dismissScanNotification} />
+      <TrackDetailsDialog track={detailsTrack} onClose={closeTrackDetails} />
     </LibraryContext.Provider>
   )
 }

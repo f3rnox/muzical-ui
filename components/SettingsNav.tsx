@@ -24,7 +24,7 @@ export default function SettingsNav() {
             aria-current={active ? 'page' : undefined}
             className={`rounded-xl px-3 py-2.5 text-sm font-medium transition ${
               active
-                ? 'bg-amber-500/15 text-amber-900 dark:bg-amber-500/20 dark:text-amber-200'
+                ? 'bg-accent-500/15 text-accent-900 dark:bg-accent-500/20 dark:text-accent-200'
                 : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800/80 dark:hover:text-zinc-100'
             }`}
           >

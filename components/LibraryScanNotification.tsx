@@ -44,7 +44,7 @@ export default function LibraryScanNotification(props: LibraryScanNotificationPr
         className="mt-3 h-1.5 overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-800"
       >
         <div
-          className="h-full rounded-full bg-amber-500 transition-[width] duration-200 ease-out dark:bg-amber-400"
+          className="h-full rounded-full bg-accent-500 transition-[width] duration-200 ease-out dark:bg-accent-400"
           style={{ width: `${progress.percent}%` }}
         />
       </div>

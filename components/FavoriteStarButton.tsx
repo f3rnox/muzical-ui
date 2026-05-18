@@ -24,7 +24,7 @@ export default function FavoriteStarButton(props: FavoriteStarButtonProps) {
       aria-label={label}
       aria-pressed={filled}
       className={[
-        'inline-flex h-7 w-7 shrink-0 items-center justify-center self-center leading-none text-amber-600 transition hover:bg-amber-500/15 hover:text-amber-700 dark:text-amber-400 dark:hover:bg-amber-500/10 dark:hover:text-amber-300',
+        'inline-flex h-7 w-7 shrink-0 items-center justify-center self-center leading-none text-accent-600 transition hover:bg-accent-500/15 hover:text-accent-700 dark:text-accent-400 dark:hover:bg-accent-500/10 dark:hover:text-accent-300',
         className ?? 'rounded-full',
       ].join(' ')}
     >
