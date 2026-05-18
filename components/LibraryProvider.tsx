@@ -42,6 +42,7 @@ type LibraryContextValue = {
   queue: QueuedTrack[]
   recentlyPlayedTrackIds: readonly string[]
   compactLists: boolean
+  autoRescanOnStartup: boolean
   isScanning: boolean
   scanError: string | null
   hasDirectoryPicker: boolean
@@ -53,6 +54,7 @@ type LibraryContextValue = {
   clearQueue: () => void
   recordRecentlyPlayedTrack: (trackId: string) => void
   setCompactLists: (next: boolean) => void
+  setAutoRescanOnStartup: (next: boolean) => void
   reorderQueueItems: (fromIndex: number, toIndex: number) => void
   resolveFileForTrack: (track: Track) => Promise<File | null>
   bumpTrackDuration: (trackId: string, durationSec: number) => void
@@ -73,6 +75,7 @@ const LibraryContext = createContext<LibraryContextValue | null>(null)
 const STORAGE_RECENTLY_PLAYED_TRACK_IDS = 'muzical.recentlyPlayedTrackIds'
 const RECENTLY_PLAYED_LIMIT = 24
 const STORAGE_COMPACT_LISTS = 'muzical.compactLists'
+const STORAGE_AUTO_RESCAN_ON_STARTUP = 'muzical.autoRescanOnStartup'
 
 function safeReadStoredBoolean(key: string): boolean {
   if (typeof window === 'undefined') return false
@@ -83,6 +86,18 @@ function safeReadStoredBoolean(key: string): boolean {
     return parsed === true
   } catch {
     return false
+  }
+}
+
+function safeReadStoredBooleanOrDefault(key: string, defaultValue: boolean): boolean {
+  if (typeof window === 'undefined') return defaultValue
+  try {
+    const raw = window.localStorage.getItem(key)
+    if (raw === null) return defaultValue
+    const parsed: unknown = JSON.parse(raw)
+    return parsed === true
+  } catch {
+    return defaultValue
   }
 }
 
@@ -136,7 +151,7 @@ function catalogMatchesRoots(
 }
 
 const DISK_ACCESS_HINT =
-  'Use Rescan all in Library settings, or remove and add the folders again so the browser can access your music.'
+  'Use Rescan all in Settings → Library, or remove and add the folders again so the browser can access your music.'
 
 const SCAN_NOTIFICATION_DISMISS_MS = 8000
 
@@ -201,6 +216,7 @@ export function LibraryProvider(props: { children: ReactNode }) {
   const [queue, setQueue] = useState<QueuedTrack[]>([])
   const [recentlyPlayedTrackIds, setRecentlyPlayedTrackIds] = useState<string[]>([])
   const [compactLists, setCompactListsState] = useState(false)
+  const [autoRescanOnStartup, setAutoRescanOnStartupState] = useState(true)
   const [isScanning, setIsScanning] = useState(false)
   const [scanProgress, setScanProgress] = useState<LibraryScanProgress | null>(null)
   const [scanError, setScanError] = useState<string | null>(null)
@@ -221,6 +237,14 @@ export function LibraryProvider(props: { children: ReactNode }) {
   useEffect(() => {
     void Promise.resolve().then(() => {
       setCompactListsState(safeReadStoredBoolean(STORAGE_COMPACT_LISTS))
+    })
+  }, [])
+
+  useEffect(() => {
+    void Promise.resolve().then(() => {
+      setAutoRescanOnStartupState(
+        safeReadStoredBooleanOrDefault(STORAGE_AUTO_RESCAN_ON_STARTUP, true),
+      )
     })
   }, [])
 
@@ -429,6 +453,11 @@ export function LibraryProvider(props: { children: ReactNode }) {
     safeWriteStoredBoolean(STORAGE_COMPACT_LISTS, next)
   }, [])
 
+  const setAutoRescanOnStartup = useCallback((next: boolean) => {
+    setAutoRescanOnStartupState(next)
+    safeWriteStoredBoolean(STORAGE_AUTO_RESCAN_ON_STARTUP, next)
+  }, [])
+
   const resolveFileForTrack = useCallback((track: Track) => {
     return resolveTrackToFile(track, rootHandlesRef.current)
   }, [])
@@ -620,8 +649,9 @@ export function LibraryProvider(props: { children: ReactNode }) {
         }
         if (disposed) return
         const mayRescanOnLoad = meta.length > 0 && (await everyHandleHasGrantedReadAccess(map))
+        const shouldAutoRescan = safeReadStoredBooleanOrDefault(STORAGE_AUTO_RESCAN_ON_STARTUP, true)
         if (disposed) return
-        if (mayRescanOnLoad && !disposed) {
+        if (mayRescanOnLoad && shouldAutoRescan && !disposed) {
           const result = await performScan(false)
           if (disposed || !result) return
           const { tracks: next, firstError, failedRootCount } = result
@@ -665,6 +695,7 @@ export function LibraryProvider(props: { children: ReactNode }) {
       queue,
       recentlyPlayedTrackIds,
       compactLists,
+      autoRescanOnStartup,
       isScanning,
       scanError,
       hasDirectoryPicker,
@@ -676,6 +707,7 @@ export function LibraryProvider(props: { children: ReactNode }) {
       clearQueue,
       recordRecentlyPlayedTrack,
       setCompactLists,
+      setAutoRescanOnStartup,
       reorderQueueItems,
       resolveFileForTrack,
       bumpTrackDuration,
@@ -696,6 +728,7 @@ export function LibraryProvider(props: { children: ReactNode }) {
       queue,
       recentlyPlayedTrackIds,
       compactLists,
+      autoRescanOnStartup,
       isScanning,
       scanError,
       hasDirectoryPicker,
@@ -707,6 +740,7 @@ export function LibraryProvider(props: { children: ReactNode }) {
       clearQueue,
       recordRecentlyPlayedTrack,
       setCompactLists,
+      setAutoRescanOnStartup,
       reorderQueueItems,
       resolveFileForTrack,
       bumpTrackDuration,
