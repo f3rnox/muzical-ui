@@ -10,6 +10,13 @@ import {
   useState,
   type ReactNode,
 } from 'react'
+import appendRecentBrowseSearch from '@/lib/browse/append-recent-browse-search'
+import {
+  RECENT_BROWSE_SEARCHES_LIMIT,
+} from '@/lib/browse/browse-search-constants'
+import readStoredRecentBrowseSearches from '@/lib/browse/read-stored-recent-browse-searches'
+import writeStoredRecentBrowseSearches from '@/lib/browse/write-stored-recent-browse-searches'
+import type { BrowseSearchSource, RecentBrowseSearch } from '@/types/browse-search'
 import type { Track } from '@/types/track'
 import type { QueuedTrack } from '@/types/queue'
 import {
@@ -46,6 +53,7 @@ import writeStoredLibraryScanPreferences from '@/lib/library/write-stored-librar
 import scanPreferencesToTreeOptions from '@/lib/library/scan-preferences-to-tree-options'
 import readStoredPlaybackSnapshot from '@/lib/playback/read-stored-playback-snapshot'
 import writeStoredPlaybackSnapshot from '@/lib/playback/write-stored-playback-snapshot'
+import buildEmptyPlaybackSnapshot from '@/lib/playback/build-empty-playback-snapshot'
 import buildQueueFromSnapshot from '@/lib/playback/build-queue-from-snapshot'
 import collectYoutubePrefetchTargets from '@/lib/youtube/collect-youtube-prefetch-targets'
 import prefetchYoutubeVideoIds from '@/lib/youtube/prefetch-youtube-video-ids'
@@ -65,6 +73,7 @@ type LibraryContextValue = {
   libraryTracks: Track[]
   queue: QueuedTrack[]
   recentlyPlayedTrackIds: readonly string[]
+  recentBrowseSearches: readonly RecentBrowseSearch[]
   compactLists: boolean
   autoRescanOnStartup: boolean
   logLibraryScanTiming: boolean
@@ -86,6 +95,7 @@ type LibraryContextValue = {
   removeFromQueue: (queueId: string) => void
   clearQueue: () => void
   recordRecentlyPlayedTrack: (trackId: string) => void
+  recordRecentBrowseSearch: (source: BrowseSearchSource, query: string) => void
   setCompactLists: (next: boolean) => void
   setAutoRescanOnStartup: (next: boolean) => void
   setLogLibraryScanTiming: (next: boolean) => void
@@ -265,6 +275,7 @@ export function LibraryProvider(props: { children: ReactNode }) {
   const [libraryTracks, setLibraryTracks] = useState<Track[]>([])
   const [queue, setQueue] = useState<QueuedTrack[]>([])
   const [recentlyPlayedTrackIds, setRecentlyPlayedTrackIds] = useState<string[]>([])
+  const [recentBrowseSearches, setRecentBrowseSearches] = useState<RecentBrowseSearch[]>([])
   const [compactLists, setCompactListsState] = useState(false)
   const [autoRescanOnStartup, setAutoRescanOnStartupState] = useState(true)
   const [logLibraryScanTiming, setLogLibraryScanTimingState] = useState(false)
@@ -290,6 +301,14 @@ export function LibraryProvider(props: { children: ReactNode }) {
   useEffect(() => {
     void Promise.resolve().then(() => {
       setRecentlyPlayedTrackIds(safeReadStoredStringArray(STORAGE_RECENTLY_PLAYED_TRACK_IDS).slice(0, RECENTLY_PLAYED_LIMIT))
+    })
+  }, [])
+
+  useEffect(() => {
+    void Promise.resolve().then(() => {
+      setRecentBrowseSearches(
+        readStoredRecentBrowseSearches().slice(0, RECENT_BROWSE_SEARCHES_LIMIT),
+      )
     })
   }, [])
 
@@ -336,6 +355,10 @@ export function LibraryProvider(props: { children: ReactNode }) {
   }, [recentlyPlayedTrackIds])
 
   useEffect(() => {
+    writeStoredRecentBrowseSearches(recentBrowseSearches.slice(0, RECENT_BROWSE_SEARCHES_LIMIT))
+  }, [recentBrowseSearches])
+
+  useEffect(() => {
     libraryTracksRef.current = libraryTracks
   }, [libraryTracks])
 
@@ -363,7 +386,10 @@ export function LibraryProvider(props: { children: ReactNode }) {
       persistPlaybackTimerRef.current = null
     }
     const q = queue
-    if (q.length === 0) return
+    if (q.length === 0) {
+      writeStoredPlaybackSnapshot(buildEmptyPlaybackSnapshot())
+      return
+    }
     const activeId = playbackReportRef.current.activeQueueId
     const activeRow = activeId ? q.find((row) => row.queueId === activeId) : q[0]
     writeStoredPlaybackSnapshot({
@@ -697,7 +723,15 @@ export function LibraryProvider(props: { children: ReactNode }) {
   }, [])
 
   const clearQueue = useCallback(() => {
+    playbackReportRef.current = { activeQueueId: null, positionSec: 0 }
     setQueue([])
+    if (rememberLastQueueRef.current) {
+      if (persistPlaybackTimerRef.current) {
+        clearTimeout(persistPlaybackTimerRef.current)
+        persistPlaybackTimerRef.current = null
+      }
+      writeStoredPlaybackSnapshot(buildEmptyPlaybackSnapshot())
+    }
   }, [])
 
   const reorderQueueItems = useCallback((fromIndex: number, toIndex: number) => {
@@ -721,6 +755,16 @@ export function LibraryProvider(props: { children: ReactNode }) {
       const next = [id, ...prev.filter((x) => x !== id)]
       return next.slice(0, RECENTLY_PLAYED_LIMIT)
     })
+  }, [])
+
+  const recordRecentBrowseSearch = useCallback((source: BrowseSearchSource, query: string) => {
+    const trimmed = query.trim()
+    if (!trimmed) return
+    if (source === 'musicbrainz' && trimmed.length < 3) return
+    if (source === 'youtube' && trimmed.length < 2) return
+    setRecentBrowseSearches((prev) =>
+      appendRecentBrowseSearch(prev, { source, query: trimmed }, RECENT_BROWSE_SEARCHES_LIMIT),
+    )
   }, [])
 
   const setCompactLists = useCallback((next: boolean) => {
@@ -758,7 +802,7 @@ export function LibraryProvider(props: { children: ReactNode }) {
     setRememberLastQueueState(next)
     safeWriteStoredBoolean(STORAGE_REMEMBER_LAST_QUEUE, next)
     if (!next) {
-      writeStoredPlaybackSnapshot({ trackIds: [], activeTrackId: null, positionSec: 0 })
+      writeStoredPlaybackSnapshot(buildEmptyPlaybackSnapshot())
     } else {
       flushPersistPlaybackNow()
     }
@@ -1028,6 +1072,7 @@ export function LibraryProvider(props: { children: ReactNode }) {
       libraryTracks,
       queue,
       recentlyPlayedTrackIds,
+      recentBrowseSearches,
       compactLists,
       autoRescanOnStartup,
       logLibraryScanTiming,
@@ -1049,6 +1094,7 @@ export function LibraryProvider(props: { children: ReactNode }) {
       removeFromQueue,
       clearQueue,
       recordRecentlyPlayedTrack,
+      recordRecentBrowseSearch,
       setCompactLists,
       setAutoRescanOnStartup,
       setLogLibraryScanTiming,
@@ -1079,6 +1125,7 @@ export function LibraryProvider(props: { children: ReactNode }) {
       libraryTracks,
       queue,
       recentlyPlayedTrackIds,
+      recentBrowseSearches,
       compactLists,
       autoRescanOnStartup,
       logLibraryScanTiming,
@@ -1100,6 +1147,7 @@ export function LibraryProvider(props: { children: ReactNode }) {
       removeFromQueue,
       clearQueue,
       recordRecentlyPlayedTrack,
+      recordRecentBrowseSearch,
       setCompactLists,
       setAutoRescanOnStartup,
       setLogLibraryScanTiming,

@@ -17,6 +17,7 @@ import TrackRowOverflowMenu from '@/components/TrackRowOverflowMenu'
 import buildTrackOverflowMenuItems from '@/lib/track/build-track-overflow-menu-items'
 import PanelResizeHandle from '@/components/PanelResizeHandle'
 import QueueLoadingSpinner from '@/components/QueueLoadingSpinner'
+import RecentBrowseSearchChip from '@/components/RecentBrowseSearchChip'
 import YouTubeStreamNotification from '@/components/YouTubeStreamNotification'
 import isMusicBrainzStreamTrack from '@/lib/library/is-musicbrainz-stream-track'
 import resolveYoutubeVideoId from '@/lib/youtube/resolve-youtube-video-id'
@@ -235,6 +236,7 @@ export default function MusicPlayer() {
     compactLists,
     reorderQueueItems,
     recentlyPlayedTrackIds,
+    recentBrowseSearches,
     recordRecentlyPlayedTrack,
     isFavoriteSong,
     toggleFavoriteTrack,
@@ -410,6 +412,11 @@ export default function MusicPlayer() {
     }
     return out
   }, [libraryTracks, favoriteSongIds, recentlyPlayedTracks])
+
+  const homeRecentBrowseSearches = useMemo(
+    () => recentBrowseSearches.slice(0, 8),
+    [recentBrowseSearches],
+  )
 
   const durationSec = useMemo(() => {
     const fromTrack = current?.durationSec ?? 0
@@ -718,6 +725,14 @@ export default function MusicPlayer() {
         } else if (!videoId) {
           setLoadError('Could not find a YouTube video for this track.')
         }
+      })
+      .catch((err: unknown) => {
+        if (controller.signal.aborted) return
+        if (err instanceof Error && err.name === 'AbortError') return
+        if (typeof err === 'object' && err !== null && 'name' in err && err.name === 'AbortError') {
+          return
+        }
+        setLoadError(err instanceof Error ? err.message : 'Could not resolve YouTube stream.')
       })
       .finally(() => {
         if (!controller.signal.aborted) setStreamResolving(false)
@@ -1044,9 +1059,17 @@ export default function MusicPlayer() {
                   </div>
                 ) : null}
 
-                {suggestedTracks.length > 0 ? (
+                {homeRecentBrowseSearches.length > 0 || suggestedTracks.length > 0 ? (
                   <div className="mt-6">
                     <p className="mb-2 text-xs font-medium uppercase tracking-wider text-zinc-500">Suggestions</p>
+                    {homeRecentBrowseSearches.length > 0 ? (
+                      <div className="mb-3 flex flex-wrap gap-2">
+                        {homeRecentBrowseSearches.map((entry) => (
+                          <RecentBrowseSearchChip key={`${entry.source}\u0000${entry.query}`} entry={entry} />
+                        ))}
+                      </div>
+                    ) : null}
+                    {suggestedTracks.length > 0 ? (
                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                       {suggestedTracks.map((t) => (
                         <div
@@ -1083,6 +1106,7 @@ export default function MusicPlayer() {
                         </div>
                       ))}
                     </div>
+                    ) : null}
                   </div>
                 ) : null}
               </div>

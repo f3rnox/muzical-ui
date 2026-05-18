@@ -2,7 +2,9 @@
 
 import Link from 'next/link'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { useLibrary } from '@/components/LibraryProvider'
+import useSyncBrowseSearchFromUrl from '@/lib/browse/use-sync-browse-search-from-url'
 import MusicBrainzTrackRow from '@/components/MusicBrainzTrackRow'
 import searchYoutubeTracks from '@/lib/youtube/search-youtube-tracks'
 import useYoutubeApiKeyReady from '@/lib/youtube/use-youtube-api-key-ready'
@@ -13,14 +15,14 @@ import type { Track } from '@/types/track'
  * Search YouTube and add results to the queue or library.
  */
 export default function YouTubeSearchBrowser() {
-  const { libraryTracks, addToLibrary, addToQueue, compactLists } = useLibrary()
+  const { libraryTracks, addToLibrary, addToQueue, compactLists, recordRecentBrowseSearch } = useLibrary()
+  const searchParams = useSearchParams()
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<Track[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
   const debounceRef = useRef<number | null>(null)
-
   const { checked: apiKeyChecked, blocked: apiBlocked } = useYoutubeApiKeyReady()
   const [searchSource, setSearchSource] = useState<'api' | 'scrape' | null>(null)
   const canSearch = apiKeyChecked
@@ -60,10 +62,13 @@ export default function YouTubeSearchBrowser() {
         setResults([])
         return
       }
+      setLoading(true)
       setError(null)
     },
     [canSearch, resetSearch],
   )
+
+  useSyncBrowseSearchFromUrl(searchParams, onQueryChange)
 
   useEffect(() => {
     const q = query.trim()
@@ -88,6 +93,7 @@ export default function YouTubeSearchBrowser() {
           setResults(res.tracks)
           setSearchSource(res.source)
           setError(null)
+          recordRecentBrowseSearch('youtube', q)
         })
         .catch((err: unknown) => {
           if (err instanceof Error && err.name === 'AbortError') return
@@ -109,7 +115,7 @@ export default function YouTubeSearchBrowser() {
         abortRef.current = null
       }
     }
-  }, [query, canSearch])
+  }, [query, canSearch, recordRecentBrowseSearch])
 
   const onQueue = useCallback((t: Track) => addToQueue(t), [addToQueue])
   const onSave = useCallback((t: Track) => addToLibrary(t), [addToLibrary])

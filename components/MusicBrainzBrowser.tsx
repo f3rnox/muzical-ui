@@ -1,7 +1,9 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { useLibrary } from '@/components/LibraryProvider'
+import useSyncBrowseSearchFromUrl from '@/lib/browse/use-sync-browse-search-from-url'
 import MusicBrainzTrackRow from '@/components/MusicBrainzTrackRow'
 import { groupTracksByAlbum } from '@/lib/musicbrainz/group-tracks-by-album'
 import { groupTracksByArtist } from '@/lib/musicbrainz/group-tracks-by-artist'
@@ -19,7 +21,8 @@ const BROWSE_MODES: readonly MusicBrainzBrowseMode[] = ['artist', 'album', 'song
  * Search MusicBrainz recordings and browse results by artist, album, or song.
  */
 export default function MusicBrainzBrowser() {
-  const { libraryTracks, addToLibrary, addToQueue, compactLists } = useLibrary()
+  const { libraryTracks, addToLibrary, addToQueue, compactLists, recordRecentBrowseSearch } = useLibrary()
+  const searchParams = useSearchParams()
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<Track[]>([])
   const [loading, setLoading] = useState(false)
@@ -29,7 +32,6 @@ export default function MusicBrainzBrowser() {
   const [albumPick, setAlbumPick] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
   const debounceRef = useRef<number | null>(null)
-
   const compact = compactLists
   const ulSpaceYClass = compact ? 'space-y-0.25' : 'space-y-0.5'
   const rowPadLgClass = compact ? 'px-2 py-2' : 'px-3 py-2.5'
@@ -78,6 +80,8 @@ export default function MusicBrainzBrowser() {
     [resetSearch],
   )
 
+  useSyncBrowseSearchFromUrl(searchParams, onQueryChange)
+
   useEffect(() => {
     const q = query.trim()
     if (q.length < 3) return undefined
@@ -99,6 +103,7 @@ export default function MusicBrainzBrowser() {
         .then((res) => {
           setResults(res)
           setError(null)
+          recordRecentBrowseSearch('musicbrainz', q)
         })
         .catch((err: unknown) => {
           if (err instanceof Error && err.name === 'AbortError') return
@@ -119,7 +124,7 @@ export default function MusicBrainzBrowser() {
         abortRef.current = null
       }
     }
-  }, [query, mode])
+  }, [query, mode, recordRecentBrowseSearch])
 
   useEffect(() => {
     if (readYoutubeDataApiBlocked() || results.length === 0) return undefined
