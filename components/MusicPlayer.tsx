@@ -12,9 +12,11 @@ import { formatDuration } from '@/lib/format-duration'
 import { getCoverBytesForTrack } from '@/lib/library/cover-bytes-cache'
 import ThemeToggle from '@/components/ThemeToggle'
 import FavoriteStarButton from '@/components/FavoriteStarButton'
+import TrackRowOverflowMenu from '@/components/TrackRowOverflowMenu'
 import PanelResizeHandle from '@/components/PanelResizeHandle'
 import QueueLoadingSpinner from '@/components/QueueLoadingSpinner'
 import YouTubeStreamNotification from '@/components/YouTubeStreamNotification'
+import isMusicBrainzStreamTrack from '@/lib/library/is-musicbrainz-stream-track'
 import resolveYoutubeVideoId from '@/lib/youtube/resolve-youtube-video-id'
 import youtubeVideoThumbnailUrl from '@/lib/youtube/youtube-video-thumbnail-url'
 
@@ -235,6 +237,7 @@ export default function MusicPlayer() {
     isFavoriteSong,
     toggleFavoriteTrack,
     addToQueue,
+    addToLibrary,
     favoriteSongIds,
     playbackRestore,
     consumePlaybackRestore,
@@ -915,9 +918,13 @@ export default function MusicPlayer() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <span className="hidden rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-xs text-zinc-500 shadow-sm sm:inline dark:border-zinc-700/80 dark:bg-zinc-900/80 dark:text-zinc-400 dark:shadow-none">
+          <Link
+            href="/settings/library"
+            className="hidden cursor-pointer rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-xs text-zinc-500 shadow-sm transition hover:border-zinc-300 hover:bg-zinc-100 hover:text-zinc-700 sm:inline dark:border-zinc-700/80 dark:bg-zinc-900/80 dark:text-zinc-400 dark:shadow-none dark:hover:border-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
+            aria-label="Open library settings"
+          >
             {statusLabel}
-          </span>
+          </Link>
           <Link
             href="/settings"
             className="flex h-9 w-9 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-600 shadow-sm transition hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-300 dark:shadow-none dark:hover:border-zinc-500 dark:hover:bg-zinc-700 dark:hover:text-zinc-50"
@@ -1080,6 +1087,8 @@ export default function MusicPlayer() {
                   const track = row.track
                   const selected = index === activeIndex
                   const isDropTarget = dragOverQueueId === row.queueId && draggingQueueId !== row.queueId
+                  const isStreamTrack = isMusicBrainzStreamTrack(track)
+                  const isSavedInLibrary = libraryTracks.some((t) => t.id === track.id)
                   return (
                     <li
                       key={row.queueId}
@@ -1166,6 +1175,19 @@ export default function MusicPlayer() {
                           onPress={() => toggleFavoriteTrack(track)}
                           label={isFavoriteSong(track.id) ? 'Remove song from favorites' : 'Add song to favorites'}
                         />
+                        {isStreamTrack ? (
+                          <TrackRowOverflowMenu
+                            triggerLabel={`Actions for ${track.title}`}
+                            items={[
+                              {
+                                id: 'save',
+                                label: isSavedInLibrary ? 'In library' : 'Add to library',
+                                disabled: isSavedInLibrary,
+                                onSelect: () => addToLibrary(track),
+                              },
+                            ]}
+                          />
+                        ) : null}
                         <button
                           type="button"
                           aria-label={`Remove ${track.title} from queue`}

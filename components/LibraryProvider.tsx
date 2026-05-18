@@ -28,6 +28,10 @@ import { collectTracksForMeta } from '@/lib/library/collect-tracks-for-meta'
 import { scanProgressLabel } from '@/lib/library/scan-progress-label'
 import { scanProgressPercent } from '@/lib/library/scan-progress-percent'
 import type { ScanProgressTick } from '@/lib/library/scan-progress-tick'
+import extractPersistedLibraryTracks from '@/lib/library/extract-persisted-library-tracks'
+import mergeScannedTracksWithSavedLibrary from '@/lib/library/merge-scanned-tracks-with-saved-library'
+import normalizeTrackForLibrarySave from '@/lib/library/normalize-track-for-library-save'
+import parsePersistedCatalogTracks from '@/lib/library/parse-persisted-catalog-tracks'
 import { resolveTrackToFile } from '@/lib/library/resolve-track-file'
 import LibraryScanNotification from '@/components/LibraryScanNotification'
 import type { LibraryRootMeta } from '@/types/library-root-meta'
@@ -70,7 +74,7 @@ type LibraryContextValue = {
   removeLibraryFolder: (id: string) => Promise<void>
   rescanAll: () => Promise<void>
   addToQueue: (items: Track | readonly Track[]) => void
-  addToLibrary: (track: Track) => void
+  addToLibrary: (items: Track | readonly Track[]) => void
   removeFromQueue: (queueId: string) => void
   clearQueue: () => void
   recordRecentlyPlayedTrack: (trackId: string) => void
@@ -532,11 +536,12 @@ export function LibraryProvider(props: { children: ReactNode }) {
       if (!result) return
       const meta = rootsMetaRef.current
       const { tracks: next, failedRootCount, firstError } = result
-      setLibraryTracks(next)
+      const merged = mergeScannedTracksWithSavedLibrary(next, libraryTracksRef.current)
+      setLibraryTracks(merged)
       const db = dbRef.current
       if (db) {
         try {
-          await idbPutCatalog(db, meta.map((r) => r.id), next)
+          await idbPutCatalog(db, meta.map((r) => r.id), merged)
         } catch {
           /* quota or transient IDB errors — in-memory catalog still updated */
         }
@@ -563,7 +568,8 @@ export function LibraryProvider(props: { children: ReactNode }) {
     const apply = (t: Track): Track => (t.id === id ? patch(t) : t)
     setLibraryTracks((prev) => prev.map(apply))
     setQueue((prev) => prev.map((q) => ({ ...q, track: apply(q.track) })))
-  }, [])
+    persistCatalogDebounced()
+  }, [persistCatalogDebounced])
 
   useEffect(() => {
     if (readYoutubeDataApiBlocked()) return undefined
@@ -591,10 +597,27 @@ export function LibraryProvider(props: { children: ReactNode }) {
     setQueue((prev) => [...prev, ...rows])
   }, [])
 
-  const addToLibrary = useCallback((track: Track) => {
+  const addToLibrary = useCallback((items: Track | readonly Track[]) => {
+    const list = (Array.isArray(items) ? items : [items]).map(normalizeTrackForLibrarySave)
+    if (list.length === 0) return
     setLibraryTracks((prev) => {
-      if (prev.some((item) => item.id === track.id)) return prev
-      return [...prev, track]
+      const byId = new Map(prev.map((t) => [t.id, t]))
+      let changed = false
+      for (const track of list) {
+        const existing = byId.get(track.id)
+        if (existing) {
+          byId.set(track.id, {
+            ...existing,
+            ...track,
+            youtubeVideoId: track.youtubeVideoId ?? existing.youtubeVideoId,
+          })
+          changed = true
+          continue
+        }
+        byId.set(track.id, track)
+        changed = true
+      }
+      return changed ? [...byId.values()] : prev
     })
     persistCatalogDebounced()
   }, [persistCatalogDebounced])
@@ -846,17 +869,21 @@ export function LibraryProvider(props: { children: ReactNode }) {
         setRoots(meta)
         catalogTracks = []
         let cachedApplied = false
+        let savedTracksFromCache: Track[] = []
         try {
           const cached = await idbGetCatalog(db)
-          if (
-            !disposed &&
-            cached &&
-            meta.length > 0 &&
-            catalogMatchesRoots(meta, cached.rootIds)
-          ) {
-            catalogTracks = cached.tracks
-            setLibraryTracks(catalogTracks)
-            cachedApplied = true
+          if (!disposed && cached) {
+            const parsed = parsePersistedCatalogTracks(cached.tracks)
+            savedTracksFromCache = extractPersistedLibraryTracks(parsed)
+            if (meta.length > 0 && catalogMatchesRoots(meta, cached.rootIds)) {
+              catalogTracks = parsed
+              setLibraryTracks(catalogTracks)
+              cachedApplied = true
+            } else if (savedTracksFromCache.length > 0) {
+              catalogTracks = savedTracksFromCache
+              setLibraryTracks(savedTracksFromCache)
+              cachedApplied = true
+            }
           }
         } catch {
           /* ignore missing or corrupt catalog */
@@ -874,20 +901,20 @@ export function LibraryProvider(props: { children: ReactNode }) {
             if (cachedApplied) {
               setScanError(null)
             } else {
-              catalogTracks = next
+              catalogTracks = mergeScannedTracksWithSavedLibrary(next, savedTracksFromCache)
               setLibraryTracks(catalogTracks)
               try {
-                await idbPutCatalog(db, meta.map((r) => r.id), next)
+                await idbPutCatalog(db, meta.map((r) => r.id), catalogTracks)
               } catch {
                 /* ignore */
               }
               setScanError(firstError ? `${firstError} ${DISK_ACCESS_HINT}` : DISK_ACCESS_HINT)
             }
           } else {
-            catalogTracks = next
+            catalogTracks = mergeScannedTracksWithSavedLibrary(next, libraryTracksRef.current)
             setLibraryTracks(catalogTracks)
             try {
-              await idbPutCatalog(db, meta.map((r) => r.id), next)
+              await idbPutCatalog(db, meta.map((r) => r.id), catalogTracks)
             } catch {
               /* ignore */
             }

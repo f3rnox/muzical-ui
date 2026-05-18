@@ -142,6 +142,13 @@ export default function MusicBrainzBrowser() {
 
   const onQueue = useCallback((t: Track) => addToQueue(t), [addToQueue])
   const onSave = useCallback((t: Track) => addToLibrary(t), [addToLibrary])
+  const onSaveMany = useCallback(
+    (list: readonly Track[]) => {
+      const unsaved = list.filter((t) => !isSaved(t.id))
+      if (unsaved.length > 0) addToLibrary(unsaved)
+    },
+    [addToLibrary, isSaved],
+  )
   const onAddMany = useCallback(
     (list: readonly Track[]) => {
       if (list.length === 0) return
@@ -236,7 +243,7 @@ export default function MusicBrainzBrowser() {
           >
             ← Artists
           </button>
-          <div className="mb-2 px-2">
+          <div className="mb-2 flex flex-wrap gap-2 px-2">
             <button
               type="button"
               onClick={() => onAddMany(tracks)}
@@ -244,6 +251,14 @@ export default function MusicBrainzBrowser() {
               className="cursor-pointer rounded-full border border-zinc-200 bg-white px-2 py-1 text-xs font-medium dark:border-zinc-700 dark:bg-zinc-900"
             >
               Add all
+            </button>
+            <button
+              type="button"
+              onClick={() => onSaveMany(tracks)}
+              disabled={tracks.every((t) => isSaved(t.id))}
+              className="cursor-pointer rounded-full border border-zinc-200 bg-white px-2 py-1 text-xs font-medium dark:border-zinc-700 dark:bg-zinc-900"
+            >
+              Save all
             </button>
           </div>
           {renderTrackList(tracks, (t) => t.album)}
@@ -297,7 +312,7 @@ export default function MusicBrainzBrowser() {
         >
           ← Albums
         </button>
-        <div className="mb-2 px-2">
+        <div className="mb-2 flex flex-wrap gap-2 px-2">
           <button
             type="button"
             onClick={() => onAddMany(tracks)}
@@ -305,6 +320,14 @@ export default function MusicBrainzBrowser() {
             className="cursor-pointer rounded-full border border-zinc-200 bg-white px-2 py-1 text-xs font-medium dark:border-zinc-700 dark:bg-zinc-900"
           >
             Add all
+          </button>
+          <button
+            type="button"
+            onClick={() => onSaveMany(tracks)}
+            disabled={tracks.every((t) => isSaved(t.id))}
+            className="cursor-pointer rounded-full border border-zinc-200 bg-white px-2 py-1 text-xs font-medium dark:border-zinc-700 dark:bg-zinc-900"
+          >
+            Save all
           </button>
         </div>
         {renderTrackList(tracks, (t) => t.artist)}
@@ -318,7 +341,7 @@ export default function MusicBrainzBrowser() {
         <div>
           <h2 className="text-xs font-medium uppercase tracking-wider text-zinc-500">MusicBrainz</h2>
           <p className="mt-1 text-xs text-zinc-400">
-            Discover recordings via MusicBrainz; streams via YouTube in the background (Settings → YouTube).
+            Discover recordings via MusicBrainz; save to your library for playback later (streams via YouTube).
           </p>
         </div>
         <input
@@ -375,13 +398,23 @@ export default function MusicBrainzBrowser() {
                   ? ` · ${albumKeys.length} album${albumKeys.length === 1 ? '' : 's'}`
                   : ''}
               </p>
-              <button
-                type="button"
-                onClick={() => onAddMany(results)}
-                className="cursor-pointer rounded-full border border-zinc-200 bg-white px-2 py-1 text-xs font-medium text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
-              >
-                Add all to queue
-              </button>
+              <div className="flex flex-wrap gap-1">
+                <button
+                  type="button"
+                  onClick={() => onAddMany(results)}
+                  className="cursor-pointer rounded-full border border-zinc-200 bg-white px-2 py-1 text-xs font-medium text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                >
+                  Add all to queue
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onSaveMany(results)}
+                  disabled={results.every((t) => isSaved(t.id))}
+                  className="cursor-pointer rounded-full border border-zinc-200 bg-white px-2 py-1 text-xs font-medium text-zinc-700 transition hover:bg-zinc-50 disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                >
+                  Save all to library
+                </button>
+              </div>
             </div>
             {renderResultsBody()}
           </div>

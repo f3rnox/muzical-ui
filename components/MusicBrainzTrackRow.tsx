@@ -1,5 +1,6 @@
 'use client'
 
+import TrackRowOverflowMenu from '@/components/TrackRowOverflowMenu'
 import { formatDuration } from '@/lib/format-duration'
 import type { Track } from '@/types/track'
 
@@ -32,14 +33,17 @@ export default function MusicBrainzTrackRow(props: MusicBrainzTrackRowProps) {
       <span className="shrink-0 text-xs tabular-nums text-zinc-500">
         {props.track.durationSec > 0 ? formatDuration(props.track.durationSec) : '—'}
       </span>
-      <button
-        type="button"
-        onClick={() => props.onSave(props.track)}
-        disabled={props.alreadySaved}
-        className="shrink-0 cursor-pointer rounded-full border border-zinc-200 bg-white px-2.5 py-1 text-xs font-medium text-zinc-700 transition hover:bg-zinc-50 disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
-      >
-        {props.alreadySaved ? 'Saved' : 'Save'}
-      </button>
+      <TrackRowOverflowMenu
+        triggerLabel={`Actions for ${props.track.title}`}
+        items={[
+          {
+            id: 'save',
+            label: props.alreadySaved ? 'In library' : 'Add to library',
+            disabled: props.alreadySaved,
+            onSelect: () => props.onSave(props.track),
+          },
+        ]}
+      />
       <button
         type="button"
         onClick={() => props.onQueue(props.track)}
