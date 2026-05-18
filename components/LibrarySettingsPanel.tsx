@@ -2,6 +2,7 @@
 
 import { useLibrary } from '@/components/LibraryProvider'
 import formatLibraryRootAdded from '@/components/format-library-root-added'
+import LibraryScanOptionsSection from '@/components/LibraryScanOptionsSection'
 import LibraryStatistics from '@/components/LibraryStatistics'
 import SettingsSwitchRow from '@/components/SettingsSwitchRow'
 
@@ -72,6 +73,8 @@ export default function LibrarySettingsPanel() {
           </button>
         </div>
       </section>
+
+      <LibraryScanOptionsSection />
 
       <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900/40">
         <h3 className="text-xs font-medium uppercase tracking-wider text-zinc-500">Configured folders</h3>

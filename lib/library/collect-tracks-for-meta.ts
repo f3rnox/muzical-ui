@@ -1,6 +1,7 @@
 import type { LibraryRootMeta } from "@/types/library-root-meta";
 import type { ScanProgressTick } from "@/lib/library/scan-progress-tick";
 import { scanDirectoryForTracks } from "@/lib/library/scan-tree";
+import type { ScanTreeOptions } from "@/types/scan-tree-options";
 import type { Track } from "@/types/track";
 
 export type CollectTracksResult = {
@@ -25,6 +26,7 @@ function scanFailureMessage(e: unknown): string {
 export async function collectTracksForMeta(
   meta: readonly LibraryRootMeta[],
   handles: ReadonlyMap<string, FileSystemDirectoryHandle>,
+  scanOptions: ScanTreeOptions,
   onProgress?: (tick: ScanProgressTick) => void,
 ): Promise<CollectTracksResult> {
   const list: Track[] = [];
@@ -51,17 +53,23 @@ export async function collectTracksForMeta(
     };
     emit({ phase: "walk" });
     try {
-      const chunk = await scanDirectoryForTracks(r.id, r.name, h, (inner) => {
-        if (inner.phase === "walk") {
-          emit({ phase: "walk" });
-        } else {
-          emit({
-            phase: "metadata",
-            filesDone: inner.filesDone,
-            filesTotal: inner.filesTotal,
-          });
-        }
-      });
+      const chunk = await scanDirectoryForTracks(
+        r.id,
+        r.name,
+        h,
+        scanOptions,
+        (inner) => {
+          if (inner.phase === "walk") {
+            emit({ phase: "walk" });
+          } else {
+            emit({
+              phase: "metadata",
+              filesDone: inner.filesDone,
+              filesTotal: inner.filesTotal,
+            });
+          }
+        },
+      );
       list.push(...chunk);
     } catch (e) {
       failedRootCount += 1;

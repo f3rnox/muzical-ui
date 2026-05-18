@@ -10,6 +10,7 @@ import { getCoverBytesForTrack } from '@/lib/library/cover-bytes-cache'
 import ThemeToggle from '@/components/ThemeToggle'
 import FavoriteStarButton from '@/components/FavoriteStarButton'
 import PanelResizeHandle from '@/components/PanelResizeHandle'
+import QueueLoadingSpinner from '@/components/QueueLoadingSpinner'
 
 const STORAGE_LIBRARY_PANEL_PX = 'muzical.panelWidth.library'
 const STORAGE_QUEUE_PANEL_PX = 'muzical.panelWidth.queue'
@@ -229,6 +230,10 @@ export default function MusicPlayer() {
     toggleFavoriteTrack,
     addToQueue,
     favoriteSongIds,
+    playbackRestore,
+    consumePlaybackRestore,
+    reportPlayback,
+    isQueueReady,
   } = useLibrary()
   const [activeQueueId, setActiveQueueId] = useState<string | null>(null)
   const [isPlaying, setIsPlaying] = useState(false)
@@ -246,6 +251,9 @@ export default function MusicPlayer() {
 
   const mainRowRef = useRef<HTMLDivElement>(null)
   const shuffleHistoryRef = useRef<number[]>([])
+  const pendingRestorePositionRef = useRef<number | null>(null)
+  const activeQueueIdRef = useRef<string | null>(null)
+  const lastPlaybackReportMsRef = useRef(0)
   const libraryPanelPxRef = useRef(440)
   const queuePanelPxRef = useRef(300)
   const [dragOverQueueId, setDragOverQueueId] = useState<string | null>(null)
@@ -299,6 +307,28 @@ export default function MusicPlayer() {
     mq.addEventListener('change', apply)
     return () => mq.removeEventListener('change', apply)
   }, [])
+
+  useEffect(() => {
+    activeQueueIdRef.current = activeQueueId
+  }, [activeQueueId])
+
+  useEffect(() => {
+    if (!playbackRestore) return
+    const { activeQueueId: nextActiveId, positionSec: nextPos } = playbackRestore
+    pendingRestorePositionRef.current = nextPos
+    consumePlaybackRestore()
+    void Promise.resolve().then(() => {
+      setActiveQueueId(nextActiveId)
+      setPositionSec(nextPos)
+      setIsPlaying(false)
+    })
+  }, [playbackRestore, consumePlaybackRestore])
+
+  useEffect(() => {
+    const el = audioRef.current
+    const pos = el && Number.isFinite(el.currentTime) ? el.currentTime : 0
+    reportPlayback(activeQueueId, pos)
+  }, [activeQueueId, reportPlayback])
 
   const activeIndex = useMemo(() => {
     if (queue.length === 0) return -1
@@ -562,9 +592,10 @@ export default function MusicPlayer() {
       return undefined
     }
     let cancelled = false
+    const pendingPos = pendingRestorePositionRef.current
     const rid = requestAnimationFrame(() => {
       setMediaDuration(0)
-      setPositionSec(0)
+      setPositionSec(pendingPos ?? 0)
     })
     void (async (): Promise<void> => {
       setLoadError(null)
@@ -633,11 +664,24 @@ export default function MusicPlayer() {
     if (!el || !current) return undefined
     const onTime = (): void => {
       setPositionSec(el.currentTime)
+      const now = Date.now()
+      if (now - lastPlaybackReportMsRef.current >= 2000) {
+        lastPlaybackReportMsRef.current = now
+        reportPlayback(activeQueueIdRef.current, el.currentTime)
+      }
     }
     const onMeta = (): void => {
       if (Number.isFinite(el.duration) && el.duration > 0) {
         setMediaDuration(el.duration)
         bumpTrackDuration(current.id, el.duration)
+      }
+      const pending = pendingRestorePositionRef.current
+      if (pending != null && pending > 0) {
+        const seekTo = Math.min(pending, el.duration > 0 ? el.duration : pending)
+        el.currentTime = seekTo
+        setPositionSec(seekTo)
+        pendingRestorePositionRef.current = null
+        reportPlayback(activeQueueIdRef.current, seekTo)
       }
     }
     const onEnded = (): void => {
@@ -660,7 +704,7 @@ export default function MusicPlayer() {
       el.removeEventListener('loadedmetadata', onMeta)
       el.removeEventListener('ended', onEnded)
     }
-  }, [current, bumpTrackDuration, goNext, repeatMode])
+  }, [current, bumpTrackDuration, goNext, repeatMode, reportPlayback])
 
   useEffect(() => {
     return (): void => {
@@ -689,8 +733,9 @@ export default function MusicPlayer() {
       const next = Math.min(el.duration, Math.max(0, r * el.duration))
       el.currentTime = next
       setPositionSec(next)
+      reportPlayback(activeQueueIdRef.current, next)
     },
-    [durationSec],
+    [durationSec, reportPlayback],
   )
 
   const onSeekBarKeyDown = useCallback(
@@ -784,6 +829,10 @@ export default function MusicPlayer() {
           className="flex min-h-0 min-w-0 flex-col overflow-hidden border-b border-zinc-200 bg-white dark:border-zinc-800/80 dark:bg-zinc-950/50 max-lg:flex-1 max-lg:w-full lg:h-full lg:shrink-0 lg:border-b-0 lg:border-r lg:border-zinc-200 lg:dark:border-zinc-800"
           style={layoutLg ? { width: queuePanelPx, flex: '0 0 auto' } : undefined}
         >
+          {!isQueueReady ? (
+            <QueueLoadingSpinner />
+          ) : (
+            <>
           <div className="flex shrink-0 items-center justify-between gap-2 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
             <h2 className="text-xs font-medium uppercase tracking-wider text-zinc-500">Queue</h2>
             {queue.length > 0 ? (
@@ -1014,6 +1063,8 @@ export default function MusicPlayer() {
               </ul>
             )}
           </div>
+            </>
+          )}
         </section>
         <PanelResizeHandle
           aria-label="Resize queue and player panels"

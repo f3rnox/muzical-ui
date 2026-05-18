@@ -18,6 +18,11 @@ export const SETTINGS_NAV_ITEMS: readonly SettingsNavItem[] = [
       "Scan folders, rescan on startup, and manage configured directories.",
   },
   {
+    href: "/settings/playback",
+    label: "Playback",
+    description: "Restore your queue and playhead between sessions.",
+  },
+  {
     href: "/settings/display",
     label: "Display",
     description: "List density and other visual preferences in the player.",
