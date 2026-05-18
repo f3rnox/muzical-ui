@@ -25,6 +25,17 @@
   "bin": {
     "stt-ui": "./bin/stt-ui.js"
   },
+  "files": [
+    "bin",
+    ".next",
+    "app",
+    "components",
+    "lib",
+    "types",
+    "public",
+    "next.config.ts",
+    "postcss.config.mjs"
+  ],
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -43,7 +54,7 @@
     "lint:markdownlint:fix": "markdownlint --fix README.md",
     "prepare": "husky",
     "prepare-release": "pnpm build && git add docs",
-    "prepublish": "pnpm build",
+    "prepublishOnly": "next build",
     "release": "pnpm prepare-release && pnpm update-version && git push --follow-tags origin main",
     "serve:coverage": "http-server ./coverage",
     "serve:docs": "http-server ./docs",
