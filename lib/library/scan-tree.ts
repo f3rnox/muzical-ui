@@ -3,6 +3,7 @@ import {
   stripAudioExtension,
 } from "@/lib/library/audio-filename";
 import { extractTagsFromAudioFile } from "@/lib/library/read-audio-metadata";
+import type { ScanTreeOptions } from "@/types/scan-tree-options";
 import type { Track } from "@/types/track";
 
 const METADATA_PARSE_CONCURRENCY = 6;
@@ -22,19 +23,35 @@ export async function collectPendingAudioFiles(
   rootDisplayName: string,
   dir: FileSystemDirectoryHandle,
   pathPrefix: string,
+  depth: number,
+  options: ScanTreeOptions,
+  visitedDirs: Set<string>,
   out: PendingAudioFile[],
 ): Promise<void> {
+  if (options.maxScanDepth > 0 && depth >= options.maxScanDepth) return;
+
   for await (const [name, entry] of dir.entries()) {
     const rel = pathPrefix ? `${pathPrefix}/${name}` : name;
     if (entry.kind === "directory") {
+      if (options.followSymlinks && visitedDirs.has(rel)) continue;
+      const nextVisited = options.followSymlinks
+        ? new Set(visitedDirs)
+        : visitedDirs;
+      if (options.followSymlinks) nextVisited.add(rel);
       await collectPendingAudioFiles(
         rootId,
         rootDisplayName,
         entry as FileSystemDirectoryHandle,
         rel,
+        depth + 1,
+        options,
+        nextVisited,
         out,
       );
-    } else if (entry.kind === "file" && isAudioFilename(name)) {
+    } else if (
+      entry.kind === "file" &&
+      isAudioFilename(name, options.enabledExtensions)
+    ) {
       out.push({
         rootId,
         rootDisplayName,
@@ -61,9 +78,12 @@ function folderAlbumFallback(
   return rootDisplayName;
 }
 
-async function pendingFileToTrack(p: PendingAudioFile): Promise<Track> {
+async function pendingFileToTrack(
+  p: PendingAudioFile,
+  enabledExtensions: ReadonlySet<string>,
+): Promise<Track> {
   const fileName = basenameFromRelativePath(p.relativePath);
-  const fallbackTitle = stripAudioExtension(fileName);
+  const fallbackTitle = stripAudioExtension(fileName, enabledExtensions);
   const albumFolder = folderAlbumFallback(p.relativePath, p.rootDisplayName);
   try {
     const file = await p.handle.getFile();
@@ -105,6 +125,7 @@ export type DirectoryScanProgress =
  */
 export async function buildTracksFromPending(
   pending: readonly PendingAudioFile[],
+  enabledExtensions: ReadonlySet<string>,
   onProgress?: (progress: MetadataScanProgress) => void,
 ): Promise<Track[]> {
   if (pending.length === 0) return [];
@@ -123,7 +144,10 @@ export async function buildTracksFromPending(
     for (;;) {
       const i = nextIndex++;
       if (i >= pending.length) break;
-      tracks[i] = await pendingFileToTrack(pending[i] as PendingAudioFile);
+      tracks[i] = await pendingFileToTrack(
+        pending[i] as PendingAudioFile,
+        enabledExtensions,
+      );
       filesDone += 1;
       report();
     }
@@ -141,13 +165,27 @@ export async function scanDirectoryForTracks(
   rootId: string,
   rootDisplayName: string,
   dir: FileSystemDirectoryHandle,
+  options: ScanTreeOptions,
   onProgress?: (progress: DirectoryScanProgress) => void,
 ): Promise<Track[]> {
   onProgress?.({ phase: "walk" });
   const pending: PendingAudioFile[] = [];
-  await collectPendingAudioFiles(rootId, rootDisplayName, dir, "", pending);
+  await collectPendingAudioFiles(
+    rootId,
+    rootDisplayName,
+    dir,
+    "",
+    0,
+    options,
+    new Set<string>(),
+    pending,
+  );
   onProgress?.({ phase: "metadata", filesDone: 0, filesTotal: pending.length });
-  return buildTracksFromPending(pending, (metadata) => {
-    onProgress?.({ phase: "metadata", ...metadata });
-  });
+  return buildTracksFromPending(
+    pending,
+    options.enabledExtensions,
+    (metadata) => {
+      onProgress?.({ phase: "metadata", ...metadata });
+    },
+  );
 }

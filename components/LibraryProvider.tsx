@@ -32,8 +32,21 @@ import { resolveTrackToFile } from '@/lib/library/resolve-track-file'
 import LibraryScanNotification from '@/components/LibraryScanNotification'
 import type { LibraryRootMeta } from '@/types/library-root-meta'
 import type { LibraryScanProgress } from '@/types/library-scan-progress'
+import type { LibraryScanPreferences } from '@/types/library-scan-preferences'
+import readStoredLibraryScanPreferences from '@/lib/library/read-stored-library-scan-preferences'
+import writeStoredLibraryScanPreferences from '@/lib/library/write-stored-library-scan-preferences'
+import scanPreferencesToTreeOptions from '@/lib/library/scan-preferences-to-tree-options'
+import readStoredPlaybackSnapshot from '@/lib/playback/read-stored-playback-snapshot'
+import writeStoredPlaybackSnapshot from '@/lib/playback/write-stored-playback-snapshot'
+import buildQueueFromSnapshot from '@/lib/playback/build-queue-from-snapshot'
 
 export type { LibraryRootMeta } from '@/types/library-root-meta'
+export type { LibraryScanPreferences } from '@/types/library-scan-preferences'
+
+export type PlaybackRestore = {
+  activeQueueId: string | null
+  positionSec: number
+}
 
 type LibraryContextValue = {
   roots: LibraryRootMeta[]
@@ -42,6 +55,11 @@ type LibraryContextValue = {
   queue: QueuedTrack[]
   recentlyPlayedTrackIds: readonly string[]
   compactLists: boolean
+  autoRescanOnStartup: boolean
+  scanPreferences: LibraryScanPreferences
+  rememberLastQueue: boolean
+  playbackRestore: PlaybackRestore | null
+  isQueueReady: boolean
   isScanning: boolean
   scanError: string | null
   hasDirectoryPicker: boolean
@@ -54,6 +72,11 @@ type LibraryContextValue = {
   clearQueue: () => void
   recordRecentlyPlayedTrack: (trackId: string) => void
   setCompactLists: (next: boolean) => void
+  setAutoRescanOnStartup: (next: boolean) => void
+  setScanPreferences: (next: LibraryScanPreferences) => void
+  setRememberLastQueue: (next: boolean) => void
+  consumePlaybackRestore: () => void
+  reportPlayback: (activeQueueId: string | null, positionSec: number) => void
   reorderQueueItems: (fromIndex: number, toIndex: number) => void
   resolveFileForTrack: (track: Track) => Promise<File | null>
   bumpTrackDuration: (trackId: string, durationSec: number) => void
@@ -74,6 +97,8 @@ const LibraryContext = createContext<LibraryContextValue | null>(null)
 const STORAGE_RECENTLY_PLAYED_TRACK_IDS = 'muzical.recentlyPlayedTrackIds'
 const RECENTLY_PLAYED_LIMIT = 24
 const STORAGE_COMPACT_LISTS = 'muzical.compactLists'
+const STORAGE_AUTO_RESCAN_ON_STARTUP = 'muzical.autoRescanOnStartup'
+const STORAGE_REMEMBER_LAST_QUEUE = 'muzical.rememberLastQueue'
 
 function safeReadStoredBoolean(key: string): boolean {
   if (typeof window === 'undefined') return false
@@ -84,6 +109,18 @@ function safeReadStoredBoolean(key: string): boolean {
     return parsed === true
   } catch {
     return false
+  }
+}
+
+function safeReadStoredBooleanOrDefault(key: string, defaultValue: boolean): boolean {
+  if (typeof window === 'undefined') return defaultValue
+  try {
+    const raw = window.localStorage.getItem(key)
+    if (raw === null) return defaultValue
+    const parsed: unknown = JSON.parse(raw)
+    return parsed === true
+  } catch {
+    return defaultValue
   }
 }
 
@@ -137,9 +174,9 @@ function catalogMatchesRoots(
 }
 
 const DISK_ACCESS_HINT =
-  'Use Rescan all in Library settings, or remove and add the folders again so the browser can access your music.'
+  'Use Rescan all in Settings → Library, or remove and add the folders again so the browser can access your music.'
 
-const SCAN_NOTIFICATION_DISMISS_MS = 8000
+const SCAN_NOTIFICATION_DISMISS_MS = 4000
 
 /**
  * True when every configured root already has persisted read access (no prompt on scan).
@@ -194,6 +231,11 @@ export function LibraryProvider(props: { children: ReactNode }) {
   const persistCatalogTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const scanDismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const favoritesReadyRef = useRef(false)
+  const scanPrefsRef = useRef<LibraryScanPreferences>(readStoredLibraryScanPreferences())
+  const rememberLastQueueRef = useRef(false)
+  const queueHydratedRef = useRef(false)
+  const playbackReportRef = useRef({ activeQueueId: null as string | null, positionSec: 0 })
+  const persistPlaybackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [favoriteSongIds, setFavoriteSongIds] = useState<string[]>([])
   const [favoriteArtistNames, setFavoriteArtistNames] = useState<string[]>([])
   const [favoriteAlbumKeys, setFavoriteAlbumKeys] = useState<string[]>([])
@@ -202,6 +244,14 @@ export function LibraryProvider(props: { children: ReactNode }) {
   const [queue, setQueue] = useState<QueuedTrack[]>([])
   const [recentlyPlayedTrackIds, setRecentlyPlayedTrackIds] = useState<string[]>([])
   const [compactLists, setCompactListsState] = useState(false)
+  const [autoRescanOnStartup, setAutoRescanOnStartupState] = useState(true)
+  const [scanPreferences, setScanPreferencesState] = useState<LibraryScanPreferences>(
+    readStoredLibraryScanPreferences,
+  )
+  const [rememberLastQueue, setRememberLastQueueState] = useState(false)
+  const [playbackRestore, setPlaybackRestore] = useState<PlaybackRestore | null>(null)
+  const [catalogInitDone, setCatalogInitDone] = useState(false)
+  const [isQueueReady, setIsQueueReady] = useState(false)
   const [isScanning, setIsScanning] = useState(false)
   const [scanProgress, setScanProgress] = useState<LibraryScanProgress | null>(null)
   const [scanError, setScanError] = useState<string | null>(null)
@@ -226,6 +276,30 @@ export function LibraryProvider(props: { children: ReactNode }) {
   }, [])
 
   useEffect(() => {
+    void Promise.resolve().then(() => {
+      setAutoRescanOnStartupState(
+        safeReadStoredBooleanOrDefault(STORAGE_AUTO_RESCAN_ON_STARTUP, true),
+      )
+    })
+  }, [])
+
+  useEffect(() => {
+    void Promise.resolve().then(() => {
+      const prefs = readStoredLibraryScanPreferences()
+      scanPrefsRef.current = prefs
+      setScanPreferencesState(prefs)
+    })
+  }, [])
+
+  useEffect(() => {
+    void Promise.resolve().then(() => {
+      const on = safeReadStoredBoolean(STORAGE_REMEMBER_LAST_QUEUE)
+      rememberLastQueueRef.current = on
+      setRememberLastQueueState(on)
+    })
+  }, [])
+
+  useEffect(() => {
     safeWriteStoredStringArray(STORAGE_RECENTLY_PLAYED_TRACK_IDS, recentlyPlayedTrackIds.slice(0, RECENTLY_PLAYED_LIMIT))
   }, [recentlyPlayedTrackIds])
 
@@ -243,8 +317,92 @@ export function LibraryProvider(props: { children: ReactNode }) {
         clearTimeout(scanDismissTimerRef.current)
         scanDismissTimerRef.current = null
       }
+      if (persistPlaybackTimerRef.current) {
+        clearTimeout(persistPlaybackTimerRef.current)
+        persistPlaybackTimerRef.current = null
+      }
     }
   }, [])
+
+  const flushPersistPlaybackNow = useCallback((): void => {
+    if (!rememberLastQueueRef.current) return
+    if (persistPlaybackTimerRef.current) {
+      clearTimeout(persistPlaybackTimerRef.current)
+      persistPlaybackTimerRef.current = null
+    }
+    const q = queue
+    if (q.length === 0) return
+    const activeId = playbackReportRef.current.activeQueueId
+    const activeRow = activeId ? q.find((row) => row.queueId === activeId) : q[0]
+    writeStoredPlaybackSnapshot({
+      trackIds: q.map((row) => row.track.id),
+      activeTrackId: activeRow?.track.id ?? null,
+      positionSec: playbackReportRef.current.positionSec,
+    })
+  }, [queue])
+
+  const persistPlaybackDebounced = useCallback((): void => {
+    if (!rememberLastQueueRef.current) return
+    if (!queueHydratedRef.current) return
+    if (persistPlaybackTimerRef.current) clearTimeout(persistPlaybackTimerRef.current)
+    persistPlaybackTimerRef.current = setTimeout(() => {
+      persistPlaybackTimerRef.current = null
+      flushPersistPlaybackNow()
+    }, 400)
+  }, [flushPersistPlaybackNow])
+
+  const hydrateQueueFromStorage = useCallback((tracks: readonly Track[]): void => {
+    if (queueHydratedRef.current) return
+    queueHydratedRef.current = true
+    if (rememberLastQueueRef.current) {
+      const snap = readStoredPlaybackSnapshot()
+      if (snap && snap.trackIds.length > 0) {
+        const restored = buildQueueFromSnapshot(tracks, snap)
+        if (restored.queue.length > 0) {
+          setQueue(restored.queue)
+          playbackReportRef.current = {
+            activeQueueId: restored.activeQueueId,
+            positionSec: restored.positionSec,
+          }
+          setPlaybackRestore({
+            activeQueueId: restored.activeQueueId,
+            positionSec: restored.positionSec,
+          })
+        }
+      }
+    }
+    setIsQueueReady(true)
+  }, [])
+
+  useEffect(() => {
+    if (!queueHydratedRef.current) return
+    const byId = new Map(libraryTracks.map((t) => [t.id, t]))
+    setQueue((prev) =>
+      prev
+        .filter((row) => byId.has(row.track.id))
+        .map((row) => ({ ...row, track: byId.get(row.track.id) as Track })),
+    )
+  }, [libraryTracks])
+
+  useEffect(() => {
+    persistPlaybackDebounced()
+  }, [queue, persistPlaybackDebounced])
+
+  useEffect(() => {
+    if (!catalogInitDone) return
+    if (queueHydratedRef.current) return
+    hydrateQueueFromStorage(libraryTracks)
+  }, [catalogInitDone, libraryTracks, hydrateQueueFromStorage])
+
+  useEffect(() => {
+    const onPageHide = (): void => {
+      flushPersistPlaybackNow()
+    }
+    window.addEventListener('pagehide', onPageHide)
+    return (): void => {
+      window.removeEventListener('pagehide', onPageHide)
+    }
+  }, [flushPersistPlaybackNow])
 
   const flushPersistCatalogNow = useCallback((): void => {
     if (persistCatalogTimerRef.current) {
@@ -329,7 +487,8 @@ export function LibraryProvider(props: { children: ReactNode }) {
         if (meta.length > 0) {
           await reconfirmReadAccessForHandles(map, withUserActivation)
         }
-        const result = await collectTracksForMeta(meta, map, applyScanProgressTick)
+        const treeOpts = scanPreferencesToTreeOptions(scanPrefsRef.current)
+        const result = await collectTracksForMeta(meta, map, treeOpts, applyScanProgressTick)
         setScanProgress({
           percent: 100,
           label:
@@ -437,6 +596,40 @@ export function LibraryProvider(props: { children: ReactNode }) {
     setCompactListsState(next)
     safeWriteStoredBoolean(STORAGE_COMPACT_LISTS, next)
   }, [])
+
+  const setAutoRescanOnStartup = useCallback((next: boolean) => {
+    setAutoRescanOnStartupState(next)
+    safeWriteStoredBoolean(STORAGE_AUTO_RESCAN_ON_STARTUP, next)
+  }, [])
+
+  const setScanPreferences = useCallback((next: LibraryScanPreferences) => {
+    scanPrefsRef.current = next
+    setScanPreferencesState(next)
+    writeStoredLibraryScanPreferences(next)
+  }, [])
+
+  const setRememberLastQueue = useCallback((next: boolean) => {
+    rememberLastQueueRef.current = next
+    setRememberLastQueueState(next)
+    safeWriteStoredBoolean(STORAGE_REMEMBER_LAST_QUEUE, next)
+    if (!next) {
+      writeStoredPlaybackSnapshot({ trackIds: [], activeTrackId: null, positionSec: 0 })
+    } else {
+      flushPersistPlaybackNow()
+    }
+  }, [flushPersistPlaybackNow])
+
+  const consumePlaybackRestore = useCallback((): void => {
+    setPlaybackRestore(null)
+  }, [])
+
+  const reportPlayback = useCallback(
+    (activeQueueId: string | null, positionSec: number): void => {
+      playbackReportRef.current = { activeQueueId, positionSec }
+      persistPlaybackDebounced()
+    },
+    [persistPlaybackDebounced],
+  )
 
   const resolveFileForTrack = useCallback((track: Track) => {
     return resolveTrackToFile(track, rootHandlesRef.current)
@@ -575,6 +768,7 @@ export function LibraryProvider(props: { children: ReactNode }) {
   useEffect(() => {
     let disposed = false
     void (async (): Promise<void> => {
+      let catalogTracks: Track[] = []
       try {
         const db = await openLibraryDb()
         if (disposed) {
@@ -612,6 +806,7 @@ export function LibraryProvider(props: { children: ReactNode }) {
         rootHandlesRef.current = map
         rootsMetaRef.current = meta
         setRoots(meta)
+        catalogTracks = []
         let cachedApplied = false
         try {
           const cached = await idbGetCatalog(db)
@@ -621,7 +816,8 @@ export function LibraryProvider(props: { children: ReactNode }) {
             meta.length > 0 &&
             catalogMatchesRoots(meta, cached.rootIds)
           ) {
-            setLibraryTracks(cached.tracks)
+            catalogTracks = cached.tracks
+            setLibraryTracks(catalogTracks)
             cachedApplied = true
           }
         } catch {
@@ -629,8 +825,9 @@ export function LibraryProvider(props: { children: ReactNode }) {
         }
         if (disposed) return
         const mayRescanOnLoad = meta.length > 0 && (await everyHandleHasGrantedReadAccess(map))
+        const shouldAutoRescan = safeReadStoredBooleanOrDefault(STORAGE_AUTO_RESCAN_ON_STARTUP, true)
         if (disposed) return
-        if (mayRescanOnLoad && !disposed) {
+        if (mayRescanOnLoad && shouldAutoRescan && !disposed) {
           const result = await performScan(false)
           if (disposed || !result) return
           const { tracks: next, firstError, failedRootCount } = result
@@ -639,7 +836,8 @@ export function LibraryProvider(props: { children: ReactNode }) {
             if (cachedApplied) {
               setScanError(null)
             } else {
-              setLibraryTracks(next)
+              catalogTracks = next
+              setLibraryTracks(catalogTracks)
               try {
                 await idbPutCatalog(db, meta.map((r) => r.id), next)
               } catch {
@@ -648,7 +846,8 @@ export function LibraryProvider(props: { children: ReactNode }) {
               setScanError(firstError ? `${firstError} ${DISK_ACCESS_HINT}` : DISK_ACCESS_HINT)
             }
           } else {
-            setLibraryTracks(next)
+            catalogTracks = next
+            setLibraryTracks(catalogTracks)
             try {
               await idbPutCatalog(db, meta.map((r) => r.id), next)
             } catch {
@@ -660,12 +859,19 @@ export function LibraryProvider(props: { children: ReactNode }) {
         if (!disposed) {
           setScanError(e instanceof Error ? e.message : 'Could not load library')
         }
+      } finally {
+        if (!disposed) {
+          if (!queueHydratedRef.current) {
+            hydrateQueueFromStorage(catalogTracks)
+          }
+          setCatalogInitDone(true)
+        }
       }
     })()
     return (): void => {
       disposed = true
     }
-  }, [performScan])
+  }, [performScan, hydrateQueueFromStorage])
 
   const value = useMemo(
     () => ({
@@ -674,6 +880,11 @@ export function LibraryProvider(props: { children: ReactNode }) {
       queue,
       recentlyPlayedTrackIds,
       compactLists,
+      autoRescanOnStartup,
+      scanPreferences,
+      rememberLastQueue,
+      playbackRestore,
+      isQueueReady,
       isScanning,
       scanError,
       hasDirectoryPicker,
@@ -686,6 +897,11 @@ export function LibraryProvider(props: { children: ReactNode }) {
       clearQueue,
       recordRecentlyPlayedTrack,
       setCompactLists,
+      setAutoRescanOnStartup,
+      setScanPreferences,
+      setRememberLastQueue,
+      consumePlaybackRestore,
+      reportPlayback,
       reorderQueueItems,
       resolveFileForTrack,
       bumpTrackDuration,
@@ -706,6 +922,11 @@ export function LibraryProvider(props: { children: ReactNode }) {
       queue,
       recentlyPlayedTrackIds,
       compactLists,
+      autoRescanOnStartup,
+      scanPreferences,
+      rememberLastQueue,
+      playbackRestore,
+      isQueueReady,
       isScanning,
       scanError,
       hasDirectoryPicker,
@@ -718,6 +939,11 @@ export function LibraryProvider(props: { children: ReactNode }) {
       clearQueue,
       recordRecentlyPlayedTrack,
       setCompactLists,
+      setAutoRescanOnStartup,
+      setScanPreferences,
+      setRememberLastQueue,
+      consumePlaybackRestore,
+      reportPlayback,
       reorderQueueItems,
       resolveFileForTrack,
       bumpTrackDuration,
