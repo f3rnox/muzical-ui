@@ -976,8 +976,8 @@ export default function MusicPlayer() {
             <QueueLoadingSpinner />
           ) : (
             <>
-          <div className="flex shrink-0 items-center justify-between gap-2 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
-            <h2 className="text-xs font-medium uppercase tracking-wider text-zinc-500">Queue</h2>
+          <div className="flex h-11 shrink-0 items-center justify-between gap-2 border-b border-zinc-200 bg-white/80 px-3 dark:border-zinc-800 dark:bg-zinc-950/80">
+            <h2 className="text-xs font-medium uppercase leading-none tracking-wider text-zinc-500">Queue</h2>
             {queue.length > 0 ? (
               <button
                 type="button"
