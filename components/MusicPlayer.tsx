@@ -741,6 +741,9 @@ export default function MusicPlayer() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <span className="hidden rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-xs text-zinc-500 shadow-sm sm:inline dark:border-zinc-700/80 dark:bg-zinc-900/80 dark:text-zinc-400 dark:shadow-none">
+            {statusLabel}
+          </span>
           <Link
             href="/settings"
             className="flex h-9 w-9 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-600 shadow-sm transition hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-300 dark:shadow-none dark:hover:border-zinc-500 dark:hover:bg-zinc-700 dark:hover:text-zinc-50"
@@ -749,9 +752,6 @@ export default function MusicPlayer() {
             <IconSettings className="h-[18px] w-[18px]" />
           </Link>
           <ThemeToggle />
-          <span className="hidden rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-xs text-zinc-500 shadow-sm sm:inline dark:border-zinc-700/80 dark:bg-zinc-900/80 dark:text-zinc-400 dark:shadow-none">
-            {statusLabel}
-          </span>
         </div>
       </header>
 
