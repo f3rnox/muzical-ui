@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.12](https://github.com/f3rnox/muzical-ui/compare/v0.1.11...v0.1.12) (2026-05-18)
+
+
+### Features
+
+* fix youtube playback ([727ae75](https://github.com/f3rnox/muzical-ui/commit/727ae7530d19259698be7aebcd36df49c6788723))
+* fix youtube playback ([afbf982](https://github.com/f3rnox/muzical-ui/commit/afbf9826ac96467c1ce260d32b14d27c9ae30095))
+* update ([fbf2285](https://github.com/f3rnox/muzical-ui/commit/fbf2285eda781ba89cfecf422aa72ecd7c447456))
+* update ([aac3a26](https://github.com/f3rnox/muzical-ui/commit/aac3a263d89d4da50693c4ed50506f2ebcf7b056))
+* update ([3752d1f](https://github.com/f3rnox/muzical-ui/commit/3752d1f95d8b12496e2468940ffca7b96ed21f44))
+* update ([bc5bbdf](https://github.com/f3rnox/muzical-ui/commit/bc5bbdf475095e0d959dc5ca349b5fa268002edf))
+* update ([4ea39e1](https://github.com/f3rnox/muzical-ui/commit/4ea39e16f02ea2ebf43b9e61bf145fb18c8338f8))
+* update ([76fc540](https://github.com/f3rnox/muzical-ui/commit/76fc540cc9cc7d08cab5fdf742bbbb76224f782b))
+* update ([8cd3e72](https://github.com/f3rnox/muzical-ui/commit/8cd3e726e7cadc128741afc2dccea9c5591765cf))
+* update ([ba095f9](https://github.com/f3rnox/muzical-ui/commit/ba095f9aecf63945d69c6b6084f31461d076b3d6))
+
 ### [0.1.11](https://github.com/f3rnox/muzical-ui/compare/v0.1.10...v0.1.11) (2026-05-18)
 
 
