@@ -96,7 +96,7 @@ export default function MusicBrainzBrowser() {
     abortRef.current = controller
 
     debounceRef.current = window.setTimeout(() => {
-      void searchMusicBrainz(q, controller.signal)
+      void searchMusicBrainz(q, controller.signal, mode)
         .then((res) => {
           setResults(res)
           setError(null)
@@ -120,7 +120,7 @@ export default function MusicBrainzBrowser() {
         abortRef.current = null
       }
     }
-  }, [query])
+  }, [query, mode])
 
   useEffect(() => {
     const apiKey = readStoredYoutubeApiKey()
