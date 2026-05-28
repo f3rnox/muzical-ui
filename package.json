@@ -23,8 +23,7 @@
     "node": ">=20"
   },
   "bin": {
-    "muzical-ui": "./bin/muzical-ui.js",
-    "stt-ui": "./bin/stt-ui.js"
+    "muzical-ui": "./bin/muzical-ui.js"
   },
   "files": [
     "bin",
