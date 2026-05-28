@@ -6,6 +6,7 @@ import formatLibraryRootAdded from '@/components/format-library-root-added'
 import LibraryScanOptionsSection from '@/components/LibraryScanOptionsSection'
 import LibraryStatistics from '@/components/LibraryStatistics'
 import MusicBrainzLibraryStatistics from '@/components/MusicBrainzLibraryStatistics'
+import { useSettingsSaveNotification } from '@/components/SettingsSaveNotification'
 import SettingsSwitchRow from '@/components/SettingsSwitchRow'
 import downloadFavoritesExportJson from '@/lib/favorites/download-favorites-export-json'
 import parseFavoritesExportDocument from '@/lib/favorites/parse-favorites-export-document'
@@ -31,6 +32,7 @@ export default function LibrarySettingsPanel() {
     favoriteAlbumKeys,
     importFavorites,
   } = useLibrary()
+  const { notifySettingsSaved } = useSettingsSaveNotification()
 
   const favoritesImportInputRef = useRef<HTMLInputElement>(null)
   const [favoritesImportError, setFavoritesImportError] = useState<string | null>(null)
@@ -75,6 +77,14 @@ export default function LibrarySettingsPanel() {
         })
     },
     [importFavorites],
+  )
+
+  const onAutoRescanOnStartupChange = useCallback(
+    (next: boolean) => {
+      setAutoRescanOnStartup(next)
+      notifySettingsSaved('Library settings saved')
+    },
+    [notifySettingsSaved, setAutoRescanOnStartup],
   )
 
   return (
@@ -205,7 +215,7 @@ export default function LibrarySettingsPanel() {
           title="Rescan on startup"
           description="When enabled, Muzical rescans all configured folders each time you open the app (if the browser already has folder access). When disabled, the last saved catalog loads immediately."
           checked={autoRescanOnStartup}
-          onChange={setAutoRescanOnStartup}
+          onChange={onAutoRescanOnStartupChange}
           ariaLabel="Rescan library on startup"
         />
       </section>

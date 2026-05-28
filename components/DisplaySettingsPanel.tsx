@@ -1,7 +1,9 @@
 'use client'
 
+import { useCallback } from 'react'
 import ThemePalettePicker from '@/components/ThemePalettePicker'
 import { useLibrary } from '@/components/LibraryProvider'
+import { useSettingsSaveNotification } from '@/components/SettingsSaveNotification'
 import SettingsSwitchRow from '@/components/SettingsSwitchRow'
 
 /**
@@ -9,6 +11,15 @@ import SettingsSwitchRow from '@/components/SettingsSwitchRow'
  */
 export default function DisplaySettingsPanel() {
   const { compactLists, setCompactLists } = useLibrary()
+  const { notifySettingsSaved } = useSettingsSaveNotification()
+
+  const onCompactListsChange = useCallback(
+    (next: boolean) => {
+      setCompactLists(next)
+      notifySettingsSaved('Display settings saved')
+    },
+    [notifySettingsSaved, setCompactLists],
+  )
 
   return (
     <div className="flex flex-col gap-8">
@@ -26,7 +37,7 @@ export default function DisplaySettingsPanel() {
           title="Compact UI"
           description="Tighter spacing in the player, queue, and library browser."
           checked={compactLists}
-          onChange={setCompactLists}
+          onChange={onCompactListsChange}
           ariaLabel="Enable compact UI"
         />
       </section>

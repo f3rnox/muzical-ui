@@ -1,5 +1,6 @@
 'use client'
 
+import { useSettingsSaveNotification } from '@/components/SettingsSaveNotification'
 import { useTheme } from '@/components/ThemeProvider'
 
 function IconSun(props: { className?: string }) {
@@ -23,12 +24,16 @@ function IconMoon(props: { className?: string }) {
  */
 export default function ThemeToggle() {
   const { scheme, toggleScheme } = useTheme()
+  const { notifySettingsSaved } = useSettingsSaveNotification()
   const isDark = scheme === 'dark'
 
   return (
     <button
       type="button"
-      onClick={toggleScheme}
+      onClick={() => {
+        toggleScheme()
+        notifySettingsSaved('Display settings saved')
+      }}
       aria-label={isDark ? 'Switch to light theme' : 'Switch to dark theme'}
       className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-600 shadow-sm transition hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-300 dark:shadow-none dark:hover:border-zinc-500 dark:hover:bg-zinc-700 dark:hover:text-zinc-50"
     >

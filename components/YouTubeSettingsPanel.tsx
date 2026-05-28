@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import SettingsSwitchRow from '@/components/SettingsSwitchRow'
+import { useSettingsSaveNotification } from '@/components/SettingsSaveNotification'
 import { useYoutubePreferences } from '@/components/YoutubePreferencesProvider'
 import readStoredYoutubeApiKey from '@/lib/youtube/read-stored-youtube-api-key'
 import clearYoutubeDataApiBlocked from '@/lib/youtube/clear-youtube-data-api-blocked'
@@ -23,8 +24,8 @@ export default function YouTubeSettingsPanel() {
     setPrefetchQueueVideoIds,
     setPrefetchQueueMaxTracks,
   } = useYoutubePreferences()
+  const { notifySettingsSaved } = useSettingsSaveNotification()
   const [apiKey, setApiKey] = useState('')
-  const [saved, setSaved] = useState(false)
 
   useEffect(() => {
     setApiKey(readStoredYoutubeApiKey())
@@ -33,9 +34,24 @@ export default function YouTubeSettingsPanel() {
   const onSave = useCallback(() => {
     writeStoredYoutubeApiKey(apiKey)
     clearYoutubeDataApiBlocked()
-    setSaved(true)
-    window.setTimeout(() => setSaved(false), 2000)
-  }, [apiKey])
+    notifySettingsSaved('YouTube settings saved')
+  }, [apiKey, notifySettingsSaved])
+
+  const onPrefetchQueueVideoIdsChange = useCallback(
+    (next: boolean) => {
+      setPrefetchQueueVideoIds(next)
+      notifySettingsSaved('YouTube settings saved')
+    },
+    [notifySettingsSaved, setPrefetchQueueVideoIds],
+  )
+
+  const onPrefetchQueueMaxTracksChange = useCallback(
+    (next: number) => {
+      setPrefetchQueueMaxTracks(next)
+      notifySettingsSaved('YouTube settings saved')
+    },
+    [notifySettingsSaved, setPrefetchQueueMaxTracks],
+  )
 
   return (
     <div className="flex flex-col gap-8">
@@ -81,11 +97,6 @@ export default function YouTubeSettingsPanel() {
           >
             Save key
           </button>
-          {saved ? (
-            <span className="text-sm text-emerald-700 dark:text-emerald-400" role="status">
-              Saved
-            </span>
-          ) : null}
         </div>
       </section>
 
@@ -99,7 +110,7 @@ export default function YouTubeSettingsPanel() {
             title="Prefetch video IDs for queue"
             description="When enabled, Muzical looks up YouTube videos for queue tracks missing a video id (uses your API key when set)."
             checked={youtubePreferences.prefetchQueueVideoIds}
-            onChange={setPrefetchQueueVideoIds}
+            onChange={onPrefetchQueueVideoIdsChange}
             ariaLabel="Prefetch YouTube video IDs for queue"
           />
         </div>
@@ -119,7 +130,7 @@ export default function YouTubeSettingsPanel() {
             max={PREFETCH_QUEUE_MAX_TRACKS_MAX}
             disabled={!youtubePreferences.prefetchQueueVideoIds}
             value={youtubePreferences.prefetchQueueMaxTracks}
-            onChange={(e) => setPrefetchQueueMaxTracks(Number.parseInt(e.target.value, 10))}
+            onChange={(e) => onPrefetchQueueMaxTracksChange(Number.parseInt(e.target.value, 10))}
             className={FIELD_CLASS}
             aria-label="Prefetch limit for queue tracks"
           />

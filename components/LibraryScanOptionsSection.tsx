@@ -3,6 +3,7 @@
 import { useLibrary } from '@/components/LibraryProvider'
 import { LIBRARY_AUDIO_EXTENSIONS } from '@/lib/library/constants'
 import defaultLibraryScanPreferences from '@/lib/library/default-library-scan-preferences'
+import { useSettingsSaveNotification } from '@/components/SettingsSaveNotification'
 import SettingsSwitchRow from '@/components/SettingsSwitchRow'
 import type { LibraryScanPreferences } from '@/types/library-scan-preferences'
 
@@ -19,16 +20,18 @@ const DEPTH_OPTIONS: readonly { value: number; label: string }[] = [
  * Scan depth, symlink follow, and per-extension include toggles.
  */
 export default function LibraryScanOptionsSection() {
-  const {
-    scanPreferences,
-    setScanPreferences,
-    logLibraryScanTiming,
-    setLogLibraryScanTiming,
-    isScanning,
-  } = useLibrary()
+  const { scanPreferences, setScanPreferences, logLibraryScanTiming, setLogLibraryScanTiming, isScanning } =
+    useLibrary()
+  const { notifySettingsSaved } = useSettingsSaveNotification()
 
   const patch = (partial: Partial<LibraryScanPreferences>): void => {
     setScanPreferences({ ...scanPreferences, ...partial })
+    notifySettingsSaved('Library settings saved')
+  }
+
+  const onLogLibraryScanTimingChange = (next: boolean): void => {
+    setLogLibraryScanTiming(next)
+    notifySettingsSaved('Library settings saved')
   }
 
   const toggleExtension = (ext: string): void => {
@@ -43,15 +46,17 @@ export default function LibraryScanOptionsSection() {
   }
 
   const resetExtensions = (): void => {
-    patch({ enabledExtensions: defaultLibraryScanPreferences().enabledExtensions })
+    patch({
+      enabledExtensions: defaultLibraryScanPreferences().enabledExtensions,
+    })
   }
 
   return (
     <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900/40">
       <h3 className="text-xs font-medium uppercase tracking-wider text-zinc-500">Scan options</h3>
       <p className="mt-2 text-sm leading-relaxed text-zinc-600 dark:text-zinc-400">
-        Applied on the next rescan. Symlink handling depends on your browser; when enabled, Muzical skips
-        directory cycles it can detect.
+        Applied on the next rescan. Symlink handling depends on your browser; when enabled, Muzical skips directory
+        cycles it can detect.
       </p>
 
       <div className="mt-6 flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
@@ -78,7 +83,7 @@ export default function LibraryScanOptionsSection() {
           title="Log scan timing"
           description="Write per-file scan duration to the browser console (cached vs parsed). Useful for tuning scan performance."
           checked={logLibraryScanTiming}
-          onChange={setLogLibraryScanTiming}
+          onChange={onLogLibraryScanTimingChange}
           ariaLabel="Log per-song library scan timing to the console"
         />
       </div>

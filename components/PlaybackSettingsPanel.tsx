@@ -1,7 +1,9 @@
 'use client'
 
+import { useCallback } from 'react'
 import { useLibrary } from '@/components/LibraryProvider'
 import { usePlaybackPreferences } from '@/components/PlaybackPreferencesProvider'
+import { useSettingsSaveNotification } from '@/components/SettingsSaveNotification'
 import SettingsSwitchRow from '@/components/SettingsSwitchRow'
 import { PLAYBACK_RATES } from '@/lib/playback/playback-rates'
 import type { RepeatMode } from '@/types/repeat-mode'
@@ -20,6 +22,7 @@ const FIELD_CLASS =
  */
 export default function PlaybackSettingsPanel() {
   const { rememberLastQueue, setRememberLastQueue } = useLibrary()
+  const { notifySettingsSaved } = useSettingsSaveNotification()
   const {
     preferences,
     setRepeatMode,
@@ -30,6 +33,74 @@ export default function PlaybackSettingsPanel() {
     setSeekStepLargeSec,
     setAutoAdvanceOnEnd,
   } = usePlaybackPreferences()
+
+  const notifyPlaybackSaved = useCallback(() => {
+    notifySettingsSaved('Playback settings saved')
+  }, [notifySettingsSaved])
+
+  const onRememberLastQueueChange = useCallback(
+    (next: boolean) => {
+      setRememberLastQueue(next)
+      notifyPlaybackSaved()
+    },
+    [notifyPlaybackSaved, setRememberLastQueue],
+  )
+
+  const onRepeatModeChange = useCallback(
+    (mode: RepeatMode) => {
+      setRepeatMode(mode)
+      notifyPlaybackSaved()
+    },
+    [notifyPlaybackSaved, setRepeatMode],
+  )
+
+  const onPlaybackRateChange = useCallback(
+    (rate: number) => {
+      setPlaybackRate(rate)
+      notifyPlaybackSaved()
+    },
+    [notifyPlaybackSaved, setPlaybackRate],
+  )
+
+  const onShuffleChange = useCallback(
+    (next: boolean) => {
+      setShuffle(next)
+      notifyPlaybackSaved()
+    },
+    [notifyPlaybackSaved, setShuffle],
+  )
+
+  const onRememberVolumeChange = useCallback(
+    (next: boolean) => {
+      setRememberVolume(next)
+      notifyPlaybackSaved()
+    },
+    [notifyPlaybackSaved, setRememberVolume],
+  )
+
+  const onSeekStepSmallSecChange = useCallback(
+    (seconds: number) => {
+      setSeekStepSmallSec(seconds)
+      notifyPlaybackSaved()
+    },
+    [notifyPlaybackSaved, setSeekStepSmallSec],
+  )
+
+  const onSeekStepLargeSecChange = useCallback(
+    (seconds: number) => {
+      setSeekStepLargeSec(seconds)
+      notifyPlaybackSaved()
+    },
+    [notifyPlaybackSaved, setSeekStepLargeSec],
+  )
+
+  const onAutoAdvanceOnEndChange = useCallback(
+    (next: boolean) => {
+      setAutoAdvanceOnEnd(next)
+      notifyPlaybackSaved()
+    },
+    [notifyPlaybackSaved, setAutoAdvanceOnEnd],
+  )
 
   return (
     <div className="flex flex-col gap-8">
@@ -45,7 +116,7 @@ export default function PlaybackSettingsPanel() {
           title="Remember last track and queue"
           description="When enabled, your queue order, current track, and playhead position are restored the next time you open Muzical (tracks must still exist in the library)."
           checked={rememberLastQueue}
-          onChange={setRememberLastQueue}
+          onChange={onRememberLastQueueChange}
           ariaLabel="Remember last track and queue"
         />
       </section>
@@ -61,7 +132,7 @@ export default function PlaybackSettingsPanel() {
             <span className="text-xs font-medium uppercase tracking-wider text-zinc-500">Default repeat mode</span>
             <select
               value={preferences.repeatMode}
-              onChange={(e) => setRepeatMode(e.target.value as RepeatMode)}
+              onChange={(e) => onRepeatModeChange(e.target.value as RepeatMode)}
               className={FIELD_CLASS}
               aria-label="Default repeat mode"
             >
@@ -77,7 +148,7 @@ export default function PlaybackSettingsPanel() {
             <span className="text-xs font-medium uppercase tracking-wider text-zinc-500">Default playback speed</span>
             <select
               value={preferences.playbackRate}
-              onChange={(e) => setPlaybackRate(Number(e.target.value))}
+              onChange={(e) => onPlaybackRateChange(Number(e.target.value))}
               className={FIELD_CLASS}
               aria-label="Default playback speed"
             >
@@ -95,7 +166,7 @@ export default function PlaybackSettingsPanel() {
             title="Default shuffle"
             description="Start with shuffle enabled when you open Muzical."
             checked={preferences.shuffle}
-            onChange={setShuffle}
+            onChange={onShuffleChange}
             ariaLabel="Default shuffle"
           />
         </div>
@@ -107,7 +178,7 @@ export default function PlaybackSettingsPanel() {
           title="Remember volume"
           description="Restore the last volume level you used on this device."
           checked={preferences.rememberVolume}
-          onChange={setRememberVolume}
+          onChange={onRememberVolumeChange}
           ariaLabel="Remember volume"
         />
       </section>
@@ -125,7 +196,7 @@ export default function PlaybackSettingsPanel() {
               min={1}
               max={120}
               value={preferences.seekStepSmallSec}
-              onChange={(e) => setSeekStepSmallSec(Number.parseInt(e.target.value, 10) || 5)}
+              onChange={(e) => onSeekStepSmallSecChange(Number.parseInt(e.target.value, 10) || 5)}
               className={FIELD_CLASS}
               aria-label="Seek small step in seconds"
             />
@@ -137,7 +208,7 @@ export default function PlaybackSettingsPanel() {
               min={1}
               max={600}
               value={preferences.seekStepLargeSec}
-              onChange={(e) => setSeekStepLargeSec(Number.parseInt(e.target.value, 10) || 30)}
+              onChange={(e) => onSeekStepLargeSecChange(Number.parseInt(e.target.value, 10) || 30)}
               className={FIELD_CLASS}
               aria-label="Seek large step in seconds"
             />
@@ -150,7 +221,7 @@ export default function PlaybackSettingsPanel() {
           title="Auto-advance on track end"
           description="When enabled, playback continues to the next track (or wraps the queue when repeat all is on). When disabled, playback stops when the current track ends unless repeat one is active."
           checked={preferences.autoAdvanceOnEnd}
-          onChange={setAutoAdvanceOnEnd}
+          onChange={onAutoAdvanceOnEndChange}
           ariaLabel="Auto-advance on track end"
         />
       </section>

@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import Script from 'next/script'
+import AppShell from '@/components/AppShell'
 import { LibraryProvider } from '@/components/LibraryProvider'
 import { PlaybackPreferencesProvider } from '@/components/PlaybackPreferencesProvider'
 import { YoutubePreferencesProvider } from '@/components/YoutubePreferencesProvider'
@@ -46,7 +47,9 @@ export default function RootLayout({
             <PaletteProvider>
               <PlaybackPreferencesProvider>
                 <YoutubePreferencesProvider>
-                  <LibraryProvider>{children}</LibraryProvider>
+                  <LibraryProvider>
+                    <AppShell>{children}</AppShell>
+                  </LibraryProvider>
                 </YoutubePreferencesProvider>
               </PlaybackPreferencesProvider>
             </PaletteProvider>

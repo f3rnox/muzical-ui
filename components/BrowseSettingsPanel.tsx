@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { useLibrary } from '@/components/LibraryProvider'
+import { useSettingsSaveNotification } from '@/components/SettingsSaveNotification'
 import readStoredDefaultBrowseView from '@/lib/browse/read-stored-default-browse-view'
 import writeStoredDefaultBrowseView from '@/lib/browse/write-stored-default-browse-view'
 import type { BrowseView } from '@/types/browse-view'
@@ -20,6 +21,7 @@ const FIELD_CLASS =
  */
 export default function BrowseSettingsPanel() {
   const { recentBrowseSearches, clearRecentBrowseSearches } = useLibrary()
+  const { notifySettingsSaved } = useSettingsSaveNotification()
   const [defaultBrowseView, setDefaultBrowseView] = useState<BrowseView>('library')
 
   useEffect(() => {
@@ -28,10 +30,19 @@ export default function BrowseSettingsPanel() {
     })
   }, [])
 
-  const onDefaultBrowseViewChange = useCallback((view: BrowseView) => {
-    setDefaultBrowseView(view)
-    writeStoredDefaultBrowseView(view)
-  }, [])
+  const onDefaultBrowseViewChange = useCallback(
+    (view: BrowseView) => {
+      setDefaultBrowseView(view)
+      writeStoredDefaultBrowseView(view)
+      notifySettingsSaved('Browse settings saved')
+    },
+    [notifySettingsSaved],
+  )
+
+  const onClearRecentBrowseSearches = useCallback(() => {
+    clearRecentBrowseSearches()
+    notifySettingsSaved('Browse settings saved')
+  }, [clearRecentBrowseSearches, notifySettingsSaved])
 
   return (
     <div className="flex flex-col gap-8">
@@ -68,11 +79,12 @@ export default function BrowseSettingsPanel() {
         <h3 className="text-xs font-medium uppercase tracking-wider text-zinc-500">Recent searches</h3>
         <p className="mt-2 text-sm leading-relaxed text-zinc-600 dark:text-zinc-400">
           Clears recent Library, MusicBrainz, and YouTube search chips shown on the home queue panel (
-          {recentBrowseSearches.length === 1 ? '1 saved' : `${recentBrowseSearches.length} saved`}).
+          {recentBrowseSearches.length === 1 ? '1 saved' : `${recentBrowseSearches.length} saved`}
+          ).
         </p>
         <button
           type="button"
-          onClick={() => clearRecentBrowseSearches()}
+          onClick={onClearRecentBrowseSearches}
           disabled={recentBrowseSearches.length === 0}
           className="mt-4 rounded-full border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-800 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
         >

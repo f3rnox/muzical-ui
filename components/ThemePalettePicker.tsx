@@ -1,6 +1,7 @@
 'use client'
 
 import { usePalette } from '@/components/PaletteProvider'
+import { useSettingsSaveNotification } from '@/components/SettingsSaveNotification'
 import { useTheme } from '@/components/ThemeProvider'
 import { COLOR_PALETTES } from '@/lib/palette/palette-constants'
 
@@ -9,17 +10,15 @@ import { COLOR_PALETTES } from '@/lib/palette/palette-constants'
  */
 export default function ThemePalettePicker() {
   const { paletteId, setPaletteId } = usePalette()
+  const { notifySettingsSaved } = useSettingsSaveNotification()
   const { scheme } = useTheme()
 
   return (
     <div className="flex flex-col gap-3">
       <div>
-        <h3 className="text-xs font-medium uppercase tracking-wider text-zinc-500">
-          Color palette
-        </h3>
+        <h3 className="text-xs font-medium uppercase tracking-wider text-zinc-500">Color palette</h3>
         <p className="mt-2 text-sm leading-relaxed text-zinc-600 dark:text-zinc-400">
-          Choose a coordinated accent and page tint. Works with light and dark mode from the
-          top bar.
+          Choose a coordinated accent and page tint. Works with light and dark mode from the top bar.
         </p>
       </div>
       <div
@@ -37,7 +36,10 @@ export default function ThemePalettePicker() {
               role="radio"
               aria-checked={selected}
               title={palette.label}
-              onClick={() => setPaletteId(palette.id)}
+              onClick={() => {
+                setPaletteId(palette.id)
+                notifySettingsSaved('Display settings saved')
+              }}
               className={[
                 'flex cursor-pointer flex-col items-stretch gap-2 rounded-xl border p-2 text-left transition',
                 selected
@@ -60,9 +62,7 @@ export default function ThemePalettePicker() {
                 />
               </span>
               <span className="px-0.5">
-                <span className="block text-xs font-medium text-zinc-900 dark:text-zinc-100">
-                  {palette.label}
-                </span>
+                <span className="block text-xs font-medium text-zinc-900 dark:text-zinc-100">{palette.label}</span>
                 <span className="mt-0.5 block text-[10px] leading-snug text-zinc-500 dark:text-zinc-400">
                   {palette.description}
                 </span>

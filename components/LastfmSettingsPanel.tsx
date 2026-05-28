@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import { useSettingsSaveNotification } from '@/components/SettingsSaveNotification'
 import readStoredLastfmApiKey from '@/lib/lastfm/read-stored-lastfm-api-key'
 import writeStoredLastfmApiKey from '@/lib/lastfm/write-stored-lastfm-api-key'
 
@@ -8,8 +9,8 @@ import writeStoredLastfmApiKey from '@/lib/lastfm/write-stored-lastfm-api-key'
  * Last.fm API key for related-song discovery (`track.getSimilar`).
  */
 export default function LastfmSettingsPanel() {
+  const { notifySettingsSaved } = useSettingsSaveNotification()
   const [apiKey, setApiKey] = useState('')
-  const [saved, setSaved] = useState(false)
 
   useEffect(() => {
     setApiKey(readStoredLastfmApiKey())
@@ -17,9 +18,8 @@ export default function LastfmSettingsPanel() {
 
   const onSave = useCallback(() => {
     writeStoredLastfmApiKey(apiKey)
-    setSaved(true)
-    window.setTimeout(() => setSaved(false), 2000)
-  }, [apiKey])
+    notifySettingsSaved('Last.fm settings saved')
+  }, [apiKey, notifySettingsSaved])
 
   return (
     <div className="flex flex-col gap-8">
@@ -42,7 +42,8 @@ export default function LastfmSettingsPanel() {
           >
             last.fm/api
           </a>
-          . Use the API key (not the shared secret) for read-only methods like <code className="text-xs">track.getSimilar</code>.
+          . Use the API key (not the shared secret) for read-only methods like{' '}
+          <code className="text-xs">track.getSimilar</code>.
         </p>
         <label className="mt-4 block">
           <span className="sr-only">Last.fm API key</span>
@@ -64,7 +65,6 @@ export default function LastfmSettingsPanel() {
           >
             Save key
           </button>
-          {saved ? <span className="text-sm text-zinc-500">Saved</span> : null}
         </div>
       </section>
     </div>
