@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.20](https://github.com/f3rnox/muzical-ui/compare/v0.1.19...v0.1.20) (2026-05-28)
+
+
+### Features
+
+* add library history view ([b05d54d](https://github.com/f3rnox/muzical-ui/commit/b05d54daca79836b645f5a58f934a0c1454ace9d))
+* lyrics pane via genius api ([bb06c0c](https://github.com/f3rnox/muzical-ui/commit/bb06c0c2e023797b1d7b9574c6f79eb8f0c7352f))
+
+
+### Bug Fixes
+
+* various ([acc4069](https://github.com/f3rnox/muzical-ui/commit/acc406919e7d1834143b4e14a538194adf8a1a1b))
+
 ### [0.1.19](https://github.com/f3rnox/muzical-ui/compare/v0.1.18...v0.1.19) (2026-05-28)
 
 
