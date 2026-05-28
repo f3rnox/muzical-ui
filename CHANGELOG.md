@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.19](https://github.com/f3rnox/muzical-ui/compare/v0.1.18...v0.1.19) (2026-05-28)
+
+
+### Bug Fixes
+
+* rm stt-ui bin ([aa128a9](https://github.com/f3rnox/muzical-ui/commit/aa128a94dbd3fcba89d81f0894c0c447c3a3ba8e))
+
 ### [0.1.18](https://github.com/f3rnox/muzical-ui/compare/v0.1.17...v0.1.18) (2026-05-28)
 
 
