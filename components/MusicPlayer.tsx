@@ -253,6 +253,7 @@ export default function MusicPlayer() {
     reportPlayback,
     isQueueReady,
     patchTrackById,
+    openAddToPlaylist,
   } = useLibrary()
   const {
     preferences,
@@ -1697,6 +1698,7 @@ export default function MusicPlayer() {
                                 track,
                                 onViewDetails: openTrackDetails,
                                 onViewRelatedSongs: openRelatedSongs,
+                                onAddToPlaylist: (track) => openAddToPlaylist(track, track.title),
                                 onSave:
                                   isStreamTrack && !isSavedInLibrary
                                     ? () => addToLibrary(track)
