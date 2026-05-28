@@ -46,6 +46,12 @@ export const SETTINGS_NAV_ITEMS: readonly SettingsNavItem[] = [
     description:
       "Color palette themes, list density, and other visual preferences.",
   },
+  {
+    href: "/settings/genius",
+    label: "Genius",
+    description:
+      "API key for displaying song lyrics.",
+  },
 ] as const;
 
 /** Subsections linked from the settings overview landing page. */

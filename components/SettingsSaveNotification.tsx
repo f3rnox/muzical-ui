@@ -92,3 +92,26 @@ export function SettingsSaveNotificationProvider(props: { children: ReactNode })
 export function useSettingsSaveNotification(): SettingsSaveNotificationContextValue {
   return useContext(SettingsSaveNotificationContext)
 }
+
+type SettingsSaveNotificationProps = {
+  show: boolean
+  onDismiss: () => void
+  message?: string
+}
+
+export default function SettingsSaveNotification({
+  show,
+  onDismiss,
+  message = 'Settings saved',
+}: SettingsSaveNotificationProps) {
+  const { notifySettingsSaved } = useSettingsSaveNotification()
+
+  useEffect(() => {
+    if (show) {
+      notifySettingsSaved(message)
+      onDismiss()
+    }
+  }, [show, onDismiss, message, notifySettingsSaved])
+
+  return null
+}

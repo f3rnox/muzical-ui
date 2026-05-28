@@ -38,6 +38,7 @@ import isMusicBrainzStreamTrack from '@/lib/library/is-musicbrainz-stream-track'
 import readAppVersion from '@/lib/read-app-version'
 import resolveYoutubeVideoId from '@/lib/youtube/resolve-youtube-video-id'
 import youtubeVideoThumbnailUrl from '@/lib/youtube/youtube-video-thumbnail-url'
+import LyricsPanel from '@/components/LyricsPanel'
 
 const STORAGE_LIBRARY_PANEL_PX = 'muzical.panelWidth.library'
 const STORAGE_QUEUE_PANEL_PX = 'muzical.panelWidth.queue'
@@ -209,6 +210,27 @@ function IconChevronRight(props: { className?: string }) {
   )
 }
 
+function IconLyrics(props: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      className={props.className}
+    >
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <polyline points="14 2 14 8 20 8" />
+      <line x1="16" y1="13" x2="8" y2="13" />
+      <line x1="16" y1="17" x2="8" y2="17" />
+      <polyline points="10 9 9 9 8 9" />
+    </svg>
+  )
+}
+
 /**
  * Local-library player: queue from scanned folders, `<audio>` playback via object URLs.
  */
@@ -282,6 +304,7 @@ export default function MusicPlayer() {
   const [layoutLg, setLayoutLg] = useState(false)
   const [libraryPanelPx, setLibraryPanelPx] = useState(440)
   const [queuePanelPx, setQueuePanelPx] = useState(300)
+  const [showLyrics, setShowLyrics] = useState(false)
   const volume = rememberVolume ? preferences.volume : (sessionVolume ?? DEFAULT_PLAYBACK_VOLUME)
 
   const mainRowRef = useRef<HTMLDivElement>(null)
@@ -1218,7 +1241,9 @@ export default function MusicPlayer() {
           className="flex min-h-0 min-w-0 flex-col overflow-hidden border-b border-zinc-200 bg-white dark:border-zinc-800/80 dark:bg-zinc-950/50 max-lg:flex-1 max-lg:w-full lg:h-full lg:shrink-0 lg:border-b-0 lg:border-r lg:border-zinc-200 lg:dark:border-zinc-800"
           style={layoutLg ? { width: queuePanelPx, flex: '0 0 auto' } : undefined}
         >
-          {!isQueueReady ? (
+          {showLyrics ? (
+            <LyricsPanel track={current} onClose={() => setShowLyrics(false)} />
+          ) : !isQueueReady ? (
             <QueueLoadingSpinner />
           ) : (
             <>
@@ -1336,7 +1361,7 @@ export default function MusicPlayer() {
                               <button
                                 type="button"
                                 onClick={() => addToQueue(t)}
-                                className="shrink-0 rounded-full bg-accent-500/15 px-2.5 py-1 text-xs font-medium text-accent-800 ring-1 ring-accent-500/25 transition hover:bg-accent-500/25 dark:text-accent-300 dark:ring-accent-500/40"
+                                className="shrink-0 rounded-full bg-accent-500/15 px-2.5 py-1 text-xs font-medium text-accent-800 ring-1 ring-accent-500/25 transition hover:bg-accent-500/25 disabled:opacity-40 dark:text-accent-300 dark:ring-accent-500/40"
                               >
                                 Add
                               </button>
@@ -1911,6 +1936,20 @@ export default function MusicPlayer() {
                 ].join(' ')}
               >
                 <IconShuffle className="h-5 w-5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowLyrics((prev) => !prev)}
+                aria-pressed={showLyrics}
+                aria-label={showLyrics ? 'Hide lyrics' : 'Show lyrics'}
+                className={[
+                  'flex h-9 w-9 items-center justify-center rounded-full border transition',
+                  showLyrics
+                    ? 'border-accent-500/50 bg-accent-500/15 text-accent-800 dark:text-accent-300'
+                    : 'border-zinc-200 bg-white text-zinc-600 hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:border-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-100',
+                ].join(' ')}
+              >
+                <IconLyrics className="h-5 w-5" />
               </button>
               <label className="flex items-center gap-2 text-xs text-zinc-600 dark:text-zinc-400">
                 <span className="sr-only">Playback speed</span>
