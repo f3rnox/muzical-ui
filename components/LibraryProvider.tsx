@@ -11,9 +11,7 @@ import {
   type ReactNode,
 } from 'react'
 import appendRecentBrowseSearch from '@/lib/browse/append-recent-browse-search'
-import {
-  RECENT_BROWSE_SEARCHES_LIMIT,
-} from '@/lib/browse/browse-search-constants'
+import { RECENT_BROWSE_SEARCHES_LIMIT } from '@/lib/browse/browse-search-constants'
 import readStoredRecentBrowseSearches from '@/lib/browse/read-stored-recent-browse-searches'
 import clearStoredRecentBrowseSearches from '@/lib/browse/clear-stored-recent-browse-searches'
 import writeStoredRecentBrowseSearches from '@/lib/browse/write-stored-recent-browse-searches'
@@ -49,7 +47,10 @@ import applyTrackMetadataPatch from '@/lib/track/apply-track-metadata-patch'
 import type { TrackMetadataFields } from '@/lib/track/apply-track-metadata-patch'
 import writeAudioTagsToFile from '@/lib/library/write-audio-tags-to-file'
 import writeAudioTagsToTracks from '@/lib/library/write-audio-tags-to-tracks'
-import type { WriteAudioTagsBulkResult, WriteAudioTagsResult } from '@/types/write-audio-tags-result'
+import type {
+  WriteAudioTagsBulkResult,
+  WriteAudioTagsResult,
+} from '@/types/write-audio-tags-result'
 import isPersistedLibraryTrack from '@/lib/library/is-persisted-library-track'
 import mergeScannedTracksWithSavedLibrary from '@/lib/library/merge-scanned-tracks-with-saved-library'
 import normalizeTrackForLibrarySave from '@/lib/library/normalize-track-for-library-save'
@@ -74,6 +75,12 @@ import removeTrackIdsFromPlaylist from '@/lib/playlists/remove-track-ids-from-pl
 import reorderPlaylistTrackIds from '@/lib/playlists/reorder-playlist-track-ids'
 import { PLAYLISTS_LIMIT } from '@/lib/playlists/playlist-storage-key'
 import type { Playlist } from '@/types/playlist'
+import type { ListeningStatsByTrackId } from '@/types/listening-stats'
+import {
+  clearStoredListeningStats,
+  readStoredListeningStats,
+  writeStoredListeningStats,
+} from '@/lib/listening/listening-stats-storage'
 import readStoredPlaybackSnapshot from '@/lib/playback/read-stored-playback-snapshot'
 import writeStoredPlaybackSnapshot from '@/lib/playback/write-stored-playback-snapshot'
 import buildEmptyPlaybackSnapshot from '@/lib/playback/build-empty-playback-snapshot'
@@ -102,6 +109,7 @@ type LibraryContextValue = {
   libraryTracks: Track[]
   queue: QueuedTrack[]
   recentlyPlayedTrackIds: readonly string[]
+  listeningStats: ListeningStatsByTrackId
   recentBrowseSearches: readonly RecentBrowseSearch[]
   compactLists: boolean
   autoRescanOnStartup: boolean
@@ -131,6 +139,11 @@ type LibraryContextValue = {
   removeFromQueue: (queueId: string) => void
   clearQueue: () => void
   recordRecentlyPlayedTrack: (trackId: string) => void
+  recordTrackPlaybackStarted: (trackId: string) => void
+  recordTrackPlaybackProgress: (trackId: string, listenedSec: number) => void
+  recordTrackPlaybackCompleted: (trackId: string) => void
+  recordTrackSkipped: (trackId: string) => void
+  clearListeningStats: () => void
   recordRecentBrowseSearch: (source: BrowseSearchSource, query: string) => void
   clearRecentBrowseSearches: () => void
   setCompactLists: (next: boolean) => void
@@ -330,8 +343,12 @@ export function LibraryProvider(props: { children: ReactNode }) {
   const logLibraryScanTimingRef = useRef(false)
   const rememberLastQueueRef = useRef(false)
   const queueHydratedRef = useRef(false)
-  const playbackReportRef = useRef({ activeQueueId: null as string | null, positionSec: 0 })
+  const playbackReportRef = useRef({
+    activeQueueId: null as string | null,
+    positionSec: 0,
+  })
   const persistPlaybackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const listeningStatsReadyRef = useRef(false)
   const [favoriteSongIds, setFavoriteSongIds] = useState<string[]>([])
   const [favoriteArtistNames, setFavoriteArtistNames] = useState<string[]>([])
   const [favoriteAlbumKeys, setFavoriteAlbumKeys] = useState<string[]>([])
@@ -339,6 +356,7 @@ export function LibraryProvider(props: { children: ReactNode }) {
   const [libraryTracks, setLibraryTracks] = useState<Track[]>([])
   const [queue, setQueue] = useState<QueuedTrack[]>([])
   const [recentlyPlayedTrackIds, setRecentlyPlayedTrackIds] = useState<string[]>([])
+  const [listeningStats, setListeningStats] = useState<ListeningStatsByTrackId>({})
   const [recentBrowseSearches, setRecentBrowseSearches] = useState<RecentBrowseSearch[]>([])
   const [compactLists, setCompactListsState] = useState(false)
   const [autoRescanOnStartup, setAutoRescanOnStartupState] = useState(true)
@@ -392,7 +410,19 @@ export function LibraryProvider(props: { children: ReactNode }) {
 
   useEffect(() => {
     void Promise.resolve().then(() => {
-      setRecentlyPlayedTrackIds(safeReadStoredStringArray(STORAGE_RECENTLY_PLAYED_TRACK_IDS).slice(0, RECENTLY_PLAYED_LIMIT))
+      setRecentlyPlayedTrackIds(
+        safeReadStoredStringArray(STORAGE_RECENTLY_PLAYED_TRACK_IDS).slice(
+          0,
+          RECENTLY_PLAYED_LIMIT,
+        ),
+      )
+    })
+  }, [])
+
+  useEffect(() => {
+    void Promise.resolve().then(() => {
+      setListeningStats(readStoredListeningStats())
+      listeningStatsReadyRef.current = true
     })
   }, [])
 
@@ -444,8 +474,16 @@ export function LibraryProvider(props: { children: ReactNode }) {
   }, [])
 
   useEffect(() => {
-    safeWriteStoredStringArray(STORAGE_RECENTLY_PLAYED_TRACK_IDS, recentlyPlayedTrackIds.slice(0, RECENTLY_PLAYED_LIMIT))
+    safeWriteStoredStringArray(
+      STORAGE_RECENTLY_PLAYED_TRACK_IDS,
+      recentlyPlayedTrackIds.slice(0, RECENTLY_PLAYED_LIMIT),
+    )
   }, [recentlyPlayedTrackIds])
+
+  useEffect(() => {
+    if (!listeningStatsReadyRef.current) return
+    writeStoredListeningStats(listeningStats)
+  }, [listeningStats])
 
   useEffect(() => {
     if (!recentBrowseSearchesReadyRef.current) return
@@ -585,7 +623,11 @@ export function LibraryProvider(props: { children: ReactNode }) {
     const db = dbRef.current
     if (!db) return
     const meta = rootsMetaRef.current
-    void idbPutCatalog(db, meta.map((r) => r.id), libraryTracksRef.current).catch(() => {
+    void idbPutCatalog(
+      db,
+      meta.map((r) => r.id),
+      libraryTracksRef.current,
+    ).catch(() => {
       /* ignore */
     })
   }, [])
@@ -704,7 +746,11 @@ export function LibraryProvider(props: { children: ReactNode }) {
       const db = dbRef.current
       if (db) {
         try {
-          await idbPutCatalog(db, meta.map((r) => r.id), merged)
+          await idbPutCatalog(
+            db,
+            meta.map((r) => r.id),
+            merged,
+          )
         } catch {
           /* quota or transient IDB errors — in-memory catalog still updated */
         }
@@ -716,24 +762,30 @@ export function LibraryProvider(props: { children: ReactNode }) {
     [performScan],
   )
 
-  const bumpTrackDuration = useCallback((trackId: string, durationSec: number) => {
-    if (!Number.isFinite(durationSec) || durationSec <= 0) return
-    const patch = (t: Track): Track =>
-      t.id === trackId && t.durationSec <= 0 ? { ...t, durationSec } : t
-    setLibraryTracks((prev) => prev.map(patch))
-    setQueue((prev) => prev.map((q) => ({ ...q, track: patch(q.track) })))
-    persistCatalogDebounced()
-  }, [persistCatalogDebounced])
+  const bumpTrackDuration = useCallback(
+    (trackId: string, durationSec: number) => {
+      if (!Number.isFinite(durationSec) || durationSec <= 0) return
+      const patch = (t: Track): Track =>
+        t.id === trackId && t.durationSec <= 0 ? { ...t, durationSec } : t
+      setLibraryTracks((prev) => prev.map(patch))
+      setQueue((prev) => prev.map((q) => ({ ...q, track: patch(q.track) })))
+      persistCatalogDebounced()
+    },
+    [persistCatalogDebounced],
+  )
 
-  const patchTrackById = useCallback((trackId: string, patch: (track: Track) => Track) => {
-    const id = trackId.trim()
-    if (!id) return
-    const apply = (t: Track): Track => (t.id === id ? patch(t) : t)
-    setLibraryTracks((prev) => prev.map(apply))
-    setQueue((prev) => prev.map((q) => ({ ...q, track: apply(q.track) })))
-    setDetailsTrack((prev) => (prev?.id === id ? patch(prev) : prev))
-    persistCatalogDebounced()
-  }, [persistCatalogDebounced])
+  const patchTrackById = useCallback(
+    (trackId: string, patch: (track: Track) => Track) => {
+      const id = trackId.trim()
+      if (!id) return
+      const apply = (t: Track): Track => (t.id === id ? patch(t) : t)
+      setLibraryTracks((prev) => prev.map(apply))
+      setQueue((prev) => prev.map((q) => ({ ...q, track: apply(q.track) })))
+      setDetailsTrack((prev) => (prev?.id === id ? patch(prev) : prev))
+      persistCatalogDebounced()
+    },
+    [persistCatalogDebounced],
+  )
 
   const saveTrackMetadata = useCallback(
     async (trackId: string, fields: TrackMetadataFields): Promise<WriteAudioTagsResult> => {
@@ -831,10 +883,7 @@ export function LibraryProvider(props: { children: ReactNode }) {
     if (!youtubePreferences.prefetchQueueVideoIds) return undefined
     if (readYoutubeDataApiBlocked()) return undefined
     const limit = youtubePreferences.prefetchQueueMaxTracks
-    const targets = collectYoutubePrefetchTargets(queue.map((row) => row.track)).slice(
-      0,
-      limit,
-    )
+    const targets = collectYoutubePrefetchTargets(queue.map((row) => row.track)).slice(0, limit)
     if (targets.length === 0) return undefined
     const controller = new AbortController()
     const prefetchCount = targets.length
@@ -898,30 +947,33 @@ export function LibraryProvider(props: { children: ReactNode }) {
     setPlayNowRequest(null)
   }, [])
 
-  const addToLibrary = useCallback((items: Track | readonly Track[]) => {
-    const list = (Array.isArray(items) ? items : [items]).map(normalizeTrackForLibrarySave)
-    if (list.length === 0) return
-    setLibraryTracks((prev) => {
-      const byId = new Map(prev.map((t) => [t.id, t]))
-      let changed = false
-      for (const track of list) {
-        const existing = byId.get(track.id)
-        if (existing) {
-          byId.set(track.id, {
-            ...existing,
-            ...track,
-            youtubeVideoId: track.youtubeVideoId ?? existing.youtubeVideoId,
-          })
+  const addToLibrary = useCallback(
+    (items: Track | readonly Track[]) => {
+      const list = (Array.isArray(items) ? items : [items]).map(normalizeTrackForLibrarySave)
+      if (list.length === 0) return
+      setLibraryTracks((prev) => {
+        const byId = new Map(prev.map((t) => [t.id, t]))
+        let changed = false
+        for (const track of list) {
+          const existing = byId.get(track.id)
+          if (existing) {
+            byId.set(track.id, {
+              ...existing,
+              ...track,
+              youtubeVideoId: track.youtubeVideoId ?? existing.youtubeVideoId,
+            })
+            changed = true
+            continue
+          }
+          byId.set(track.id, track)
           changed = true
-          continue
         }
-        byId.set(track.id, track)
-        changed = true
-      }
-      return changed ? [...byId.values()] : prev
-    })
-    persistCatalogDebounced()
-  }, [persistCatalogDebounced])
+        return changed ? [...byId.values()] : prev
+      })
+      persistCatalogDebounced()
+    },
+    [persistCatalogDebounced],
+  )
 
   const removeFromLibrary = useCallback(
     (items: Track | readonly Track[]) => {
@@ -963,9 +1015,7 @@ export function LibraryProvider(props: { children: ReactNode }) {
 
   const removeAllMusicBrainzFromLibrary = useCallback(() => {
     const current = libraryTracksRef.current
-    const removedIds = new Set(
-      current.filter(isPersistedLibraryTrack).map((track) => track.id),
-    )
+    const removedIds = new Set(current.filter(isPersistedLibraryTrack).map((track) => track.id))
     if (removedIds.size === 0) return
 
     setLibraryTracks(filterOutPersistedLibraryTracks(current))
@@ -1011,6 +1061,108 @@ export function LibraryProvider(props: { children: ReactNode }) {
       const next = [id, ...prev.filter((x) => x !== id)]
       return next.slice(0, RECENTLY_PLAYED_LIMIT)
     })
+  }, [])
+
+  const recordTrackPlaybackStarted = useCallback(
+    (trackId: string) => {
+      const id = trackId.trim()
+      if (!id) return
+      const now = Date.now()
+      recordRecentlyPlayedTrack(id)
+      setListeningStats((prev) => {
+        const current = prev[id]
+        return {
+          ...prev,
+          [id]: {
+            trackId: id,
+            playCount: (current?.playCount ?? 0) + 1,
+            completedCount: current?.completedCount ?? 0,
+            skipCount: current?.skipCount ?? 0,
+            totalListenSec: current?.totalListenSec ?? 0,
+            firstPlayedAt: current?.firstPlayedAt ?? now,
+            lastPlayedAt: now,
+            lastCompletedAt: current?.lastCompletedAt,
+            lastSkippedAt: current?.lastSkippedAt,
+          },
+        }
+      })
+    },
+    [recordRecentlyPlayedTrack],
+  )
+
+  const recordTrackPlaybackProgress = useCallback((trackId: string, listenedSec: number) => {
+    const id = trackId.trim()
+    if (!id || !Number.isFinite(listenedSec) || listenedSec <= 0) return
+    setListeningStats((prev) => {
+      const current = prev[id]
+      const delta = Math.min(30, Math.max(0, listenedSec))
+      if (delta <= 0) return prev
+      return {
+        ...prev,
+        [id]: {
+          trackId: id,
+          playCount: current?.playCount ?? 0,
+          completedCount: current?.completedCount ?? 0,
+          skipCount: current?.skipCount ?? 0,
+          totalListenSec: (current?.totalListenSec ?? 0) + delta,
+          firstPlayedAt: current?.firstPlayedAt,
+          lastPlayedAt: current?.lastPlayedAt,
+          lastCompletedAt: current?.lastCompletedAt,
+          lastSkippedAt: current?.lastSkippedAt,
+        },
+      }
+    })
+  }, [])
+
+  const recordTrackPlaybackCompleted = useCallback((trackId: string) => {
+    const id = trackId.trim()
+    if (!id) return
+    const now = Date.now()
+    setListeningStats((prev) => {
+      const current = prev[id]
+      return {
+        ...prev,
+        [id]: {
+          trackId: id,
+          playCount: current?.playCount ?? 0,
+          completedCount: (current?.completedCount ?? 0) + 1,
+          skipCount: current?.skipCount ?? 0,
+          totalListenSec: current?.totalListenSec ?? 0,
+          firstPlayedAt: current?.firstPlayedAt,
+          lastPlayedAt: current?.lastPlayedAt,
+          lastCompletedAt: now,
+          lastSkippedAt: current?.lastSkippedAt,
+        },
+      }
+    })
+  }, [])
+
+  const recordTrackSkipped = useCallback((trackId: string) => {
+    const id = trackId.trim()
+    if (!id) return
+    const now = Date.now()
+    setListeningStats((prev) => {
+      const current = prev[id]
+      return {
+        ...prev,
+        [id]: {
+          trackId: id,
+          playCount: current?.playCount ?? 0,
+          completedCount: current?.completedCount ?? 0,
+          skipCount: (current?.skipCount ?? 0) + 1,
+          totalListenSec: current?.totalListenSec ?? 0,
+          firstPlayedAt: current?.firstPlayedAt,
+          lastPlayedAt: current?.lastPlayedAt,
+          lastCompletedAt: current?.lastCompletedAt,
+          lastSkippedAt: now,
+        },
+      }
+    })
+  }, [])
+
+  const clearListeningStats = useCallback(() => {
+    setListeningStats({})
+    clearStoredListeningStats()
   }, [])
 
   const recordRecentBrowseSearch = useCallback((source: BrowseSearchSource, query: string) => {
@@ -1115,9 +1267,7 @@ export function LibraryProvider(props: { children: ReactNode }) {
   const reorderPlaylistTracks = useCallback(
     (playlistId: string, fromIndex: number, toIndex: number) => {
       setPlaylists((prev) =>
-        prev.map((p) =>
-          p.id === playlistId ? reorderPlaylistTrackIds(p, fromIndex, toIndex) : p,
-        ),
+        prev.map((p) => (p.id === playlistId ? reorderPlaylistTrackIds(p, fromIndex, toIndex) : p)),
       )
     },
     [],
@@ -1174,16 +1324,19 @@ export function LibraryProvider(props: { children: ReactNode }) {
     writeStoredLibraryScanPreferences(next)
   }, [])
 
-  const setRememberLastQueue = useCallback((next: boolean) => {
-    rememberLastQueueRef.current = next
-    setRememberLastQueueState(next)
-    safeWriteStoredBoolean(STORAGE_REMEMBER_LAST_QUEUE, next)
-    if (!next) {
-      writeStoredPlaybackSnapshot(buildEmptyPlaybackSnapshot())
-    } else {
-      flushPersistPlaybackNow()
-    }
-  }, [flushPersistPlaybackNow])
+  const setRememberLastQueue = useCallback(
+    (next: boolean) => {
+      rememberLastQueueRef.current = next
+      setRememberLastQueueState(next)
+      safeWriteStoredBoolean(STORAGE_REMEMBER_LAST_QUEUE, next)
+      if (!next) {
+        writeStoredPlaybackSnapshot(buildEmptyPlaybackSnapshot())
+      } else {
+        flushPersistPlaybackNow()
+      }
+    },
+    [flushPersistPlaybackNow],
+  )
 
   const consumePlaybackRestore = useCallback((): void => {
     setPlaybackRestore(null)
@@ -1230,9 +1383,12 @@ export function LibraryProvider(props: { children: ReactNode }) {
     setFavoriteAlbumKeys((prev) => toggleSortedStringId(prev, albumKey))
   }, [])
 
-  const toggleFavoriteTrack = useCallback((track: Track) => {
-    toggleFavoriteSong(track.id)
-  }, [toggleFavoriteSong])
+  const toggleFavoriteTrack = useCallback(
+    (track: Track) => {
+      toggleFavoriteSong(track.id)
+    },
+    [toggleFavoriteSong],
+  )
 
   const importFavorites = useCallback(
     (data: {
@@ -1265,7 +1421,12 @@ export function LibraryProvider(props: { children: ReactNode }) {
       try {
         const id = crypto.randomUUID()
         const addedAt = Date.now()
-        const row: StoredLibraryRoot = { id, name: handle.name, addedAt, handle }
+        const row: StoredLibraryRoot = {
+          id,
+          name: handle.name,
+          addedAt,
+          handle,
+        }
         const db = dbRef.current
         if (!db) {
           setScanError('Library database is not ready yet.')
@@ -1273,7 +1434,10 @@ export function LibraryProvider(props: { children: ReactNode }) {
         }
         await idbPutRoot(db, row)
         rootHandlesRef.current.set(id, handle)
-        const meta: LibraryRootMeta[] = [...rootsMetaRef.current, { id, name: handle.name, addedAt }]
+        const meta: LibraryRootMeta[] = [
+          ...rootsMetaRef.current,
+          { id, name: handle.name, addedAt },
+        ]
         rootsMetaRef.current = meta
         setRoots(meta)
         await runScan(true)
@@ -1408,7 +1572,10 @@ export function LibraryProvider(props: { children: ReactNode }) {
         }
         if (disposed) return
         const mayRescanOnLoad = meta.length > 0 && (await everyHandleHasGrantedReadAccess(map))
-        const shouldAutoRescan = safeReadStoredBooleanOrDefault(STORAGE_AUTO_RESCAN_ON_STARTUP, true)
+        const shouldAutoRescan = safeReadStoredBooleanOrDefault(
+          STORAGE_AUTO_RESCAN_ON_STARTUP,
+          true,
+        )
         if (disposed) return
         if (mayRescanOnLoad && shouldAutoRescan && !disposed) {
           const result = await performScan(false)
@@ -1422,7 +1589,11 @@ export function LibraryProvider(props: { children: ReactNode }) {
               catalogTracks = mergeScannedTracksWithSavedLibrary(next, savedTracksFromCache)
               setLibraryTracks(catalogTracks)
               try {
-                await idbPutCatalog(db, meta.map((r) => r.id), catalogTracks)
+                await idbPutCatalog(
+                  db,
+                  meta.map((r) => r.id),
+                  catalogTracks,
+                )
               } catch {
                 /* ignore */
               }
@@ -1432,7 +1603,11 @@ export function LibraryProvider(props: { children: ReactNode }) {
             catalogTracks = mergeScannedTracksWithSavedLibrary(next, libraryTracksRef.current)
             setLibraryTracks(catalogTracks)
             try {
-              await idbPutCatalog(db, meta.map((r) => r.id), catalogTracks)
+              await idbPutCatalog(
+                db,
+                meta.map((r) => r.id),
+                catalogTracks,
+              )
             } catch {
               /* ignore */
             }
@@ -1462,6 +1637,7 @@ export function LibraryProvider(props: { children: ReactNode }) {
       libraryTracks,
       queue,
       recentlyPlayedTrackIds,
+      listeningStats,
       recentBrowseSearches,
       compactLists,
       autoRescanOnStartup,
@@ -1491,6 +1667,11 @@ export function LibraryProvider(props: { children: ReactNode }) {
       removeFromQueue,
       clearQueue,
       recordRecentlyPlayedTrack,
+      recordTrackPlaybackStarted,
+      recordTrackPlaybackProgress,
+      recordTrackPlaybackCompleted,
+      recordTrackSkipped,
+      clearListeningStats,
       recordRecentBrowseSearch,
       clearRecentBrowseSearches,
       setCompactLists,
@@ -1540,6 +1721,7 @@ export function LibraryProvider(props: { children: ReactNode }) {
       libraryTracks,
       queue,
       recentlyPlayedTrackIds,
+      listeningStats,
       recentBrowseSearches,
       compactLists,
       autoRescanOnStartup,
@@ -1569,6 +1751,11 @@ export function LibraryProvider(props: { children: ReactNode }) {
       removeFromQueue,
       clearQueue,
       recordRecentlyPlayedTrack,
+      recordTrackPlaybackStarted,
+      recordTrackPlaybackProgress,
+      recordTrackPlaybackCompleted,
+      recordTrackSkipped,
+      clearListeningStats,
       recordRecentBrowseSearch,
       clearRecentBrowseSearches,
       setCompactLists,

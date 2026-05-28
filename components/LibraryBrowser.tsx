@@ -18,8 +18,10 @@ import buildAlbumOverflowMenuItems from '@/lib/library/build-album-overflow-menu
 import buildArtistOverflowMenuItems from '@/lib/library/build-artist-overflow-menu-items'
 import { albumCompositeKey, artistDisplayName } from '@/lib/library/favorite-keys'
 import { formatDuration } from '@/lib/format-duration'
+import formatTotalLibraryDuration from '@/lib/format-total-library-duration'
+import type { TrackListeningStats } from '@/types/listening-stats'
 
-type BrowseMode = 'artist' | 'album' | 'folder' | 'favorites' | 'playlists'
+type BrowseMode = 'artist' | 'album' | 'folder' | 'favorites' | 'playlists' | 'history'
 
 function filterTracksByQuery(tracks: readonly Track[], query: string): Track[] {
   const s = query.trim().toLowerCase()
@@ -61,8 +63,29 @@ function ancestorFolderPathsFromRelativePath(relativePath: string): string[] {
 }
 
 type SearchArtistHit = { name: string; tracks: Track[] }
-type SearchAlbumHit = { key: string; album: string; artist: string; tracks: Track[] }
-type SearchFolderHit = { rootId: string; rootName: string; path: string; tracks: Track[] }
+type SearchAlbumHit = {
+  key: string
+  album: string
+  artist: string
+  tracks: Track[]
+}
+type SearchFolderHit = {
+  rootId: string
+  rootName: string
+  path: string
+  tracks: Track[]
+}
+type ListeningTrackRow = {
+  track: Track
+  stats: TrackListeningStats | undefined
+}
+type ListeningAggregateRow = {
+  id: string
+  label: string
+  detail?: string
+  playCount: number
+  totalListenSec: number
+}
 
 type SearchResults = {
   artists: SearchArtistHit[]
@@ -101,7 +124,9 @@ function computeSearchResults(
     }
   }
   albums.sort((a, b) => {
-    const c = a.album.localeCompare(b.album, undefined, { sensitivity: 'base' })
+    const c = a.album.localeCompare(b.album, undefined, {
+      sensitivity: 'base',
+    })
     return c !== 0 ? c : a.artist.localeCompare(b.artist, undefined, { sensitivity: 'base' })
   })
 
@@ -140,7 +165,9 @@ function computeSearchResults(
   }
 
   const folders = [...folderBuckets.values()].sort((a, b) => {
-    const c = a.rootName.localeCompare(b.rootName, undefined, { sensitivity: 'base' })
+    const c = a.rootName.localeCompare(b.rootName, undefined, {
+      sensitivity: 'base',
+    })
     if (c !== 0) return c
     return a.path.localeCompare(b.path, undefined, { sensitivity: 'base' })
   })
@@ -168,6 +195,30 @@ function unionTracksById(lists: readonly (readonly Track[])[]): Track[] {
 function folderSearchLabel(hit: SearchFolderHit): string {
   if (!hit.path) return `${hit.rootName} (library)`
   return `${hit.rootName} / ${hit.path.replace(/\//g, ' / ')}`
+}
+
+function formatListeningDate(timestamp?: number): string {
+  if (!timestamp) return 'Never'
+  return new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  }).format(new Date(timestamp))
+}
+
+function listeningSummary(stats: TrackListeningStats | undefined): string {
+  if (!stats) return 'No plays yet'
+  const bits = [
+    `${stats.playCount} play${stats.playCount === 1 ? '' : 's'}`,
+    formatTotalLibraryDuration(stats.totalListenSec),
+  ]
+  if (stats.skipCount > 0) {
+    bits.push(`${stats.skipCount} skip${stats.skipCount === 1 ? '' : 's'}`)
+  }
+  if (stats.lastPlayedAt) {
+    bits.push(`last ${formatListeningDate(stats.lastPlayedAt)}`)
+  }
+  return bits.join(' - ')
 }
 
 function groupByArtist(tracks: readonly Track[]): Map<string, Track[]> {
@@ -202,7 +253,10 @@ function tracksForRoot(tracks: readonly Track[], rootId: string): Track[] {
   return tracks.filter((t) => t.library?.rootId === rootId)
 }
 
-function listFolderChildren(tracksAtRoot: readonly Track[], pathPrefix: string): { folders: string[]; files: Track[] } {
+function listFolderChildren(
+  tracksAtRoot: readonly Track[],
+  pathPrefix: string,
+): { folders: string[]; files: Track[] } {
   const prefixSlash = pathPrefix === '' ? '' : `${pathPrefix}/`
   const folderSet = new Set<string>()
   const files: Track[] = []
@@ -255,6 +309,7 @@ export default function LibraryBrowser() {
   const {
     roots,
     libraryTracks,
+    listeningStats,
     addToQueue,
     compactLists,
     favoriteSongIds,
@@ -309,17 +364,21 @@ export default function LibraryBrowser() {
   const albumMap = useMemo(() => groupByAlbum(filtered), [filtered])
 
   const artistNames = useMemo(
-    () => [...artistMap.keys()].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })),
+    () =>
+      [...artistMap.keys()].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })),
     [artistMap],
   )
 
   const albumKeys = useMemo(
-    () => [...albumMap.keys()].sort((a, b) => {
-      const [albumA, artistA] = a.split('\u0000')
-      const [albumB, artistB] = b.split('\u0000')
-      const c = albumA.localeCompare(albumB, undefined, { sensitivity: 'base' })
-      return c !== 0 ? c : artistA.localeCompare(artistB, undefined, { sensitivity: 'base' })
-    }),
+    () =>
+      [...albumMap.keys()].sort((a, b) => {
+        const [albumA, artistA] = a.split('\u0000')
+        const [albumB, artistB] = b.split('\u0000')
+        const c = albumA.localeCompare(albumB, undefined, {
+          sensitivity: 'base',
+        })
+        return c !== 0 ? c : artistA.localeCompare(artistB, undefined, { sensitivity: 'base' })
+      }),
     [albumMap],
   )
 
@@ -456,7 +515,9 @@ export default function LibraryBrowser() {
       .sort((a, b) => {
         const [albumA, artistA] = a.split('\u0000')
         const [albumB, artistB] = b.split('\u0000')
-        const c = albumA.localeCompare(albumB, undefined, { sensitivity: 'base' })
+        const c = albumA.localeCompare(albumB, undefined, {
+          sensitivity: 'base',
+        })
         return c !== 0 ? c : artistA.localeCompare(artistB, undefined, { sensitivity: 'base' })
       })
   }, [favoriteAlbumKeys, libraryAlbumMap])
@@ -490,7 +551,14 @@ export default function LibraryBrowser() {
     }
     out.sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base' }))
     return out
-  }, [favoriteSongIds, favoriteArtistNames, favoriteAlbumKeys, libraryTracks, libraryArtistMap, libraryAlbumMap])
+  }, [
+    favoriteSongIds,
+    favoriteArtistNames,
+    favoriteAlbumKeys,
+    libraryTracks,
+    libraryArtistMap,
+    libraryAlbumMap,
+  ])
 
   const searchSummaryBits = useMemo((): string[] => {
     const bits: string[] = []
@@ -501,6 +569,128 @@ export default function LibraryBrowser() {
     if (songs.length) bits.push(`${songs.length} song${songs.length === 1 ? '' : 's'}`)
     return bits
   }, [searchResults])
+
+  const listeningRows = useMemo(() => {
+    return libraryTracks
+      .map((track) => ({ track, stats: listeningStats[track.id] }))
+      .filter((row) => Boolean(row.stats))
+  }, [libraryTracks, listeningStats])
+
+  const listeningTotals = useMemo(() => {
+    let playCount = 0
+    let completedCount = 0
+    let skipCount = 0
+    let totalListenSec = 0
+    let tracksHeard = 0
+    for (const { stats } of listeningRows) {
+      if (!stats) continue
+      playCount += stats.playCount
+      completedCount += stats.completedCount
+      skipCount += stats.skipCount
+      totalListenSec += stats.totalListenSec
+      if (stats.playCount > 0) tracksHeard += 1
+    }
+    return {
+      playCount,
+      completedCount,
+      skipCount,
+      totalListenSec,
+      tracksHeard,
+    }
+  }, [listeningRows])
+
+  const recentListeningRows = useMemo(
+    () =>
+      listeningRows
+        .filter((row) => Boolean(row.stats?.lastPlayedAt))
+        .sort((a, b) => (b.stats?.lastPlayedAt ?? 0) - (a.stats?.lastPlayedAt ?? 0))
+        .slice(0, 12),
+    [listeningRows],
+  )
+
+  const topListeningRows = useMemo(
+    () =>
+      listeningRows
+        .filter((row) => (row.stats?.playCount ?? 0) > 0)
+        .sort((a, b) => {
+          const plays = (b.stats?.playCount ?? 0) - (a.stats?.playCount ?? 0)
+          if (plays !== 0) return plays
+          return (b.stats?.totalListenSec ?? 0) - (a.stats?.totalListenSec ?? 0)
+        })
+        .slice(0, 12),
+    [listeningRows],
+  )
+
+  const skippedListeningRows = useMemo(
+    () =>
+      listeningRows
+        .filter((row) => (row.stats?.skipCount ?? 0) > 0)
+        .sort((a, b) => {
+          const skips = (b.stats?.skipCount ?? 0) - (a.stats?.skipCount ?? 0)
+          if (skips !== 0) return skips
+          return (b.stats?.lastSkippedAt ?? 0) - (a.stats?.lastSkippedAt ?? 0)
+        })
+        .slice(0, 12),
+    [listeningRows],
+  )
+
+  const rediscoverListeningRows = useMemo(
+    () =>
+      listeningRows
+        .filter((row) => (row.stats?.playCount ?? 0) > 0 && Boolean(row.stats?.lastPlayedAt))
+        .sort((a, b) => (a.stats?.lastPlayedAt ?? 0) - (b.stats?.lastPlayedAt ?? 0))
+        .slice(0, 12),
+    [listeningRows],
+  )
+
+  const topListeningArtists = useMemo(() => {
+    const map = new Map<string, ListeningAggregateRow>()
+    for (const { track, stats } of listeningRows) {
+      if (!stats || stats.playCount === 0) continue
+      const label = artistDisplayName(track.artist)
+      const current = map.get(label) ?? {
+        id: label,
+        label,
+        playCount: 0,
+        totalListenSec: 0,
+      }
+      current.playCount += stats.playCount
+      current.totalListenSec += stats.totalListenSec
+      map.set(label, current)
+    }
+    return [...map.values()]
+      .sort((a, b) => {
+        const plays = b.playCount - a.playCount
+        if (plays !== 0) return plays
+        return b.totalListenSec - a.totalListenSec
+      })
+      .slice(0, 5)
+  }, [listeningRows])
+
+  const topListeningAlbums = useMemo(() => {
+    const map = new Map<string, ListeningAggregateRow>()
+    for (const { track, stats } of listeningRows) {
+      if (!stats || stats.playCount === 0) continue
+      const id = albumCompositeKey(track.album, track.artist)
+      const current = map.get(id) ?? {
+        id,
+        label: track.album || 'Unknown album',
+        detail: artistDisplayName(track.artist),
+        playCount: 0,
+        totalListenSec: 0,
+      }
+      current.playCount += stats.playCount
+      current.totalListenSec += stats.totalListenSec
+      map.set(id, current)
+    }
+    return [...map.values()]
+      .sort((a, b) => {
+        const plays = b.playCount - a.playCount
+        if (plays !== 0) return plays
+        return b.totalListenSec - a.totalListenSec
+      })
+      .slice(0, 5)
+  }, [listeningRows])
 
   const navigateToArtistFromSearch = useCallback((name: string) => {
     setQuery('')
@@ -626,6 +816,57 @@ export default function LibraryBrowser() {
     [handleRemoveArtistFromLibrary, openArtistMetadataEdit, handleAddArtistToPlaylist],
   )
 
+  const renderListeningTrackList = (rows: readonly ListeningTrackRow[], emptyLabel: string) => {
+    if (rows.length === 0) {
+      return <p className="px-2 py-3 text-sm text-zinc-500">{emptyLabel}</p>
+    }
+    return (
+      <ul className={ulSpaceYClass}>
+        {rows.map(({ track, stats }) => (
+          <li key={track.id}>
+            <LibrarySongTrackRow track={track} compact={compact} onAdd={onAdd} />
+            <p className="px-2 pb-2 text-[11px] tabular-nums text-zinc-500 dark:text-zinc-400">
+              {listeningSummary(stats)}
+            </p>
+          </li>
+        ))}
+      </ul>
+    )
+  }
+
+  const renderListeningAggregateList = (
+    rows: readonly ListeningAggregateRow[],
+    emptyLabel: string,
+  ) => {
+    if (rows.length === 0) {
+      return <p className="px-2 py-3 text-sm text-zinc-500">{emptyLabel}</p>
+    }
+    return (
+      <ul className={ulSpaceYClass}>
+        {rows.map((row) => (
+          <li
+            key={row.id}
+            className={`flex min-w-0 items-center justify-between rounded-lg ${rowPadLgClass} text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800/80`}
+          >
+            <span className="min-w-0">
+              <span className="block truncate font-medium text-zinc-900 dark:text-zinc-100">
+                {row.label}
+              </span>
+              {row.detail ? (
+                <span className="block truncate text-xs text-zinc-500">{row.detail}</span>
+              ) : null}
+            </span>
+            <span className="shrink-0 text-right text-[11px] tabular-nums text-zinc-500">
+              {row.playCount} play{row.playCount === 1 ? '' : 's'}
+              <br />
+              {formatTotalLibraryDuration(row.totalListenSec)}
+            </span>
+          </li>
+        ))}
+      </ul>
+    )
+  }
+
   return (
     <section className="flex h-full min-h-0 flex-1 flex-col overflow-hidden border-b border-zinc-200 bg-zinc-50/80 dark:border-zinc-800 dark:bg-zinc-900/30 lg:border-b-0 lg:border-r">
       <div className="shrink-0 space-y-3 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
@@ -640,186 +881,212 @@ export default function LibraryBrowser() {
         />
         <RecentBrowseSearchSuggestions source="library" onSelect={setQuery} />
         <div className="flex flex-wrap gap-1">
-          {(['artist', 'album', 'folder', 'favorites', 'playlists'] as const).map((m) => (
-            <button
-              key={m}
-              type="button"
-              onClick={() => goMode(m)}
-              className={[
-                'cursor-pointer rounded-full px-3 py-1 text-xs font-medium capitalize transition',
-                mode === m
-                  ? 'bg-accent-500 text-zinc-950'
-                  : 'bg-zinc-200 text-zinc-700 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700',
-              ].join(' ')}
-            >
-              {m}
-            </button>
-          ))}
+          {(['artist', 'album', 'folder', 'favorites', 'playlists', 'history'] as const).map(
+            (m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => goMode(m)}
+                className={[
+                  'cursor-pointer rounded-full px-3 py-1 text-xs font-medium capitalize transition',
+                  mode === m
+                    ? 'bg-accent-500 text-zinc-950'
+                    : 'bg-zinc-200 text-zinc-700 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700',
+                ].join(' ')}
+              >
+                {m}
+              </button>
+            ),
+          )}
         </div>
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto px-2 py-2">
         {libraryTracks.length === 0 ? (
-          <p className="px-2 py-6 text-center text-sm text-zinc-500">No library tracks yet. Configure folders in settings.</p>
+          <p className="px-2 py-6 text-center text-sm text-zinc-500">
+            No library tracks yet. Configure folders in settings.
+          </p>
         ) : searchActive ? (
           <div className="space-y-1">
-                <p className="px-2 pb-2 text-xs text-zinc-500">
-                  {searchSummaryBits.length > 0 ? (
-                    <>
-                      {searchSummaryBits.join(' · ')}
-                      {searchUnionTracks.length > 0 ? (
-                        <span className="text-zinc-400">
-                          {' '}
-                          · {searchUnionTracks.length} unique track{searchUnionTracks.length === 1 ? '' : 's'} (add all)
-                        </span>
-                      ) : null}
-                    </>
-                  ) : (
-                    'No matches.'
-                  )}
-                </p>
-                {searchSummaryBits.length > 0 ? (
+            <p className="px-2 pb-2 text-xs text-zinc-500">
+              {searchSummaryBits.length > 0 ? (
+                <>
+                  {searchSummaryBits.join(' · ')}
+                  {searchUnionTracks.length > 0 ? (
+                    <span className="text-zinc-400">
+                      {' '}
+                      · {searchUnionTracks.length} unique track
+                      {searchUnionTracks.length === 1 ? '' : 's'} (add all)
+                    </span>
+                  ) : null}
+                </>
+              ) : (
+                'No matches.'
+              )}
+            </p>
+            {searchSummaryBits.length > 0 ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => onAddMany(searchUnionTracks)}
+                  disabled={searchUnionTracks.length === 0}
+                  className="mb-2 w-full rounded-lg border border-zinc-200 bg-white py-2 text-xs font-medium text-zinc-800 transition hover:bg-zinc-50 disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                >
+                  Add all search results to queue
+                </button>
+                {searchResults.artists.length > 0 ? (
                   <>
-                    <button
-                      type="button"
-                      onClick={() => onAddMany(searchUnionTracks)}
-                      disabled={searchUnionTracks.length === 0}
-                      className="mb-2 w-full rounded-lg border border-zinc-200 bg-white py-2 text-xs font-medium text-zinc-800 transition hover:bg-zinc-50 disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
-                    >
-                      Add all search results to queue
-                    </button>
-                    {searchResults.artists.length > 0 ? (
-                      <>
-                        <p className="px-2 pt-2 text-xs font-medium uppercase tracking-wider text-zinc-500">Artists</p>
-                        <ul className={ulSpaceYClass}>
-                          {searchResults.artists.map((hit) => (
-                            <li key={hit.name} className="group/row flex items-center gap-1">
-                              <button
-                                type="button"
-                                onClick={() => navigateToArtistFromSearch(hit.name)}
-                                className={`flex min-w-0 flex-1 items-center justify-between rounded-lg ${rowPadLgClass} text-left text-sm text-zinc-800 transition hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800/80`}
-                              >
-                                <span className="truncate font-medium text-zinc-900 dark:text-zinc-100">{hit.name}</span>
-                                <span className="shrink-0 text-xs tabular-nums text-zinc-500">{hit.tracks.length}</span>
-                              </button>
-                              <TrackRowOverflowMenu
-                                triggerLabel={`Actions for ${hit.name}`}
-                                items={artistOverflowMenuItems(hit.name)}
-                              />
-                              <FavoriteStarButton
-                                filled={isFavoriteArtist(hit.name)}
-                                onPress={() => toggleFavoriteArtist(hit.name)}
-                                label={isFavoriteArtist(hit.name) ? 'Remove artist from favorites' : 'Add artist to favorites'}
-                              />
-                              <button
-                                type="button"
-                                onClick={() => onAddMany(hit.tracks)}
-                                disabled={hit.tracks.length === 0}
-                                className="shrink-0 self-center rounded-full bg-accent-500/15 px-2.5 py-1 text-xs font-medium text-accent-800 ring-1 ring-accent-500/25 transition hover:bg-accent-500/25 disabled:opacity-40 dark:text-accent-300 dark:ring-accent-500/40"
-                              >
-                                Add all
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
-                      </>
-                    ) : null}
-                    {searchResults.albums.length > 0 ? (
-                      <>
-                        <p className="px-2 pt-3 text-xs font-medium uppercase tracking-wider text-zinc-500">Albums</p>
-                        <ul className={ulSpaceYClass}>
-                          {searchResults.albums.map((hit) => {
-                            const sample = hit.tracks[0]
-                            return (
-                              <li key={hit.key} className="group/row flex items-center gap-1">
-                                <button
-                                  type="button"
-                                  onClick={() => navigateToAlbumFromSearch(hit.key)}
-                                  className={`flex min-w-0 flex-1 items-center ${rowGapLgClass} rounded-lg ${rowPadLgClass} text-left transition hover:bg-zinc-100 dark:hover:bg-zinc-800/80`}
-                                >
-                                  <AlbumCoverThumb track={sample} />
-                                  <div className="flex min-w-0 flex-1 flex-col items-start">
-                                    <span className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">
-                                      {hit.album}
-                                    </span>
-                                    <span className="truncate text-xs text-zinc-500">{hit.artist}</span>
-                                    <span className="mt-0.5 text-xs text-zinc-400">
-                                      {hit.tracks.length} track{hit.tracks.length === 1 ? '' : 's'}
-                                    </span>
-                                  </div>
-                                </button>
-                                <TrackRowOverflowMenu
-                                  triggerLabel={`Actions for ${hit.album}`}
-                                  items={albumOverflowMenuItems(hit.key)}
-                                />
-                                <FavoriteStarButton
-                                  filled={isFavoriteAlbum(hit.key)}
-                                  onPress={() => toggleFavoriteAlbum(hit.key)}
-                                  label={
-                                    isFavoriteAlbum(hit.key) ? 'Remove album from favorites' : 'Add album to favorites'
-                                  }
-                                />
-                                <button
-                                  type="button"
-                                  onClick={() => onAddMany(hit.tracks)}
-                                  disabled={hit.tracks.length === 0}
-                                  className="shrink-0 self-center rounded-full bg-accent-500/15 px-2.5 py-1 text-xs font-medium text-accent-800 ring-1 ring-accent-500/25 transition hover:bg-accent-500/25 disabled:opacity-40 dark:text-accent-300 dark:ring-accent-500/40"
-                                >
-                                  Add all
-                                </button>
-                              </li>
-                            )
-                          })}
-                        </ul>
-                      </>
-                    ) : null}
-                    {searchResults.folders.length > 0 ? (
-                      <>
-                        <p className="px-2 pt-3 text-xs font-medium uppercase tracking-wider text-zinc-500">Folders</p>
-                        <ul className={ulSpaceYClass}>
-                          {searchResults.folders.map((hit) => (
-                            <li
-                              key={`${hit.rootId}\u0000${hit.path}`}
-                              className="group/row flex items-center gap-1"
-                            >
-                              <button
-                                type="button"
-                                onClick={() => navigateToFolderFromSearch(hit.rootId, hit.path)}
-                                className={`flex min-w-0 flex-1 flex-col items-start rounded-lg ${rowPadLgClass} text-left text-sm transition hover:bg-zinc-100 dark:hover:bg-zinc-800/80`}
-                              >
-                                <span className="truncate font-medium text-zinc-900 dark:text-zinc-100">
-                                  {folderSearchLabel(hit)}
-                                </span>
-                                <span className="mt-0.5 text-xs tabular-nums text-zinc-500">{hit.tracks.length} tracks</span>
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => onAddMany(hit.tracks)}
-                                disabled={hit.tracks.length === 0}
-                                className="shrink-0 self-center rounded-full bg-accent-500/15 px-2.5 py-1 text-xs font-medium text-accent-800 ring-1 ring-accent-500/25 transition hover:bg-accent-500/25 disabled:opacity-40 dark:text-accent-300 dark:ring-accent-500/40"
-                              >
-                                Add all
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
-                      </>
-                    ) : null}
-                    {searchResults.songs.length > 0 ? (
-                      <>
-                        <p className="px-2 pt-3 text-xs font-medium uppercase tracking-wider text-zinc-500">Songs</p>
-                        <ul className={ulSpaceYClass}>
-                          {searchResults.songs.map((t) => (
-                            <li key={t.id}>
-                              <LibrarySongTrackRow track={t} compact={compact} onAdd={onAdd} />
-                            </li>
-                          ))}
-                        </ul>
-                      </>
-                    ) : null}
+                    <p className="px-2 pt-2 text-xs font-medium uppercase tracking-wider text-zinc-500">
+                      Artists
+                    </p>
+                    <ul className={ulSpaceYClass}>
+                      {searchResults.artists.map((hit) => (
+                        <li key={hit.name} className="group/row flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => navigateToArtistFromSearch(hit.name)}
+                            className={`flex min-w-0 flex-1 items-center justify-between rounded-lg ${rowPadLgClass} text-left text-sm text-zinc-800 transition hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800/80`}
+                          >
+                            <span className="truncate font-medium text-zinc-900 dark:text-zinc-100">
+                              {hit.name}
+                            </span>
+                            <span className="shrink-0 text-xs tabular-nums text-zinc-500">
+                              {hit.tracks.length}
+                            </span>
+                          </button>
+                          <TrackRowOverflowMenu
+                            triggerLabel={`Actions for ${hit.name}`}
+                            items={artistOverflowMenuItems(hit.name)}
+                          />
+                          <FavoriteStarButton
+                            filled={isFavoriteArtist(hit.name)}
+                            onPress={() => toggleFavoriteArtist(hit.name)}
+                            label={
+                              isFavoriteArtist(hit.name)
+                                ? 'Remove artist from favorites'
+                                : 'Add artist to favorites'
+                            }
+                          />
+                          <button
+                            type="button"
+                            onClick={() => onAddMany(hit.tracks)}
+                            disabled={hit.tracks.length === 0}
+                            className="shrink-0 self-center rounded-full bg-accent-500/15 px-2.5 py-1 text-xs font-medium text-accent-800 ring-1 ring-accent-500/25 transition hover:bg-accent-500/25 disabled:opacity-40 dark:text-accent-300 dark:ring-accent-500/40"
+                          >
+                            Add all
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
                   </>
                 ) : null}
-              </div>
+                {searchResults.albums.length > 0 ? (
+                  <>
+                    <p className="px-2 pt-3 text-xs font-medium uppercase tracking-wider text-zinc-500">
+                      Albums
+                    </p>
+                    <ul className={ulSpaceYClass}>
+                      {searchResults.albums.map((hit) => {
+                        const sample = hit.tracks[0]
+                        return (
+                          <li key={hit.key} className="group/row flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => navigateToAlbumFromSearch(hit.key)}
+                              className={`flex min-w-0 flex-1 items-center ${rowGapLgClass} rounded-lg ${rowPadLgClass} text-left transition hover:bg-zinc-100 dark:hover:bg-zinc-800/80`}
+                            >
+                              <AlbumCoverThumb track={sample} />
+                              <div className="flex min-w-0 flex-1 flex-col items-start">
+                                <span className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">
+                                  {hit.album}
+                                </span>
+                                <span className="truncate text-xs text-zinc-500">{hit.artist}</span>
+                                <span className="mt-0.5 text-xs text-zinc-400">
+                                  {hit.tracks.length} track
+                                  {hit.tracks.length === 1 ? '' : 's'}
+                                </span>
+                              </div>
+                            </button>
+                            <TrackRowOverflowMenu
+                              triggerLabel={`Actions for ${hit.album}`}
+                              items={albumOverflowMenuItems(hit.key)}
+                            />
+                            <FavoriteStarButton
+                              filled={isFavoriteAlbum(hit.key)}
+                              onPress={() => toggleFavoriteAlbum(hit.key)}
+                              label={
+                                isFavoriteAlbum(hit.key)
+                                  ? 'Remove album from favorites'
+                                  : 'Add album to favorites'
+                              }
+                            />
+                            <button
+                              type="button"
+                              onClick={() => onAddMany(hit.tracks)}
+                              disabled={hit.tracks.length === 0}
+                              className="shrink-0 self-center rounded-full bg-accent-500/15 px-2.5 py-1 text-xs font-medium text-accent-800 ring-1 ring-accent-500/25 transition hover:bg-accent-500/25 disabled:opacity-40 dark:text-accent-300 dark:ring-accent-500/40"
+                            >
+                              Add all
+                            </button>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  </>
+                ) : null}
+                {searchResults.folders.length > 0 ? (
+                  <>
+                    <p className="px-2 pt-3 text-xs font-medium uppercase tracking-wider text-zinc-500">
+                      Folders
+                    </p>
+                    <ul className={ulSpaceYClass}>
+                      {searchResults.folders.map((hit) => (
+                        <li
+                          key={`${hit.rootId}\u0000${hit.path}`}
+                          className="group/row flex items-center gap-1"
+                        >
+                          <button
+                            type="button"
+                            onClick={() => navigateToFolderFromSearch(hit.rootId, hit.path)}
+                            className={`flex min-w-0 flex-1 flex-col items-start rounded-lg ${rowPadLgClass} text-left text-sm transition hover:bg-zinc-100 dark:hover:bg-zinc-800/80`}
+                          >
+                            <span className="truncate font-medium text-zinc-900 dark:text-zinc-100">
+                              {folderSearchLabel(hit)}
+                            </span>
+                            <span className="mt-0.5 text-xs tabular-nums text-zinc-500">
+                              {hit.tracks.length} tracks
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onAddMany(hit.tracks)}
+                            disabled={hit.tracks.length === 0}
+                            className="shrink-0 self-center rounded-full bg-accent-500/15 px-2.5 py-1 text-xs font-medium text-accent-800 ring-1 ring-accent-500/25 transition hover:bg-accent-500/25 disabled:opacity-40 dark:text-accent-300 dark:ring-accent-500/40"
+                          >
+                            Add all
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                ) : null}
+                {searchResults.songs.length > 0 ? (
+                  <>
+                    <p className="px-2 pt-3 text-xs font-medium uppercase tracking-wider text-zinc-500">
+                      Songs
+                    </p>
+                    <ul className={ulSpaceYClass}>
+                      {searchResults.songs.map((t) => (
+                        <li key={t.id}>
+                          <LibrarySongTrackRow track={t} compact={compact} onAdd={onAdd} />
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                ) : null}
+              </>
+            ) : null}
+          </div>
         ) : mode === 'artist' ? (
           artistPick === null ? (
             <ul className={ulSpaceYClass}>
@@ -831,7 +1098,9 @@ export default function LibraryBrowser() {
                     className={`flex min-w-0 flex-1 items-center justify-between rounded-lg ${rowPadLgClass} text-left text-sm text-zinc-800 transition hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800/80`}
                   >
                     <span className="truncate font-medium">{name}</span>
-                    <span className="shrink-0 text-xs tabular-nums text-zinc-500">{artistMap.get(name)?.length ?? 0}</span>
+                    <span className="shrink-0 text-xs tabular-nums text-zinc-500">
+                      {artistMap.get(name)?.length ?? 0}
+                    </span>
                   </button>
                   <TrackRowOverflowMenu
                     triggerLabel={`Actions for ${name}`}
@@ -840,7 +1109,11 @@ export default function LibraryBrowser() {
                   <FavoriteStarButton
                     filled={isFavoriteArtist(name)}
                     onPress={() => toggleFavoriteArtist(name)}
-                    label={isFavoriteArtist(name) ? 'Remove artist from favorites' : 'Add artist to favorites'}
+                    label={
+                      isFavoriteArtist(name)
+                        ? 'Remove artist from favorites'
+                        : 'Add artist to favorites'
+                    }
                   />
                   <button
                     type="button"
@@ -939,7 +1212,12 @@ export default function LibraryBrowser() {
               <ul className={ulSpaceYClass}>
                 {(artistMap.get(artistPick) ?? []).map((t) => (
                   <li key={t.id}>
-                    <LibrarySongTrackRow track={t} compact={compact} onAdd={onAdd} showArtist={false} />
+                    <LibrarySongTrackRow
+                      track={t}
+                      compact={compact}
+                      onAdd={onAdd}
+                      showArtist={false}
+                    />
                   </li>
                 ))}
               </ul>
@@ -947,7 +1225,7 @@ export default function LibraryBrowser() {
           )
         ) : mode === 'album' ? (
           albumPick === null ? (
-              <ul className={ulSpaceYClass}>
+            <ul className={ulSpaceYClass}>
               {albumKeys.map((key) => {
                 const [album, artist] = key.split('\u0000')
                 const n = albumMap.get(key)?.length ?? 0
@@ -961,9 +1239,13 @@ export default function LibraryBrowser() {
                     >
                       <AlbumCoverThumb track={sample} />
                       <div className="flex min-w-0 flex-1 flex-col items-start">
-                        <span className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">{album}</span>
+                        <span className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">
+                          {album}
+                        </span>
                         <span className="truncate text-xs text-zinc-500">{artist}</span>
-                        <span className="mt-0.5 text-xs text-zinc-400">{n} track{n === 1 ? '' : 's'}</span>
+                        <span className="mt-0.5 text-xs text-zinc-400">
+                          {n} track{n === 1 ? '' : 's'}
+                        </span>
                       </div>
                     </button>
                     <TrackRowOverflowMenu
@@ -973,7 +1255,11 @@ export default function LibraryBrowser() {
                     <FavoriteStarButton
                       filled={isFavoriteAlbum(key)}
                       onPress={() => toggleFavoriteAlbum(key)}
-                      label={isFavoriteAlbum(key) ? 'Remove album from favorites' : 'Add album to favorites'}
+                      label={
+                        isFavoriteAlbum(key)
+                          ? 'Remove album from favorites'
+                          : 'Add album to favorites'
+                      }
                     />
                     <button
                       type="button"
@@ -1045,7 +1331,8 @@ export default function LibraryBrowser() {
                         </p>
                       ) : null}
                       <p className="mt-2 text-xs tabular-nums text-zinc-500 dark:text-zinc-400">
-                        {selectedAlbumDetail.trackCount} track{selectedAlbumDetail.trackCount === 1 ? '' : 's'}
+                        {selectedAlbumDetail.trackCount} track
+                        {selectedAlbumDetail.trackCount === 1 ? '' : 's'}
                         {selectedAlbumDetail.totalSec > 0
                           ? ` · ${formatDuration(selectedAlbumDetail.totalSec)} total`
                           : selectedAlbumDetail.trackCount > 0
@@ -1053,7 +1340,10 @@ export default function LibraryBrowser() {
                             : ''}
                         {selectedAlbumDetail.withDurationCount > 0 &&
                         selectedAlbumDetail.withDurationCount < selectedAlbumDetail.trackCount ? (
-                          <span className="text-zinc-400"> ({selectedAlbumDetail.withDurationCount} timed)</span>
+                          <span className="text-zinc-400">
+                            {' '}
+                            ({selectedAlbumDetail.withDurationCount} timed)
+                          </span>
                         ) : null}
                       </p>
                       {selectedAlbumDetail.rootLabels.length > 1 ? (
@@ -1078,6 +1368,99 @@ export default function LibraryBrowser() {
               </ul>
             </div>
           )
+        ) : mode === 'history' ? (
+          <div className="space-y-5 px-1">
+            <div className="grid grid-cols-2 gap-2 px-1">
+              <div className="rounded-xl border border-zinc-200 bg-white px-3 py-2 dark:border-zinc-800 dark:bg-zinc-950/40">
+                <p className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">
+                  Listened
+                </p>
+                <p className="mt-1 text-sm font-semibold tabular-nums text-zinc-900 dark:text-zinc-100">
+                  {formatTotalLibraryDuration(listeningTotals.totalListenSec)}
+                </p>
+              </div>
+              <div className="rounded-xl border border-zinc-200 bg-white px-3 py-2 dark:border-zinc-800 dark:bg-zinc-950/40">
+                <p className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">
+                  Plays
+                </p>
+                <p className="mt-1 text-sm font-semibold tabular-nums text-zinc-900 dark:text-zinc-100">
+                  {listeningTotals.playCount.toLocaleString()}
+                </p>
+              </div>
+              <div className="rounded-xl border border-zinc-200 bg-white px-3 py-2 dark:border-zinc-800 dark:bg-zinc-950/40">
+                <p className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">
+                  Tracks heard
+                </p>
+                <p className="mt-1 text-sm font-semibold tabular-nums text-zinc-900 dark:text-zinc-100">
+                  {listeningTotals.tracksHeard.toLocaleString()}
+                </p>
+              </div>
+              <div className="rounded-xl border border-zinc-200 bg-white px-3 py-2 dark:border-zinc-800 dark:bg-zinc-950/40">
+                <p className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">
+                  Skips
+                </p>
+                <p className="mt-1 text-sm font-semibold tabular-nums text-zinc-900 dark:text-zinc-100">
+                  {listeningTotals.skipCount.toLocaleString()}
+                </p>
+              </div>
+            </div>
+
+            <div>
+              <p className="px-2 pb-1 text-xs font-medium uppercase tracking-wider text-zinc-500">
+                Recently played
+              </p>
+              {renderListeningTrackList(recentListeningRows, 'No listening history yet.')}
+            </div>
+
+            <div className="grid grid-cols-1 gap-4">
+              <div>
+                <p className="px-2 pb-1 text-xs font-medium uppercase tracking-wider text-zinc-500">
+                  Top artists
+                </p>
+                {renderListeningAggregateList(topListeningArtists, 'No artist stats yet.')}
+              </div>
+              <div>
+                <p className="px-2 pb-1 text-xs font-medium uppercase tracking-wider text-zinc-500">
+                  Top albums
+                </p>
+                {renderListeningAggregateList(topListeningAlbums, 'No album stats yet.')}
+              </div>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between gap-2 px-2 pb-1">
+                <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">
+                  Rediscover
+                </p>
+                <button
+                  type="button"
+                  onClick={() => onAddMany(rediscoverListeningRows.map((row) => row.track))}
+                  disabled={rediscoverListeningRows.length === 0}
+                  className="rounded-full border border-zinc-200 bg-white px-2 py-1 text-[11px] font-medium disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-900"
+                >
+                  Add all
+                </button>
+              </div>
+              {renderListeningTrackList(
+                rediscoverListeningRows,
+                'Tracks you played before will appear here.',
+              )}
+            </div>
+
+            <div>
+              <p className="px-2 pb-1 text-xs font-medium uppercase tracking-wider text-zinc-500">
+                Most played
+              </p>
+              {renderListeningTrackList(topListeningRows, 'No play counts yet.')}
+            </div>
+
+            <div>
+              <p className="px-2 pb-1 text-xs font-medium uppercase tracking-wider text-zinc-500">
+                Skipped tracks
+              </p>
+              {renderListeningTrackList(skippedListeningRows, 'No skipped tracks yet.')}
+            </div>
+          </div>
         ) : mode === 'favorites' ? (
           <div className="space-y-4 px-1">
             <div className="flex flex-wrap gap-2 px-2">
@@ -1090,15 +1473,20 @@ export default function LibraryBrowser() {
                 Add all favorite tracks ({allFavoriteTracksUnion.length})
               </button>
             </div>
-            {favoritedArtistsList.length === 0 && favoritedAlbumsList.length === 0 && favoritedTracks.length === 0 ? (
+            {favoritedArtistsList.length === 0 &&
+            favoritedAlbumsList.length === 0 &&
+            favoritedTracks.length === 0 ? (
               <p className="px-2 py-6 text-center text-sm text-zinc-500">
-                No favorites yet. Use the star on artists, albums, or songs while browsing or searching.
+                No favorites yet. Use the star on artists, albums, or songs while browsing or
+                searching.
               </p>
             ) : (
               <>
                 {favoritedArtistsList.length > 0 ? (
                   <div>
-                    <p className="px-2 pb-1 text-xs font-medium uppercase tracking-wider text-zinc-500">Artists</p>
+                    <p className="px-2 pb-1 text-xs font-medium uppercase tracking-wider text-zinc-500">
+                      Artists
+                    </p>
                     <ul className={ulSpaceYClass}>
                       {favoritedArtistsList.map((name) => (
                         <li key={name} className="group/row flex items-center gap-1">
@@ -1110,7 +1498,9 @@ export default function LibraryBrowser() {
                             }}
                             className={`flex min-w-0 flex-1 items-center justify-between rounded-lg ${rowPadLgClass} text-left text-sm text-zinc-800 transition hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800/80`}
                           >
-                            <span className="truncate font-medium text-zinc-900 dark:text-zinc-100">{name}</span>
+                            <span className="truncate font-medium text-zinc-900 dark:text-zinc-100">
+                              {name}
+                            </span>
                             <span className="shrink-0 text-xs tabular-nums text-zinc-500">
                               {libraryArtistMap.get(name)?.length ?? 0}
                             </span>
@@ -1139,7 +1529,9 @@ export default function LibraryBrowser() {
                 ) : null}
                 {favoritedAlbumsList.length > 0 ? (
                   <div>
-                    <p className="px-2 pb-1 pt-2 text-xs font-medium uppercase tracking-wider text-zinc-500">Albums</p>
+                    <p className="px-2 pb-1 pt-2 text-xs font-medium uppercase tracking-wider text-zinc-500">
+                      Albums
+                    </p>
                     <ul className={ulSpaceYClass}>
                       {favoritedAlbumsList.map((key) => {
                         const [album, artist] = key.split('\u0000')
@@ -1162,7 +1554,8 @@ export default function LibraryBrowser() {
                                 </span>
                                 <span className="truncate text-xs text-zinc-500">{artist}</span>
                                 <span className="mt-0.5 text-xs text-zinc-400">
-                                  {list.length} track{list.length === 1 ? '' : 's'}
+                                  {list.length} track
+                                  {list.length === 1 ? '' : 's'}
                                 </span>
                               </div>
                             </button>
@@ -1191,7 +1584,9 @@ export default function LibraryBrowser() {
                 ) : null}
                 {favoritedTracks.length > 0 ? (
                   <div>
-                    <p className="px-2 pb-1 pt-2 text-xs font-medium uppercase tracking-wider text-zinc-500">Songs</p>
+                    <p className="px-2 pb-1 pt-2 text-xs font-medium uppercase tracking-wider text-zinc-500">
+                      Songs
+                    </p>
                     <ul className={ulSpaceYClass}>
                       {favoritedTracks.map((t) => (
                         <li key={t.id}>
@@ -1224,7 +1619,9 @@ export default function LibraryBrowser() {
                     }}
                     className={`flex min-w-0 flex-1 items-center justify-between rounded-lg ${rowPadLgClass} text-left text-sm transition hover:bg-zinc-100 dark:hover:bg-zinc-800/80`}
                   >
-                    <span className="truncate font-medium text-zinc-900 dark:text-zinc-100">{r.name}</span>
+                    <span className="truncate font-medium text-zinc-900 dark:text-zinc-100">
+                      {r.name}
+                    </span>
                     <span className="shrink-0 text-xs text-zinc-500">{rootTracks.length}</span>
                   </button>
                   <button
@@ -1289,8 +1686,12 @@ export default function LibraryBrowser() {
                       onClick={() => setFolderPath(childPath)}
                       className={`flex min-w-0 flex-1 items-center rounded-lg ${folderRowPadClass} text-left text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800/80`}
                     >
-                      <span className="truncate font-medium text-zinc-900 dark:text-zinc-100">{name}</span>
-                      <span className="ml-2 shrink-0 text-xs tabular-nums text-zinc-500">{subtree.length}</span>
+                      <span className="truncate font-medium text-zinc-900 dark:text-zinc-100">
+                        {name}
+                      </span>
+                      <span className="ml-2 shrink-0 text-xs tabular-nums text-zinc-500">
+                        {subtree.length}
+                      </span>
                     </button>
                     <button
                       type="button"

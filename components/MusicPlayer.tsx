@@ -1,7 +1,15 @@
 'use client'
 
 import Link from 'next/link'
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+} from 'react'
 import BrowsePanel from '@/components/BrowsePanel'
 import BrowseViewTabs from '@/components/BrowseViewTabs'
 import HiddenYoutubePlayer, {
@@ -56,10 +64,7 @@ function clampLibraryQueueWidths(
   queuePx: number,
 ): { libraryPx: number; queuePx: number } {
   if (rowWidthPx <= 0) return { libraryPx, queuePx }
-  const maxSum = Math.max(
-    LIBRARY_PANEL_MIN + QUEUE_PANEL_MIN,
-    rowWidthPx - PLAYER_PANEL_MIN,
-  )
+  const maxSum = Math.max(LIBRARY_PANEL_MIN + QUEUE_PANEL_MIN, rowWidthPx - PLAYER_PANEL_MIN)
   let L = clampPanelPx(libraryPx, LIBRARY_PANEL_MIN, LIBRARY_PANEL_MAX)
   // Intentionally no hard `QUEUE_PANEL_MAX` cap: the player panel minimum width is
   // enforced via `maxSum` below, and we don't want queue width to prevent it.
@@ -170,8 +175,19 @@ function IconRepeatLoop(props: { className?: string; dimmed?: boolean }) {
 
 function IconShuffle(props: { className?: string }) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden className={props.className}>
-      <path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5" strokeLinecap="round" strokeLinejoin="round" />
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      aria-hidden
+      className={props.className}
+    >
+      <path
+        d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   )
 }
@@ -210,8 +226,12 @@ export default function MusicPlayer() {
     compactLists,
     reorderQueueItems,
     recentlyPlayedTrackIds,
+    listeningStats,
     recentBrowseSearches,
-    recordRecentlyPlayedTrack,
+    recordTrackPlaybackStarted,
+    recordTrackPlaybackProgress,
+    recordTrackPlaybackCompleted,
+    recordTrackSkipped,
     isFavoriteSong,
     toggleFavoriteTrack,
     addToQueue,
@@ -241,8 +261,15 @@ export default function MusicPlayer() {
     setPlaybackRate,
     setVolume: persistVolume,
   } = usePlaybackPreferences()
-  const { repeatMode, shuffle, playbackRate, autoAdvanceOnEnd, seekStepSmallSec, seekStepLargeSec, rememberVolume } =
-    preferences
+  const {
+    repeatMode,
+    shuffle,
+    playbackRate,
+    autoAdvanceOnEnd,
+    seekStepSmallSec,
+    seekStepLargeSec,
+    rememberVolume,
+  } = preferences
   const [activeQueueId, setActiveQueueId] = useState<string | null>(null)
   const [isPlaying, setIsPlaying] = useState(false)
   const [positionSec, setPositionSec] = useState(0)
@@ -261,6 +288,11 @@ export default function MusicPlayer() {
   const pendingRestorePositionRef = useRef<number | null>(null)
   const activeQueueIdRef = useRef<string | null>(null)
   const lastPlaybackReportMsRef = useRef(0)
+  const lastPlaybackStartQueueIdRef = useRef<string | null>(null)
+  const progressTrackIdRef = useRef<string | null>(null)
+  const progressPositionSecRef = useRef(0)
+  const pendingListenTrackIdRef = useRef<string | null>(null)
+  const pendingListenSecRef = useRef(0)
   const libraryPanelPxRef = useRef(440)
   const queuePanelPxRef = useRef(300)
   const [dragOverQueueId, setDragOverQueueId] = useState<string | null>(null)
@@ -359,16 +391,15 @@ export default function MusicPlayer() {
   }, [queue, activeQueueId])
 
   const current: Track | undefined = activeIndex >= 0 ? queue[activeIndex]?.track : undefined
-  const lastRecordedTrackIdRef = useRef<string | null>(null)
-
   useEffect(() => {
     if (!isPlaying) return
+    if (!activeQueueId) return
     const id = current?.id ?? ''
     if (!id) return
-    if (lastRecordedTrackIdRef.current === id) return
-    lastRecordedTrackIdRef.current = id
-    recordRecentlyPlayedTrack(id)
-  }, [current?.id, isPlaying, recordRecentlyPlayedTrack])
+    if (lastPlaybackStartQueueIdRef.current === activeQueueId) return
+    lastPlaybackStartQueueIdRef.current = activeQueueId
+    recordTrackPlaybackStarted(id)
+  }, [activeQueueId, current?.id, isPlaying, recordTrackPlaybackStarted])
 
   const recentlyPlayedTracks = useMemo(() => {
     if (recentlyPlayedTrackIds.length === 0) return []
@@ -382,6 +413,23 @@ export default function MusicPlayer() {
     }
     return out
   }, [recentlyPlayedTrackIds, libraryTracks])
+
+  const rediscoverTracks = useMemo(() => {
+    if (libraryTracks.length === 0) return []
+    const recent = new Set(recentlyPlayedTrackIds.slice(0, 8))
+    return libraryTracks
+      .filter((t) => {
+        if (recent.has(t.id)) return false
+        const stats = listeningStats[t.id]
+        return Boolean(stats?.lastPlayedAt && stats.playCount > 0)
+      })
+      .sort((a, b) => {
+        const aPlayed = listeningStats[a.id]?.lastPlayedAt ?? 0
+        const bPlayed = listeningStats[b.id]?.lastPlayedAt ?? 0
+        return aPlayed - bPlayed
+      })
+      .slice(0, 8)
+  }, [libraryTracks, listeningStats, recentlyPlayedTrackIds])
 
   const libraryArtistMap = useMemo(() => groupTracksByArtist(libraryTracks), [libraryTracks])
 
@@ -411,7 +459,9 @@ export default function MusicPlayer() {
       .sort((a, b) => {
         const [albumA, artistA] = a.split('\u0000')
         const [albumB, artistB] = b.split('\u0000')
-        const c = albumA.localeCompare(albumB, undefined, { sensitivity: 'base' })
+        const c = albumA.localeCompare(albumB, undefined, {
+          sensitivity: 'base',
+        })
         return c !== 0 ? c : artistA.localeCompare(artistB, undefined, { sensitivity: 'base' })
       })
   }, [favoriteAlbumKeys, libraryAlbumMap])
@@ -445,7 +495,14 @@ export default function MusicPlayer() {
     }
     out.sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base' }))
     return out
-  }, [favoriteSongIds, favoriteArtistNames, favoriteAlbumKeys, libraryTracks, libraryArtistMap, libraryAlbumMap])
+  }, [
+    favoriteSongIds,
+    favoriteArtistNames,
+    favoriteAlbumKeys,
+    libraryTracks,
+    libraryArtistMap,
+    libraryAlbumMap,
+  ])
 
   const hasFavoriteSuggestions =
     favoritedArtistsList.length > 0 || favoritedAlbumsList.length > 0 || favoritedTracks.length > 0
@@ -494,15 +551,84 @@ export default function MusicPlayer() {
     return Math.max(fromTrack, fromMedia)
   }, [current?.durationSec, mediaDuration])
 
+  const flushListeningProgress = useCallback(() => {
+    const id = pendingListenTrackIdRef.current
+    const seconds = pendingListenSecRef.current
+    pendingListenTrackIdRef.current = null
+    pendingListenSecRef.current = 0
+    if (!id || seconds < 0.25) return
+    recordTrackPlaybackProgress(id, seconds)
+  }, [recordTrackPlaybackProgress])
+
+  const recordPlaybackProgressForTrack = useCallback(
+    (trackId: string, currentPositionSec: number) => {
+      if (!isPlayingRef.current) {
+        progressTrackIdRef.current = trackId
+        progressPositionSecRef.current = currentPositionSec
+        return
+      }
+      if (progressTrackIdRef.current !== trackId) {
+        progressTrackIdRef.current = trackId
+        progressPositionSecRef.current = currentPositionSec
+        return
+      }
+      const delta = currentPositionSec - progressPositionSecRef.current
+      progressPositionSecRef.current = currentPositionSec
+      if (delta <= 0 || delta > 5) return
+      if (pendingListenTrackIdRef.current && pendingListenTrackIdRef.current !== trackId) {
+        flushListeningProgress()
+      }
+      pendingListenTrackIdRef.current = trackId
+      pendingListenSecRef.current += delta
+      if (pendingListenSecRef.current >= 5) {
+        flushListeningProgress()
+      }
+    },
+    [flushListeningProgress],
+  )
+
+  useEffect(() => {
+    progressTrackIdRef.current = current?.id ?? null
+    progressPositionSecRef.current = 0
+    return () => {
+      flushListeningProgress()
+    }
+  }, [activeQueueId, current?.id, flushListeningProgress])
+
+  useEffect(() => {
+    if (isPlaying) return
+    flushListeningProgress()
+  }, [flushListeningProgress, isPlaying])
+
+  useEffect(() => {
+    return () => {
+      flushListeningProgress()
+    }
+  }, [flushListeningProgress])
+
+  const markCurrentSkipped = useCallback((): void => {
+    if (!isPlayingRef.current) return
+    const id = current?.id
+    if (!id) return
+    flushListeningProgress()
+    if (durationSec > 0) {
+      const remainingSec = durationSec - positionSec
+      const nearEndSec = Math.min(15, Math.max(5, durationSec * 0.1))
+      if (remainingSec <= nearEndSec) return
+    }
+    recordTrackSkipped(id)
+  }, [current?.id, durationSec, flushListeningProgress, positionSec, recordTrackSkipped])
+
   const selectIndex = useCallback(
     (index: number) => {
+      if (queue[index]?.queueId !== activeQueueIdRef.current) markCurrentSkipped()
       shuffleHistoryRef.current = []
       setActiveQueueId(queue[index]?.queueId ?? null)
       setPositionSec(0)
       setLoadError(null)
       setIsPlaying(true)
     },
-    [queue],
+    [markCurrentSkipped, queue],
   )
 
   const goNext = useCallback((): void => {
@@ -617,7 +743,10 @@ export default function MusicPlayer() {
   }, [])
 
   const onQueuePlayerResizeStart = useCallback((): void => {
-    panelResizeSessionRef.current = { kind: 'queue-player', startQ: queuePanelPxRef.current }
+    panelResizeSessionRef.current = {
+      kind: 'queue-player',
+      startQ: queuePanelPxRef.current,
+    }
   }, [])
 
   const onQueuePlayerResizeMove = useCallback((dx: number): void => {
@@ -770,7 +899,14 @@ export default function MusicPlayer() {
   const needsYoutubeResolve = Boolean(current?.youtubeQuery?.trim() && !playbackYoutubeVideoId)
 
   const handleTrackEnded = useCallback((): void => {
+    flushListeningProgress()
+    if (current?.id) {
+      recordTrackPlaybackCompleted(current.id)
+    }
     if (repeatMode === 'one') {
+      if (current?.id) {
+        recordTrackPlaybackStarted(current.id)
+      }
       if (youtubeStreamActive && hiddenYoutubeRef.current) {
         hiddenYoutubeRef.current.seekTo(0)
         setPositionSec(0)
@@ -793,7 +929,16 @@ export default function MusicPlayer() {
       return
     }
     goNext()
-  }, [repeatMode, autoAdvanceOnEnd, goNext, youtubeStreamActive])
+  }, [
+    current?.id,
+    repeatMode,
+    autoAdvanceOnEnd,
+    goNext,
+    youtubeStreamActive,
+    flushListeningProgress,
+    recordTrackPlaybackCompleted,
+    recordTrackPlaybackStarted,
+  ])
 
   useEffect(() => {
     const query = current?.youtubeQuery?.trim()
@@ -809,7 +954,10 @@ export default function MusicPlayer() {
       .then((videoId) => {
         if (controller.signal.aborted) return
         if (videoId && current?.id) {
-          patchTrackById(current.id, (t) => ({ ...t, youtubeVideoId: videoId }))
+          patchTrackById(current.id, (t) => ({
+            ...t,
+            youtubeVideoId: videoId,
+          }))
           setLoadError(null)
         } else if (!videoId) {
           setLoadError('Could not find a YouTube video for this track.')
@@ -846,6 +994,7 @@ export default function MusicPlayer() {
       const t = hiddenYoutubeRef.current?.getCurrentTime() ?? 0
       if (Number.isFinite(t) && t >= 0) {
         setPositionSec(t)
+        if (current?.id) recordPlaybackProgressForTrack(current.id, t)
         reportPlayback(activeQueueIdRef.current, t)
       }
       const d = hiddenYoutubeRef.current?.getDuration() ?? 0
@@ -856,7 +1005,7 @@ export default function MusicPlayer() {
     return (): void => {
       window.clearInterval(id)
     }
-  }, [youtubeStreamActive, reportPlayback])
+  }, [current?.id, youtubeStreamActive, recordPlaybackProgressForTrack, reportPlayback])
 
   useEffect(() => {
     const el = audioRef.current
@@ -877,6 +1026,7 @@ export default function MusicPlayer() {
     if (!el || !current) return undefined
     const onTime = (): void => {
       setPositionSec(el.currentTime)
+      recordPlaybackProgressForTrack(current.id, el.currentTime)
       const now = Date.now()
       if (now - lastPlaybackReportMsRef.current >= 2000) {
         lastPlaybackReportMsRef.current = now
@@ -908,7 +1058,7 @@ export default function MusicPlayer() {
       el.removeEventListener('loadedmetadata', onMeta)
       el.removeEventListener('ended', onEnded)
     }
-  }, [current, bumpTrackDuration, handleTrackEnded, reportPlayback])
+  }, [current, bumpTrackDuration, handleTrackEnded, recordPlaybackProgressForTrack, reportPlayback])
 
   useEffect(() => {
     return (): void => {
@@ -927,10 +1077,7 @@ export default function MusicPlayer() {
     (ratio: number) => {
       const r = Math.min(1, Math.max(0, ratio))
       if (youtubeStreamActive && hiddenYoutubeRef.current) {
-        const total =
-          durationSec > 0
-            ? durationSec
-            : hiddenYoutubeRef.current.getDuration()
+        const total = durationSec > 0 ? durationSec : hiddenYoutubeRef.current.getDuration()
         if (total > 0) {
           const next = r * total
           hiddenYoutubeRef.current.seekTo(next)
@@ -1012,7 +1159,9 @@ export default function MusicPlayer() {
             <IconQueue className="h-5 w-5" />
           </div>
           <div className="min-w-0">
-            <h1 className="text-sm font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">Muzical</h1>
+            <h1 className="text-sm font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+              Muzical
+            </h1>
             <p className="text-xs text-zinc-500">
               Local library · browser playback · v{readAppVersion()}
             </p>
@@ -1072,203 +1221,57 @@ export default function MusicPlayer() {
             <QueueLoadingSpinner />
           ) : (
             <>
-          <div className="flex h-11 shrink-0 items-center justify-between gap-2 border-b border-zinc-200 bg-white/80 px-3 dark:border-zinc-800 dark:bg-zinc-950/80">
-            <h2 className="text-xs font-medium uppercase leading-none tracking-wider text-zinc-500">Queue</h2>
-            {queue.length > 0 ? (
-              <button
-                type="button"
-                onClick={() => {
-                  clearQueue()
-                  setActiveQueueId(null)
-                  setIsPlaying(false)
-                  setPositionSec(0)
-                }}
-                className="text-xs font-medium text-zinc-500 underline-offset-2 hover:text-zinc-800 hover:underline dark:hover:text-zinc-300"
-              >
-                Clear
-              </button>
-            ) : null}
-          </div>
-          <div className="min-h-0 flex-1 overflow-auto pb-2">
-            {queue.length === 0 ? (
-              <div className="px-4 py-6">
-                <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Queue is empty</p>
-                <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
-                  Add something to start playback.
-                  <Link
-                    href="/settings"
-                    className="ml-2 font-medium text-accent-700 underline-offset-2 hover:underline dark:text-accent-400"
+              <div className="flex h-11 shrink-0 items-center justify-between gap-2 border-b border-zinc-200 bg-white/80 px-3 dark:border-zinc-800 dark:bg-zinc-950/80">
+                <h2 className="text-xs font-medium uppercase leading-none tracking-wider text-zinc-500">
+                  Queue
+                </h2>
+                {queue.length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      markCurrentSkipped()
+                      clearQueue()
+                      setActiveQueueId(null)
+                      setIsPlaying(false)
+                      setPositionSec(0)
+                    }}
+                    className="text-xs font-medium text-zinc-500 underline-offset-2 hover:text-zinc-800 hover:underline dark:hover:text-zinc-300"
                   >
-                    Library folders
-                  </Link>
-                </p>
-
-                {recentlyPlayedTracks.length > 0 ? (
-                  <div className="mt-5">
-                    <p className="mb-2 text-xs font-medium uppercase tracking-wider text-zinc-500">Recently played</p>
-                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                      {recentlyPlayedTracks.map((t) => (
-                        <div
-                          key={t.id}
-                          className={`flex min-w-0 items-center ${emptyQueueCardGapClass} rounded-xl border border-zinc-200 bg-white ${emptyQueueCardPadClass} shadow-sm dark:border-zinc-800 dark:bg-zinc-950/40 dark:shadow-none`}
-                        >
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">{t.title}</p>
-                            <p className="truncate text-xs text-zinc-500 dark:text-zinc-400">
-                              {t.artist} · {t.album}
-                            </p>
-                          </div>
-                          <div className="flex shrink-0 items-center gap-2">
-                            <span className="text-[11px] tabular-nums text-zinc-400 dark:text-zinc-500">
-                              {t.durationSec > 0 ? formatDuration(t.durationSec) : '—'}
-                            </span>
-                            <FavoriteStarButton
-                              className="rounded-full"
-                              filled={isFavoriteSong(t.id)}
-                              onPress={() => toggleFavoriteTrack(t)}
-                              label={isFavoriteSong(t.id) ? 'Remove song from favorites' : 'Add song to favorites'}
-                            />
-                            <button
-                              type="button"
-                              onClick={() => addToQueue(t)}
-                              className="shrink-0 rounded-full bg-accent-500/15 px-2.5 py-1 text-xs font-medium text-accent-800 ring-1 ring-accent-500/25 transition hover:bg-accent-500/25 dark:text-accent-300 dark:ring-accent-500/40"
-                            >
-                              Add
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+                    Clear
+                  </button>
                 ) : null}
-
-                {hasFavoriteSuggestions ? (
-                  <div className="mt-5">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setFavoritesSuggestionsOpen((open) => !open)}
-                        aria-expanded={favoritesSuggestionsOpen}
-                        className="flex min-w-0 items-center gap-1 rounded-md py-0.5 text-left text-xs font-medium uppercase tracking-wider text-zinc-500 transition hover:text-zinc-700 dark:hover:text-zinc-300"
+              </div>
+              <div className="min-h-0 flex-1 overflow-auto pb-2">
+                {queue.length === 0 ? (
+                  <div className="px-4 py-6">
+                    <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                      Queue is empty
+                    </p>
+                    <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+                      Add something to start playback.
+                      <Link
+                        href="/settings"
+                        className="ml-2 font-medium text-accent-700 underline-offset-2 hover:underline dark:text-accent-400"
                       >
-                        <IconChevronRight
-                          className={[
-                            'h-3.5 w-3.5 shrink-0 text-zinc-400 transition-transform',
-                            favoritesSuggestionsOpen ? 'rotate-90' : '',
-                          ].join(' ')}
-                        />
-                        <span>Favorites</span>
-                        {!favoritesSuggestionsOpen && favoriteSuggestionsSummary ? (
-                          <span className="truncate font-normal normal-case tracking-normal text-zinc-400">
-                            · {favoriteSuggestionsSummary}
-                          </span>
-                        ) : null}
-                      </button>
-                      {allFavoriteTracksUnion.length > 0 ? (
-                        <button
-                          type="button"
-                          onClick={() => addToQueue(allFavoriteTracksUnion)}
-                          className="rounded-full border border-zinc-200 bg-white px-2.5 py-1 text-xs font-medium text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
-                        >
-                          Add all ({allFavoriteTracksUnion.length})
-                        </button>
-                      ) : null}
-                    </div>
-                    {favoritesSuggestionsOpen ? (
-                    <div className="mt-3 space-y-4">
-                    {favoritedArtistsList.length > 0 ? (
-                      <div>
-                        <p className="mb-2 text-[11px] font-medium uppercase tracking-wider text-zinc-400">Artists</p>
+                        Library folders
+                      </Link>
+                    </p>
+
+                    {recentlyPlayedTracks.length > 0 ? (
+                      <div className="mt-5">
+                        <p className="mb-2 text-xs font-medium uppercase tracking-wider text-zinc-500">
+                          Recently played
+                        </p>
                         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                          {favoritedArtistsList.map((name) => {
-                            const tracks = libraryArtistMap.get(name) ?? []
-                            return (
-                              <div
-                                key={name}
-                                className={`flex min-w-0 items-center ${emptyQueueCardGapClass} rounded-xl border border-zinc-200 bg-white ${emptyQueueCardPadClass} shadow-sm dark:border-zinc-800 dark:bg-zinc-950/40 dark:shadow-none`}
-                              >
-                                <div className="min-w-0 flex-1">
-                                  <p className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">{name}</p>
-                                  <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                                    {tracks.length} track{tracks.length === 1 ? '' : 's'}
-                                  </p>
-                                </div>
-                                <div className="flex shrink-0 items-center gap-2">
-                                  <FavoriteStarButton
-                                    className="rounded-full"
-                                    filled={isFavoriteArtist(name)}
-                                    onPress={() => toggleFavoriteArtist(name)}
-                                    label="Remove artist from favorites"
-                                  />
-                                  <button
-                                    type="button"
-                                    onClick={() => addToQueue(tracks)}
-                                    disabled={tracks.length === 0}
-                                    className="shrink-0 rounded-full bg-accent-500/15 px-2.5 py-1 text-xs font-medium text-accent-800 ring-1 ring-accent-500/25 transition hover:bg-accent-500/25 disabled:opacity-40 dark:text-accent-300 dark:ring-accent-500/40"
-                                  >
-                                    Add all
-                                  </button>
-                                </div>
-                              </div>
-                            )
-                          })}
-                        </div>
-                      </div>
-                    ) : null}
-                    {favoritedAlbumsList.length > 0 ? (
-                      <div>
-                        <p className="mb-2 text-[11px] font-medium uppercase tracking-wider text-zinc-400">Albums</p>
-                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                          {favoritedAlbumsList.map((key) => {
-                            const [album, artist] = key.split('\u0000')
-                            const tracks = libraryAlbumMap.get(key) ?? []
-                            const sample = tracks[0]
-                            return (
-                              <div
-                                key={key}
-                                className={`flex min-w-0 items-center ${emptyQueueCardGapClass} rounded-xl border border-zinc-200 bg-white ${emptyQueueCardPadClass} shadow-sm dark:border-zinc-800 dark:bg-zinc-950/40 dark:shadow-none`}
-                              >
-                                <AlbumCoverThumb track={sample} className="h-10 w-10 shrink-0 rounded-md" />
-                                <div className="min-w-0 flex-1">
-                                  <p className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">{album}</p>
-                                  <p className="truncate text-xs text-zinc-500 dark:text-zinc-400">{artist}</p>
-                                  <p className="text-[11px] text-zinc-400 dark:text-zinc-500">
-                                    {tracks.length} track{tracks.length === 1 ? '' : 's'}
-                                  </p>
-                                </div>
-                                <div className="flex shrink-0 items-center gap-2">
-                                  <FavoriteStarButton
-                                    className="rounded-full"
-                                    filled={isFavoriteAlbum(key)}
-                                    onPress={() => toggleFavoriteAlbum(key)}
-                                    label="Remove album from favorites"
-                                  />
-                                  <button
-                                    type="button"
-                                    onClick={() => addToQueue(tracks)}
-                                    disabled={tracks.length === 0}
-                                    className="shrink-0 rounded-full bg-accent-500/15 px-2.5 py-1 text-xs font-medium text-accent-800 ring-1 ring-accent-500/25 transition hover:bg-accent-500/25 disabled:opacity-40 dark:text-accent-300 dark:ring-accent-500/40"
-                                  >
-                                    Add all
-                                  </button>
-                                </div>
-                              </div>
-                            )
-                          })}
-                        </div>
-                      </div>
-                    ) : null}
-                    {favoritedTracks.length > 0 ? (
-                      <div>
-                        <p className="mb-2 text-[11px] font-medium uppercase tracking-wider text-zinc-400">Songs</p>
-                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                          {favoritedTracks.map((t) => (
+                          {recentlyPlayedTracks.map((t) => (
                             <div
                               key={t.id}
                               className={`flex min-w-0 items-center ${emptyQueueCardGapClass} rounded-xl border border-zinc-200 bg-white ${emptyQueueCardPadClass} shadow-sm dark:border-zinc-800 dark:bg-zinc-950/40 dark:shadow-none`}
                             >
                               <div className="min-w-0 flex-1">
-                                <p className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">{t.title}</p>
+                                <p className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">
+                                  {t.title}
+                                </p>
                                 <p className="truncate text-xs text-zinc-500 dark:text-zinc-400">
                                   {t.artist} · {t.album}
                                 </p>
@@ -1281,7 +1284,11 @@ export default function MusicPlayer() {
                                   className="rounded-full"
                                   filled={isFavoriteSong(t.id)}
                                   onPress={() => toggleFavoriteTrack(t)}
-                                  label="Remove song from favorites"
+                                  label={
+                                    isFavoriteSong(t.id)
+                                      ? 'Remove song from favorites'
+                                      : 'Add song to favorites'
+                                  }
                                 />
                                 <button
                                   type="button"
@@ -1296,197 +1303,436 @@ export default function MusicPlayer() {
                         </div>
                       </div>
                     ) : null}
-                    </div>
-                    ) : null}
-                  </div>
-                ) : null}
 
-                {homeRecentBrowseSearches.length > 0 || suggestedTracks.length > 0 ? (
-                  <div className="mt-6">
-                    <p className="mb-2 text-xs font-medium uppercase tracking-wider text-zinc-500">Suggestions</p>
-                    {homeRecentBrowseSearches.length > 0 ? (
-                      <div className="mb-3 flex flex-wrap gap-2">
-                        {homeRecentBrowseSearches.map((entry) => (
-                          <RecentBrowseSearchChip key={`${entry.source}\u0000${entry.query}`} entry={entry} />
-                        ))}
+                    {rediscoverTracks.length > 0 ? (
+                      <div className="mt-5">
+                        <div className="mb-2 flex items-center justify-between gap-2">
+                          <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">
+                            Rediscover
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => addToQueue(rediscoverTracks)}
+                            className="rounded-full border border-zinc-200 bg-white px-2.5 py-1 text-xs font-medium text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                          >
+                            Add all
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                          {rediscoverTracks.map((t) => (
+                            <div
+                              key={t.id}
+                              className={`flex min-w-0 items-center ${emptyQueueCardGapClass} rounded-xl border border-zinc-200 bg-white ${emptyQueueCardPadClass} shadow-sm dark:border-zinc-800 dark:bg-zinc-950/40 dark:shadow-none`}
+                            >
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">
+                                  {t.title}
+                                </p>
+                                <p className="truncate text-xs text-zinc-500 dark:text-zinc-400">
+                                  {t.artist} - {t.album}
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => addToQueue(t)}
+                                className="shrink-0 rounded-full bg-accent-500/15 px-2.5 py-1 text-xs font-medium text-accent-800 ring-1 ring-accent-500/25 transition hover:bg-accent-500/25 dark:text-accent-300 dark:ring-accent-500/40"
+                              >
+                                Add
+                              </button>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     ) : null}
-                    {suggestedTracks.length > 0 ? (
-                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                      {suggestedTracks.map((t) => (
-                        <div
-                          key={t.id}
-                          role="button"
-                          tabIndex={0}
-                          onClick={() => addToQueue(t)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' || e.key === ' ') {
-                              e.preventDefault()
-                              addToQueue(t)
-                            }
-                          }}
-                          aria-label={`Add ${t.title} to queue`}
-                          className={`flex w-full min-w-0 cursor-pointer items-center text-left ${emptyQueueCardGapClass} rounded-xl border border-zinc-200 bg-white ${emptyQueueCardPadClass} shadow-sm transition hover:border-accent-400/50 hover:bg-accent-50/50 dark:border-zinc-800 dark:bg-zinc-950/40 dark:hover:border-accent-500/30 dark:hover:bg-accent-950/20 dark:shadow-none`}
-                        >
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">{t.title}</p>
-                            <p className="truncate text-xs text-zinc-500 dark:text-zinc-400">
-                              {t.artist} · {t.album}
-                            </p>
-                          </div>
-                          <div className="flex shrink-0 items-center gap-2">
-                            <span className="text-[11px] tabular-nums text-zinc-400 dark:text-zinc-500">
-                              {t.durationSec > 0 ? formatDuration(t.durationSec) : '—'}
-                            </span>
-                            <FavoriteStarButton
-                              className="rounded-full"
-                              filled={isFavoriteSong(t.id)}
-                              onPress={() => toggleFavoriteTrack(t)}
-                              label={isFavoriteSong(t.id) ? 'Remove song from favorites' : 'Add song to favorites'}
+
+                    {hasFavoriteSuggestions ? (
+                      <div className="mt-5">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setFavoritesSuggestionsOpen((open) => !open)}
+                            aria-expanded={favoritesSuggestionsOpen}
+                            className="flex min-w-0 items-center gap-1 rounded-md py-0.5 text-left text-xs font-medium uppercase tracking-wider text-zinc-500 transition hover:text-zinc-700 dark:hover:text-zinc-300"
+                          >
+                            <IconChevronRight
+                              className={[
+                                'h-3.5 w-3.5 shrink-0 text-zinc-400 transition-transform',
+                                favoritesSuggestionsOpen ? 'rotate-90' : '',
+                              ].join(' ')}
                             />
-                          </div>
+                            <span>Favorites</span>
+                            {!favoritesSuggestionsOpen && favoriteSuggestionsSummary ? (
+                              <span className="truncate font-normal normal-case tracking-normal text-zinc-400">
+                                · {favoriteSuggestionsSummary}
+                              </span>
+                            ) : null}
+                          </button>
+                          {allFavoriteTracksUnion.length > 0 ? (
+                            <button
+                              type="button"
+                              onClick={() => addToQueue(allFavoriteTracksUnion)}
+                              className="rounded-full border border-zinc-200 bg-white px-2.5 py-1 text-xs font-medium text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                            >
+                              Add all ({allFavoriteTracksUnion.length})
+                            </button>
+                          ) : null}
                         </div>
-                      ))}
-                    </div>
+                        {favoritesSuggestionsOpen ? (
+                          <div className="mt-3 space-y-4">
+                            {favoritedArtistsList.length > 0 ? (
+                              <div>
+                                <p className="mb-2 text-[11px] font-medium uppercase tracking-wider text-zinc-400">
+                                  Artists
+                                </p>
+                                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                  {favoritedArtistsList.map((name) => {
+                                    const tracks = libraryArtistMap.get(name) ?? []
+                                    return (
+                                      <div
+                                        key={name}
+                                        className={`flex min-w-0 items-center ${emptyQueueCardGapClass} rounded-xl border border-zinc-200 bg-white ${emptyQueueCardPadClass} shadow-sm dark:border-zinc-800 dark:bg-zinc-950/40 dark:shadow-none`}
+                                      >
+                                        <div className="min-w-0 flex-1">
+                                          <p className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">
+                                            {name}
+                                          </p>
+                                          <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                                            {tracks.length} track
+                                            {tracks.length === 1 ? '' : 's'}
+                                          </p>
+                                        </div>
+                                        <div className="flex shrink-0 items-center gap-2">
+                                          <FavoriteStarButton
+                                            className="rounded-full"
+                                            filled={isFavoriteArtist(name)}
+                                            onPress={() => toggleFavoriteArtist(name)}
+                                            label="Remove artist from favorites"
+                                          />
+                                          <button
+                                            type="button"
+                                            onClick={() => addToQueue(tracks)}
+                                            disabled={tracks.length === 0}
+                                            className="shrink-0 rounded-full bg-accent-500/15 px-2.5 py-1 text-xs font-medium text-accent-800 ring-1 ring-accent-500/25 transition hover:bg-accent-500/25 disabled:opacity-40 dark:text-accent-300 dark:ring-accent-500/40"
+                                          >
+                                            Add all
+                                          </button>
+                                        </div>
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+                              </div>
+                            ) : null}
+                            {favoritedAlbumsList.length > 0 ? (
+                              <div>
+                                <p className="mb-2 text-[11px] font-medium uppercase tracking-wider text-zinc-400">
+                                  Albums
+                                </p>
+                                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                  {favoritedAlbumsList.map((key) => {
+                                    const [album, artist] = key.split('\u0000')
+                                    const tracks = libraryAlbumMap.get(key) ?? []
+                                    const sample = tracks[0]
+                                    return (
+                                      <div
+                                        key={key}
+                                        className={`flex min-w-0 items-center ${emptyQueueCardGapClass} rounded-xl border border-zinc-200 bg-white ${emptyQueueCardPadClass} shadow-sm dark:border-zinc-800 dark:bg-zinc-950/40 dark:shadow-none`}
+                                      >
+                                        <AlbumCoverThumb
+                                          track={sample}
+                                          className="h-10 w-10 shrink-0 rounded-md"
+                                        />
+                                        <div className="min-w-0 flex-1">
+                                          <p className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">
+                                            {album}
+                                          </p>
+                                          <p className="truncate text-xs text-zinc-500 dark:text-zinc-400">
+                                            {artist}
+                                          </p>
+                                          <p className="text-[11px] text-zinc-400 dark:text-zinc-500">
+                                            {tracks.length} track
+                                            {tracks.length === 1 ? '' : 's'}
+                                          </p>
+                                        </div>
+                                        <div className="flex shrink-0 items-center gap-2">
+                                          <FavoriteStarButton
+                                            className="rounded-full"
+                                            filled={isFavoriteAlbum(key)}
+                                            onPress={() => toggleFavoriteAlbum(key)}
+                                            label="Remove album from favorites"
+                                          />
+                                          <button
+                                            type="button"
+                                            onClick={() => addToQueue(tracks)}
+                                            disabled={tracks.length === 0}
+                                            className="shrink-0 rounded-full bg-accent-500/15 px-2.5 py-1 text-xs font-medium text-accent-800 ring-1 ring-accent-500/25 transition hover:bg-accent-500/25 disabled:opacity-40 dark:text-accent-300 dark:ring-accent-500/40"
+                                          >
+                                            Add all
+                                          </button>
+                                        </div>
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+                              </div>
+                            ) : null}
+                            {favoritedTracks.length > 0 ? (
+                              <div>
+                                <p className="mb-2 text-[11px] font-medium uppercase tracking-wider text-zinc-400">
+                                  Songs
+                                </p>
+                                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                  {favoritedTracks.map((t) => (
+                                    <div
+                                      key={t.id}
+                                      className={`flex min-w-0 items-center ${emptyQueueCardGapClass} rounded-xl border border-zinc-200 bg-white ${emptyQueueCardPadClass} shadow-sm dark:border-zinc-800 dark:bg-zinc-950/40 dark:shadow-none`}
+                                    >
+                                      <div className="min-w-0 flex-1">
+                                        <p className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">
+                                          {t.title}
+                                        </p>
+                                        <p className="truncate text-xs text-zinc-500 dark:text-zinc-400">
+                                          {t.artist} · {t.album}
+                                        </p>
+                                      </div>
+                                      <div className="flex shrink-0 items-center gap-2">
+                                        <span className="text-[11px] tabular-nums text-zinc-400 dark:text-zinc-500">
+                                          {t.durationSec > 0 ? formatDuration(t.durationSec) : '—'}
+                                        </span>
+                                        <FavoriteStarButton
+                                          className="rounded-full"
+                                          filled={isFavoriteSong(t.id)}
+                                          onPress={() => toggleFavoriteTrack(t)}
+                                          label="Remove song from favorites"
+                                        />
+                                        <button
+                                          type="button"
+                                          onClick={() => addToQueue(t)}
+                                          className="shrink-0 rounded-full bg-accent-500/15 px-2.5 py-1 text-xs font-medium text-accent-800 ring-1 ring-accent-500/25 transition hover:bg-accent-500/25 dark:text-accent-300 dark:ring-accent-500/40"
+                                        >
+                                          Add
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
+
+                    {homeRecentBrowseSearches.length > 0 || suggestedTracks.length > 0 ? (
+                      <div className="mt-6">
+                        <p className="mb-2 text-xs font-medium uppercase tracking-wider text-zinc-500">
+                          Suggestions
+                        </p>
+                        {homeRecentBrowseSearches.length > 0 ? (
+                          <div className="mb-3 flex flex-wrap gap-2">
+                            {homeRecentBrowseSearches.map((entry) => (
+                              <RecentBrowseSearchChip
+                                key={`${entry.source}\u0000${entry.query}`}
+                                entry={entry}
+                              />
+                            ))}
+                          </div>
+                        ) : null}
+                        {suggestedTracks.length > 0 ? (
+                          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                            {suggestedTracks.map((t) => (
+                              <div
+                                key={t.id}
+                                role="button"
+                                tabIndex={0}
+                                onClick={() => addToQueue(t)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' || e.key === ' ') {
+                                    e.preventDefault()
+                                    addToQueue(t)
+                                  }
+                                }}
+                                aria-label={`Add ${t.title} to queue`}
+                                className={`flex w-full min-w-0 cursor-pointer items-center text-left ${emptyQueueCardGapClass} rounded-xl border border-zinc-200 bg-white ${emptyQueueCardPadClass} shadow-sm transition hover:border-accent-400/50 hover:bg-accent-50/50 dark:border-zinc-800 dark:bg-zinc-950/40 dark:hover:border-accent-500/30 dark:hover:bg-accent-950/20 dark:shadow-none`}
+                              >
+                                <div className="min-w-0 flex-1">
+                                  <p className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">
+                                    {t.title}
+                                  </p>
+                                  <p className="truncate text-xs text-zinc-500 dark:text-zinc-400">
+                                    {t.artist} · {t.album}
+                                  </p>
+                                </div>
+                                <div className="flex shrink-0 items-center gap-2">
+                                  <span className="text-[11px] tabular-nums text-zinc-400 dark:text-zinc-500">
+                                    {t.durationSec > 0 ? formatDuration(t.durationSec) : '—'}
+                                  </span>
+                                  <FavoriteStarButton
+                                    className="rounded-full"
+                                    filled={isFavoriteSong(t.id)}
+                                    onPress={() => toggleFavoriteTrack(t)}
+                                    label={
+                                      isFavoriteSong(t.id)
+                                        ? 'Remove song from favorites'
+                                        : 'Add song to favorites'
+                                    }
+                                  />
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
                     ) : null}
                   </div>
-                ) : null}
-              </div>
-            ) : (
-              <ul className="divide-y divide-zinc-200 dark:divide-zinc-800" role="listbox" aria-label="Track queue">
-                {queue.map((row, index) => {
-                  const track = row.track
-                  const selected = index === activeIndex
-                  const isDropTarget = dragOverQueueId === row.queueId && draggingQueueId !== row.queueId
-                  const isStreamTrack = isMusicBrainzStreamTrack(track)
-                  const isSavedInLibrary = libraryTracks.some((t) => t.id === track.id)
-                  return (
-                    <li
-                      key={row.queueId}
-                      className={[
-                        'group/row flex items-center gap-0',
-                        selected ? 'bg-accent-50/90 dark:bg-white/6' : '',
-                        isDropTarget ? 'ring-1 ring-accent-400/30' : '',
-                      ].join(' ')}
-                      onDragOver={(e) => {
-                        if (!draggingQueueId) return
-                        e.preventDefault()
-                        if (dragOverQueueId !== row.queueId) setDragOverQueueId(row.queueId)
-                      }}
-                      onDrop={(e) => {
-                        e.preventDefault()
-                        const fromQueueId = draggingQueueId
-                        setDraggingQueueId(null)
-                        setDragOverQueueId(null)
-                        if (!fromQueueId) return
-                        if (fromQueueId === row.queueId) return
-                        const fromIndex = queue.findIndex((q) => q.queueId === fromQueueId)
-                        if (fromIndex < 0) return
-
-                        const rect = (e.currentTarget as HTMLLIElement).getBoundingClientRect()
-                        const insertAfter = e.clientY > rect.top + rect.height / 2
-                        // Desired insertion index in the original list (before any splice shifting).
-                        const desiredInsertIndex = insertAfter ? index + 1 : index
-                        // Convert to insertion index after removal of the dragged item.
-                        const adjustedToIndex = fromIndex < desiredInsertIndex ? desiredInsertIndex - 1 : desiredInsertIndex
-                        reorderQueueItems(fromIndex, adjustedToIndex)
-                      }}
-                    >
-                      <button
-                        type="button"
-                        role="option"
-                        aria-selected={selected}
-                        onClick={() => selectIndex(index)}
-                        draggable
-                        onDragStart={(e) => {
-                          setDraggingQueueId(row.queueId)
-                          setDragOverQueueId(row.queueId)
-                          e.dataTransfer.effectAllowed = 'move'
-                          e.dataTransfer.setData('text/plain', row.queueId)
-                        }}
-                        onDragEnd={() => {
-                          setDraggingQueueId(null)
-                          setDragOverQueueId(null)
-                        }}
-                        className={[
-                          `flex min-w-0 flex-1 items-center ${queueRowGapClass} border-l-2 border-transparent ${queueRowPadClass} text-left transition-colors`,
-                          selected
-                            ? 'border-accent-500 dark:border-accent-400'
-                            : 'hover:bg-zinc-50 dark:hover:bg-zinc-900/60',
-                          'cursor-grab active:cursor-grabbing',
-                          isDropTarget ? 'border-accent-500/20 dark:border-accent-400/20' : '',
-                        ].join(' ')}
-                      >
-                        <span className="w-5 shrink-0 text-right text-[11px] tabular-nums text-zinc-400 dark:text-zinc-500">
-                          {index + 1}
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-medium leading-snug text-zinc-900 dark:text-zinc-100">
-                            {track.title}
-                          </p>
-                          <p className="truncate text-xs leading-snug text-zinc-500 dark:text-zinc-400">
-                            {track.artist} · {track.album}
-                          </p>
-                        </div>
-                        <span className="shrink-0 text-[11px] tabular-nums text-zinc-400 dark:text-zinc-500">
-                          {track.durationSec > 0 ? formatDuration(track.durationSec) : '—'}
-                        </span>
-                      </button>
-                      <div
-                        className={[
-                          'flex shrink-0 items-center border-l pr-1 pl-0.5',
-                          selected
-                            ? 'border-accent-200/80 dark:border-white/8'
-                            : 'border-zinc-200 bg-zinc-50/80 dark:border-zinc-800 dark:bg-zinc-900/40',
-                        ].join(' ')}
-                      >
-                        <FavoriteStarButton
-                          className="rounded-none"
-                          filled={isFavoriteSong(track.id)}
-                          onPress={() => toggleFavoriteTrack(track)}
-                          label={isFavoriteSong(track.id) ? 'Remove song from favorites' : 'Add song to favorites'}
-                        />
-                        <TrackRowOverflowMenu
-                          triggerLabel={`Actions for ${track.title}`}
-                          items={buildTrackOverflowMenuItems({
-                            track,
-                            onViewDetails: openTrackDetails,
-                            onViewRelatedSongs: openRelatedSongs,
-                            onSave:
-                              isStreamTrack && !isSavedInLibrary
-                                ? () => addToLibrary(track)
-                                : undefined,
-                            onRemoveFromLibrary: isSavedInLibrary
-                              ? () => removeFromLibrary(track)
-                              : undefined,
-                          })}
-                        />
-                        <button
-                          type="button"
-                          aria-label={`Remove ${track.title} from queue`}
-                          onClick={() => {
-                            const isCurrent = activeQueueId === row.queueId
-                            const nextId = isCurrent
-                              ? (queue[index + 1]?.queueId ?? queue[index - 1]?.queueId ?? null)
-                              : activeQueueId
-                            removeFromQueue(row.queueId)
-                            setActiveQueueId(nextId)
-                            if (isCurrent && !nextId) {
-                              setIsPlaying(false)
-                              setPositionSec(0)
-                            }
+                ) : (
+                  <ul
+                    className="divide-y divide-zinc-200 dark:divide-zinc-800"
+                    role="listbox"
+                    aria-label="Track queue"
+                  >
+                    {queue.map((row, index) => {
+                      const track = row.track
+                      const selected = index === activeIndex
+                      const isDropTarget =
+                        dragOverQueueId === row.queueId && draggingQueueId !== row.queueId
+                      const isStreamTrack = isMusicBrainzStreamTrack(track)
+                      const isSavedInLibrary = libraryTracks.some((t) => t.id === track.id)
+                      return (
+                        <li
+                          key={row.queueId}
+                          className={[
+                            'group/row flex items-center gap-0',
+                            selected ? 'bg-accent-50/90 dark:bg-white/6' : '',
+                            isDropTarget ? 'ring-1 ring-accent-400/30' : '',
+                          ].join(' ')}
+                          onDragOver={(e) => {
+                            if (!draggingQueueId) return
+                            e.preventDefault()
+                            if (dragOverQueueId !== row.queueId) setDragOverQueueId(row.queueId)
                           }}
-                          className={`shrink-0 ${queueRemoveButtonPadClass} text-[11px] text-zinc-500 opacity-80 transition hover:bg-zinc-200/80 hover:text-zinc-900 sm:opacity-0 sm:group-hover/row:opacity-100 dark:hover:bg-zinc-800 dark:hover:text-zinc-100`}
+                          onDrop={(e) => {
+                            e.preventDefault()
+                            const fromQueueId = draggingQueueId
+                            setDraggingQueueId(null)
+                            setDragOverQueueId(null)
+                            if (!fromQueueId) return
+                            if (fromQueueId === row.queueId) return
+                            const fromIndex = queue.findIndex((q) => q.queueId === fromQueueId)
+                            if (fromIndex < 0) return
+
+                            const rect = (e.currentTarget as HTMLLIElement).getBoundingClientRect()
+                            const insertAfter = e.clientY > rect.top + rect.height / 2
+                            // Desired insertion index in the original list (before any splice shifting).
+                            const desiredInsertIndex = insertAfter ? index + 1 : index
+                            // Convert to insertion index after removal of the dragged item.
+                            const adjustedToIndex =
+                              fromIndex < desiredInsertIndex
+                                ? desiredInsertIndex - 1
+                                : desiredInsertIndex
+                            reorderQueueItems(fromIndex, adjustedToIndex)
+                          }}
                         >
-                          Remove
-                        </button>
-                      </div>
-                    </li>
-                  )
-                })}
-              </ul>
-            )}
-          </div>
+                          <button
+                            type="button"
+                            role="option"
+                            aria-selected={selected}
+                            onClick={() => selectIndex(index)}
+                            draggable
+                            onDragStart={(e) => {
+                              setDraggingQueueId(row.queueId)
+                              setDragOverQueueId(row.queueId)
+                              e.dataTransfer.effectAllowed = 'move'
+                              e.dataTransfer.setData('text/plain', row.queueId)
+                            }}
+                            onDragEnd={() => {
+                              setDraggingQueueId(null)
+                              setDragOverQueueId(null)
+                            }}
+                            className={[
+                              `flex min-w-0 flex-1 items-center ${queueRowGapClass} border-l-2 border-transparent ${queueRowPadClass} text-left transition-colors`,
+                              selected
+                                ? 'border-accent-500 dark:border-accent-400'
+                                : 'hover:bg-zinc-50 dark:hover:bg-zinc-900/60',
+                              'cursor-grab active:cursor-grabbing',
+                              isDropTarget ? 'border-accent-500/20 dark:border-accent-400/20' : '',
+                            ].join(' ')}
+                          >
+                            <span className="w-5 shrink-0 text-right text-[11px] tabular-nums text-zinc-400 dark:text-zinc-500">
+                              {index + 1}
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-sm font-medium leading-snug text-zinc-900 dark:text-zinc-100">
+                                {track.title}
+                              </p>
+                              <p className="truncate text-xs leading-snug text-zinc-500 dark:text-zinc-400">
+                                {track.artist} · {track.album}
+                              </p>
+                            </div>
+                            <span className="shrink-0 text-[11px] tabular-nums text-zinc-400 dark:text-zinc-500">
+                              {track.durationSec > 0 ? formatDuration(track.durationSec) : '—'}
+                            </span>
+                          </button>
+                          <div
+                            className={[
+                              'flex shrink-0 items-center border-l pr-1 pl-0.5',
+                              selected
+                                ? 'border-accent-200/80 dark:border-white/8'
+                                : 'border-zinc-200 bg-zinc-50/80 dark:border-zinc-800 dark:bg-zinc-900/40',
+                            ].join(' ')}
+                          >
+                            <FavoriteStarButton
+                              className="rounded-none"
+                              filled={isFavoriteSong(track.id)}
+                              onPress={() => toggleFavoriteTrack(track)}
+                              label={
+                                isFavoriteSong(track.id)
+                                  ? 'Remove song from favorites'
+                                  : 'Add song to favorites'
+                              }
+                            />
+                            <TrackRowOverflowMenu
+                              triggerLabel={`Actions for ${track.title}`}
+                              items={buildTrackOverflowMenuItems({
+                                track,
+                                onViewDetails: openTrackDetails,
+                                onViewRelatedSongs: openRelatedSongs,
+                                onSave:
+                                  isStreamTrack && !isSavedInLibrary
+                                    ? () => addToLibrary(track)
+                                    : undefined,
+                                onRemoveFromLibrary: isSavedInLibrary
+                                  ? () => removeFromLibrary(track)
+                                  : undefined,
+                              })}
+                            />
+                            <button
+                              type="button"
+                              aria-label={`Remove ${track.title} from queue`}
+                              onClick={() => {
+                                const isCurrent = activeQueueId === row.queueId
+                                if (isCurrent) markCurrentSkipped()
+                                const nextId = isCurrent
+                                  ? (queue[index + 1]?.queueId ?? queue[index - 1]?.queueId ?? null)
+                                  : activeQueueId
+                                removeFromQueue(row.queueId)
+                                setActiveQueueId(nextId)
+                                if (isCurrent && !nextId) {
+                                  setIsPlaying(false)
+                                  setPositionSec(0)
+                                }
+                              }}
+                              className={`shrink-0 ${queueRemoveButtonPadClass} text-[11px] text-zinc-500 opacity-80 transition hover:bg-zinc-200/80 hover:text-zinc-900 sm:opacity-0 sm:group-hover/row:opacity-100 dark:hover:bg-zinc-800 dark:hover:text-zinc-100`}
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                )}
+              </div>
             </>
           )}
         </section>
@@ -1522,8 +1768,12 @@ export default function MusicPlayer() {
               <p className="truncate text-lg font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
                 {current?.title ?? '—'}
               </p>
-              <p className="mt-1 truncate text-sm text-zinc-600 dark:text-zinc-400">{current?.artist ?? ''}</p>
-              <p className="mt-0.5 truncate text-xs text-zinc-500 dark:text-zinc-600">{current?.album ?? ''}</p>
+              <p className="mt-1 truncate text-sm text-zinc-600 dark:text-zinc-400">
+                {current?.artist ?? ''}
+              </p>
+              <p className="mt-0.5 truncate text-xs text-zinc-500 dark:text-zinc-600">
+                {current?.album ?? ''}
+              </p>
             </div>
           </div>
 
@@ -1561,9 +1811,7 @@ export default function MusicPlayer() {
               <div
                 className="pointer-events-none absolute inset-y-0 left-0 rounded-full bg-linear-to-r from-accent-600 to-accent-400"
                 style={{
-                  width: `${
-                    durationSec > 0 ? (100 * positionSec) / durationSec : 0
-                  }%`,
+                  width: `${durationSec > 0 ? (100 * positionSec) / durationSec : 0}%`,
                 }}
               />
             </div>
@@ -1573,7 +1821,10 @@ export default function MusicPlayer() {
                 <button
                   type="button"
                   aria-label="Previous track"
-                  onClick={() => goPrev()}
+                  onClick={() => {
+                    markCurrentSkipped()
+                    goPrev()
+                  }}
                   disabled={queue.length === 0}
                   className="rounded-full p-2.5 text-zinc-600 transition hover:bg-zinc-200 hover:text-zinc-900 disabled:cursor-not-allowed disabled:opacity-40 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
                 >
@@ -1586,12 +1837,19 @@ export default function MusicPlayer() {
                   disabled={queue.length === 0 || !current}
                   className="mx-0.5 flex h-12 w-12 items-center justify-center rounded-full bg-accent-500 text-zinc-950 shadow-md shadow-accent-600/20 transition hover:bg-accent-400 disabled:cursor-not-allowed disabled:opacity-40 dark:shadow-accent-900/30"
                 >
-                  {isPlaying ? <IconPause className="h-6 w-6" /> : <IconPlay className="h-6 w-6 pl-0.5" />}
+                  {isPlaying ? (
+                    <IconPause className="h-6 w-6" />
+                  ) : (
+                    <IconPlay className="h-6 w-6 pl-0.5" />
+                  )}
                 </button>
                 <button
                   type="button"
                   aria-label="Next track"
-                  onClick={() => goNext()}
+                  onClick={() => {
+                    markCurrentSkipped()
+                    goNext()
+                  }}
                   disabled={queue.length === 0}
                   className="rounded-full p-2.5 text-zinc-600 transition hover:bg-zinc-200 hover:text-zinc-900 disabled:cursor-not-allowed disabled:opacity-40 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
                 >
