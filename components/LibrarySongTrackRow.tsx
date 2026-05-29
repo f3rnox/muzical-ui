@@ -23,6 +23,7 @@ export default function LibrarySongTrackRow(props: LibrarySongTrackRowProps) {
     openTrackDetails,
     openRelatedSongs,
     openAddToPlaylist,
+    downloadTrack,
     removeFromLibrary,
     isFavoriteSong,
     toggleFavoriteTrack,
@@ -54,6 +55,7 @@ export default function LibrarySongTrackRow(props: LibrarySongTrackRowProps) {
           onViewDetails: openTrackDetails,
           onViewRelatedSongs: openRelatedSongs,
           onAddToPlaylist: (track) => openAddToPlaylist(track, track.title),
+          onDownload: downloadTrack,
           onRemoveFromLibrary: () => removeFromLibrary(props.track),
         })}
       />

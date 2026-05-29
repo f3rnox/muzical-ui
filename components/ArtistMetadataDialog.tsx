@@ -13,17 +13,18 @@ type ArtistMetadataDialogProps = {
   trackCount: number
   albumCount: number
   onClose: () => void
-  onSaved: (newArtistName: string) => void
+  onRenamed: (newArtistName: string) => void
 }
 
 /**
  * Modal to edit artist metadata for all tracks credited to an artist.
  */
 export default function ArtistMetadataDialog(props: ArtistMetadataDialogProps) {
-  const { artistName, trackCount, albumCount, onClose, onSaved } = props
+  const { artistName, trackCount, albumCount, onClose, onRenamed } = props
   const { libraryTracks, patchArtistMetadataByKey, writeLibraryTracksToFiles } = useLibrary()
   const titleId = useId()
   const panelRef = useRef<HTMLDivElement | null>(null)
+  const onCloseRef = useRef(onClose)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
 
@@ -53,23 +54,27 @@ export default function ArtistMetadataDialog(props: ArtistMetadataDialogProps) {
             ? ` Updated ${fileWrite.writtenCount} file${fileWrite.writtenCount === 1 ? '' : 's'}; ${fileWrite.failedCount} failed.`
             : ''
         setSaveError(`${fileWrite.reason ?? 'Could not write tags to audio files.'}${detail}`)
-        onSaved(newName)
+        onRenamed(newName)
         return
       }
-      onSaved(newName)
+      onRenamed(newName)
       onClose()
     },
-    [artistName, libraryTracks, onClose, onSaved, patchArtistMetadataByKey, writeLibraryTracksToFiles],
+    [artistName, libraryTracks, onClose, onRenamed, patchArtistMetadataByKey, writeLibraryTracksToFiles],
   )
 
   useEffect(() => {
+    onCloseRef.current = onClose
+  }, [onClose])
+
+  useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') onClose()
+      if (event.key === 'Escape') onCloseRef.current()
     }
     document.addEventListener('keydown', onKeyDown)
     panelRef.current?.focus()
     return () => document.removeEventListener('keydown', onKeyDown)
-  }, [onClose])
+  }, [])
 
   return (
     <div

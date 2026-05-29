@@ -45,6 +45,7 @@ import applyArtistMetadataPatch from '@/lib/track/apply-artist-metadata-patch'
 import type { ArtistMetadataFields } from '@/lib/track/apply-artist-metadata-patch'
 import applyTrackMetadataPatch from '@/lib/track/apply-track-metadata-patch'
 import type { TrackMetadataFields } from '@/lib/track/apply-track-metadata-patch'
+import downloadTrackAudio from '@/lib/track/download-track'
 import writeAudioTagsToFile from '@/lib/library/write-audio-tags-to-file'
 import writeAudioTagsToTracks from '@/lib/library/write-audio-tags-to-tracks'
 import type {
@@ -156,6 +157,7 @@ type LibraryContextValue = {
   reportPlayback: (activeQueueId: string | null, positionSec: number) => void
   reorderQueueItems: (fromIndex: number, toIndex: number) => void
   resolveFileForTrack: (track: Track) => Promise<File | null>
+  downloadTrack: (track: Track) => void
   bumpTrackDuration: (trackId: string, durationSec: number) => void
   patchTrackById: (trackId: string, patch: (track: Track) => Track) => void
   saveTrackMetadata: (trackId: string, fields: TrackMetadataFields) => Promise<WriteAudioTagsResult>
@@ -1354,6 +1356,16 @@ export function LibraryProvider(props: { children: ReactNode }) {
     return resolveTrackToFile(track, rootHandlesRef.current)
   }, [])
 
+  const downloadTrack = useCallback(
+    (track: Track): void => {
+      void downloadTrackAudio(track, resolveFileForTrack).catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : 'Could not download this track.'
+        window.alert(message)
+      })
+    },
+    [resolveFileForTrack],
+  )
+
   const favoriteSongSet = useMemo(() => new Set(favoriteSongIds), [favoriteSongIds])
   const favoriteArtistSet = useMemo(() => new Set(favoriteArtistNames), [favoriteArtistNames])
   const favoriteAlbumSet = useMemo(() => new Set(favoriteAlbumKeys), [favoriteAlbumKeys])
@@ -1684,6 +1696,7 @@ export function LibraryProvider(props: { children: ReactNode }) {
       reportPlayback,
       reorderQueueItems,
       resolveFileForTrack,
+      downloadTrack,
       bumpTrackDuration,
       patchTrackById,
       saveTrackMetadata,
@@ -1768,6 +1781,7 @@ export function LibraryProvider(props: { children: ReactNode }) {
       reportPlayback,
       reorderQueueItems,
       resolveFileForTrack,
+      downloadTrack,
       bumpTrackDuration,
       patchTrackById,
       saveTrackMetadata,

@@ -787,7 +787,6 @@ export default function LibraryBrowser() {
   const editingArtistMeta = useMemo(() => {
     if (!artistMetadataEditName) return null
     const tracks = libraryArtistMap.get(artistMetadataEditName) ?? []
-    if (tracks.length === 0) return null
     const albumKeySet = new Set(tracks.map((t) => albumCompositeKey(t.album, t.artist)))
     return {
       artistName: artistMetadataEditName,
@@ -1739,9 +1738,9 @@ export default function LibraryBrowser() {
           trackCount={editingArtistMeta.trackCount}
           albumCount={editingArtistMeta.albumCount}
           onClose={() => setArtistMetadataEditName(null)}
-          onSaved={(newName) => {
+          onRenamed={(newName) => {
             setArtistPick((pick) => (pick === artistMetadataEditName ? newName : pick))
-            setArtistMetadataEditName(null)
+            setArtistMetadataEditName(newName)
           }}
         />
       ) : null}

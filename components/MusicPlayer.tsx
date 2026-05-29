@@ -261,6 +261,7 @@ export default function MusicPlayer() {
     removeFromLibrary,
     openTrackDetails,
     openRelatedSongs,
+    downloadTrack,
     favoriteSongIds,
     favoriteArtistNames,
     favoriteAlbumKeys,
@@ -1724,6 +1725,7 @@ export default function MusicPlayer() {
                                 onViewDetails: openTrackDetails,
                                 onViewRelatedSongs: openRelatedSongs,
                                 onAddToPlaylist: (track) => openAddToPlaylist(track, track.title),
+                                onDownload: downloadTrack,
                                 onSave:
                                   isStreamTrack && !isSavedInLibrary
                                     ? () => addToLibrary(track)

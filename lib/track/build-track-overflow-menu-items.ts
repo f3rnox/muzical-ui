@@ -9,6 +9,7 @@ type BuildTrackOverflowMenuItemsOptions = {
   alreadySaved?: boolean;
   onRemoveFromLibrary?: () => void;
   onAddToPlaylist?: (track: Track) => void;
+  onDownload?: (track: Track) => void;
 };
 
 /**
@@ -38,6 +39,14 @@ export default function buildTrackOverflowMenuItems(
       id: "add-to-playlist",
       label: "Add to playlist…",
       onSelect: () => options.onAddToPlaylist!(options.track),
+    });
+  }
+
+  if (options.onDownload) {
+    items.push({
+      id: "download",
+      label: "Download",
+      onSelect: () => options.onDownload!(options.track),
     });
   }
 

@@ -19,7 +19,7 @@ type MusicBrainzTrackRowProps = {
  * Single MusicBrainz search result row with queue and save actions.
  */
 export default function MusicBrainzTrackRow(props: MusicBrainzTrackRowProps) {
-  const { openTrackDetails, openRelatedSongs, removeFromLibrary } = useLibrary()
+  const { openTrackDetails, openRelatedSongs, downloadTrack, removeFromLibrary } = useLibrary()
   const rowPadSmClass = props.compact ? 'px-1.5 py-1.5' : 'px-2 py-2'
   const rowGapSmClass = props.compact ? 'gap-1.5' : 'gap-2'
   const subtitle =
@@ -42,6 +42,7 @@ export default function MusicBrainzTrackRow(props: MusicBrainzTrackRowProps) {
           track: props.track,
           onViewDetails: openTrackDetails,
           onViewRelatedSongs: openRelatedSongs,
+          onDownload: downloadTrack,
           onSave: props.alreadySaved ? undefined : () => props.onSave(props.track),
           onRemoveFromLibrary: props.alreadySaved
             ? () => removeFromLibrary(props.track)

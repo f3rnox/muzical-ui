@@ -61,7 +61,8 @@
     "music-metadata": "^11.12.3",
     "next": "16.2.6",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "yt-dlp-wrap": "^2.3.12"
   },
   "devDependencies": {
     "@commitlint/cli": "^20.5.0",

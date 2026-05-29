@@ -65,11 +65,57 @@ export default function LyricsPanel({ track, onClose }: LyricsPanelProps) {
         ) : isLoading ? (
           <p className="text-sm text-zinc-500">Loading lyrics...</p>
         ) : (
-          <p className="whitespace-pre-wrap text-[15px] leading-loose text-zinc-800 dark:text-zinc-200">
-            {lyrics}
-          </p>
+          <FormattedLyrics lyrics={lyrics} />
         )}
       </div>
+    </div>
+  )
+}
+
+function FormattedLyrics({ lyrics }: Readonly<{ lyrics: string }>) {
+  const lines = lyrics.split('\n')
+
+  const sections: Array<{ header: string | null; lines: string[] }> = []
+  let current: { header: string | null; lines: string[] } = {
+    header: null,
+    lines: [],
+  }
+
+  for (const line of lines) {
+    const trimmed = line.trim()
+    if (/^\[.+\]$/.test(trimmed)) {
+      if (current.header !== null || current.lines.length > 0) {
+        sections.push(current)
+      }
+      current = { header: trimmed, lines: [] }
+    } else {
+      current.lines.push(trimmed)
+    }
+  }
+  if (current.header !== null || current.lines.length > 0) {
+    sections.push(current)
+  }
+
+  return (
+    <div className="space-y-5">
+      {sections.map((section, i) => (
+        <div key={`${section.header ?? 'intro'}-${i}`} className="space-y-1">
+          {section.header && (
+            <p className="text-[11px] font-semibold uppercase tracking-widest text-zinc-400 dark:text-zinc-500">
+              {section.header.slice(1, -1)}
+            </p>
+          )}
+          <div className="text-[15px] leading-loose text-zinc-800 dark:text-zinc-200">
+            {section.lines.map((line, j) =>
+              line === '' ? (
+                <div key={`blank-${i}-${j}`} className="h-2" />
+              ) : (
+                <p key={`${i}-${j}-${line.slice(0, 10)}`}>{line}</p>
+              ),
+            )}
+          </div>
+        </div>
+      ))}
     </div>
   )
 }
