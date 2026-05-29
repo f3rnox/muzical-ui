@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.21](https://github.com/f3rnox/muzical-ui/compare/v0.1.20...v0.1.21) (2026-05-29)
+
+
+### Features
+
+* add equalizer ([7b67ee7](https://github.com/f3rnox/muzical-ui/commit/7b67ee77cdce63f025549893d2117e9e098ef2f8))
+* add song downloads, tweak lyrics pane ([da36f10](https://github.com/f3rnox/muzical-ui/commit/da36f10ebef928e0b929e5b81af91d266a9af480))
+
 ### [0.1.20](https://github.com/f3rnox/muzical-ui/compare/v0.1.19...v0.1.20) (2026-05-28)
 
 
