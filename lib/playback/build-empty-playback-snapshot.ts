@@ -8,6 +8,8 @@ export default function buildEmptyPlaybackSnapshot(): PersistedPlaybackSnapshot 
     trackIds: [],
     tracks: [],
     activeTrackId: null,
+    activeQueueIndex: null,
     positionSec: 0,
+    wasPlaying: false,
   };
 }

@@ -30,13 +30,27 @@ export default function readStoredPlaybackSnapshot(): PersistedPlaybackSnapshot 
     }
     const activeTrackId =
       typeof o.activeTrackId === "string" ? o.activeTrackId : null;
+    const activeQueueIndex =
+      typeof o.activeQueueIndex === "number" &&
+      Number.isInteger(o.activeQueueIndex) &&
+      o.activeQueueIndex >= 0
+        ? o.activeQueueIndex
+        : null;
     const positionSec =
       typeof o.positionSec === "number" &&
       Number.isFinite(o.positionSec) &&
       o.positionSec >= 0
         ? o.positionSec
         : 0;
-    return { trackIds, tracks, activeTrackId, positionSec };
+    const wasPlaying = o.wasPlaying === true;
+    return {
+      trackIds,
+      tracks,
+      activeTrackId,
+      activeQueueIndex,
+      positionSec,
+      wasPlaying,
+    };
   } catch {
     return null;
   }

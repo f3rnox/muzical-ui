@@ -6,6 +6,7 @@ export type RestoredQueue = {
   queue: QueuedTrack[];
   activeQueueId: string | null;
   positionSec: number;
+  wasPlaying: boolean;
 };
 
 /**
@@ -35,7 +36,13 @@ export default function buildQueueFromSnapshot(
     track,
   }));
   let activeQueueId: string | null = null;
-  if (snapshot.activeTrackId) {
+  if (
+    snapshot.activeQueueIndex != null &&
+    snapshot.activeQueueIndex >= 0 &&
+    snapshot.activeQueueIndex < queue.length
+  ) {
+    activeQueueId = queue[snapshot.activeQueueIndex]?.queueId ?? null;
+  } else if (snapshot.activeTrackId) {
     const row = queue.find((q) => q.track.id === snapshot.activeTrackId);
     activeQueueId = row?.queueId ?? queue[0]?.queueId ?? null;
   } else {
@@ -45,5 +52,6 @@ export default function buildQueueFromSnapshot(
     queue,
     activeQueueId,
     positionSec: snapshot.positionSec,
+    wasPlaying: snapshot.wasPlaying === true,
   };
 }

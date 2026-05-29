@@ -301,6 +301,10 @@ function IconEqualizer(props: { className?: string }) {
   );
 }
 
+function isAutoplayBlockedError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === "NotAllowedError";
+}
+
 /**
  * Local-library player: queue from scanned folders, `<audio>` playback via object URLs.
  */
@@ -412,6 +416,7 @@ export default function MusicPlayer() {
   const hiddenYoutubeRef = useRef<HiddenYoutubePlayerHandle | null>(null);
   const isPlayingRef = useRef(isPlaying);
   const playbackRateRef = useRef(playbackRate);
+  const pendingResumeAfterGestureRef = useRef(false);
   const ensureEqualizerReady = useAudioEqualizer(audioRef, equalizerGainsDb);
 
   const playAudioElement = useCallback(
@@ -419,8 +424,10 @@ export default function MusicPlayer() {
       void (async (): Promise<void> => {
         await ensureEqualizerReady();
         await el.play();
+        pendingResumeAfterGestureRef.current = false;
       })().catch((e: unknown) => {
         setLoadError(e instanceof Error ? e.message : "Playback failed");
+        pendingResumeAfterGestureRef.current = isAutoplayBlockedError(e);
         setIsPlaying(false);
       });
     },
@@ -468,14 +475,18 @@ export default function MusicPlayer() {
 
   useEffect(() => {
     if (!playbackRestore) return;
-    const { activeQueueId: nextActiveId, positionSec: nextPos } =
-      playbackRestore;
+    const {
+      activeQueueId: nextActiveId,
+      positionSec: nextPos,
+      wasPlaying,
+    } = playbackRestore;
     pendingRestorePositionRef.current = nextPos;
+    pendingResumeAfterGestureRef.current = wasPlaying;
     consumePlaybackRestore();
     void Promise.resolve().then(() => {
       setActiveQueueId(nextActiveId);
       setPositionSec(nextPos);
-      setIsPlaying(false);
+      setIsPlaying(wasPlaying);
     });
   }, [playbackRestore, consumePlaybackRestore]);
 
@@ -494,7 +505,13 @@ export default function MusicPlayer() {
 
   useEffect(() => {
     const el = audioRef.current;
-    const pos = el && Number.isFinite(el.currentTime) ? el.currentTime : 0;
+    const pendingRestorePos = pendingRestorePositionRef.current;
+    const pos =
+      pendingRestorePos != null
+        ? pendingRestorePos
+        : el && Number.isFinite(el.currentTime)
+          ? el.currentTime
+          : 0;
     reportPlayback(activeQueueId, pos);
   }, [activeQueueId, reportPlayback]);
 
@@ -1169,7 +1186,7 @@ export default function MusicPlayer() {
       if (Number.isFinite(t) && t >= 0) {
         setPositionSec(t);
         if (current?.id) recordPlaybackProgressForTrack(current.id, t);
-        reportPlayback(activeQueueIdRef.current, t);
+        reportPlayback(activeQueueIdRef.current, t, isPlayingRef.current);
       }
       const d = hiddenYoutubeRef.current?.getDuration() ?? 0;
       if (Number.isFinite(d) && d > 0) setMediaDuration(d);
@@ -1187,15 +1204,71 @@ export default function MusicPlayer() {
   ]);
 
   useEffect(() => {
+    const resumeAfterGesture = (): void => {
+      if (!pendingResumeAfterGestureRef.current) return;
+      if (youtubeStreamActive) {
+        pendingResumeAfterGestureRef.current = false;
+        setIsPlaying(true);
+        return;
+      }
+      const el = audioRef.current;
+      if (!el || !el.src) return;
+      setIsPlaying(true);
+      playAudioElement(el);
+    };
+
+    window.addEventListener("pointerdown", resumeAfterGesture, {
+      capture: true,
+    });
+    window.addEventListener("keydown", resumeAfterGesture, { capture: true });
+    return (): void => {
+      window.removeEventListener("pointerdown", resumeAfterGesture, {
+        capture: true,
+      });
+      window.removeEventListener("keydown", resumeAfterGesture, {
+        capture: true,
+      });
+    };
+  }, [playAudioElement, youtubeStreamActive]);
+
+  useEffect(() => {
+    const reportCurrentPosition = (): void => {
+      let pos = positionSec;
+      if (youtubeStreamActive && hiddenYoutubeRef.current) {
+        const t = hiddenYoutubeRef.current.getCurrentTime();
+        if (Number.isFinite(t) && t >= 0) pos = t;
+      } else {
+        const el = audioRef.current;
+        if (el && Number.isFinite(el.currentTime) && el.currentTime >= 0) {
+          pos = el.currentTime;
+        }
+      }
+      reportPlayback(activeQueueIdRef.current, pos, isPlayingRef.current);
+    };
+
+    window.addEventListener("pagehide", reportCurrentPosition, {
+      capture: true,
+    });
+    return (): void => {
+      window.removeEventListener("pagehide", reportCurrentPosition, {
+        capture: true,
+      });
+    };
+  }, [positionSec, reportPlayback, youtubeStreamActive]);
+
+  useEffect(() => {
     const el = audioRef.current;
     if (!el) return undefined;
     if (!el.src) return undefined;
     if (isPlaying) {
+      reportPlayback(activeQueueIdRef.current, el.currentTime, true);
       playAudioElement(el);
     } else {
       el.pause();
+      const pos = Number.isFinite(el.currentTime) ? el.currentTime : 0;
+      reportPlayback(activeQueueIdRef.current, pos, false);
     }
-  }, [isPlaying, playAudioElement]);
+  }, [isPlaying, playAudioElement, reportPlayback]);
 
   useEffect(() => {
     const el = audioRef.current;
@@ -1206,7 +1279,11 @@ export default function MusicPlayer() {
       const now = Date.now();
       if (now - lastPlaybackReportMsRef.current >= 2000) {
         lastPlaybackReportMsRef.current = now;
-        reportPlayback(activeQueueIdRef.current, el.currentTime);
+        reportPlayback(
+          activeQueueIdRef.current,
+          el.currentTime,
+          isPlayingRef.current,
+        );
       }
     };
     const onMeta = (): void => {
