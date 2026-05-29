@@ -1,12 +1,13 @@
-import { DEFAULT_PLAYBACK_VOLUME } from '@/lib/playback/playback-preference-storage-keys'
-import type { PlaybackPreferences } from '@/types/playback-preferences'
+import { DEFAULT_PLAYBACK_VOLUME } from "@/lib/playback/playback-preference-storage-keys";
+import { defaultEqualizerGainsDb } from "@/lib/playback/equalizer";
+import type { PlaybackPreferences } from "@/types/playback-preferences";
 
 /**
  * Factory defaults for playback preferences on a fresh install.
  */
 export default function defaultPlaybackPreferences(): PlaybackPreferences {
   return {
-    repeatMode: 'all',
+    repeatMode: "all",
     shuffle: false,
     playbackRate: 1,
     rememberVolume: false,
@@ -14,5 +15,6 @@ export default function defaultPlaybackPreferences(): PlaybackPreferences {
     seekStepSmallSec: 5,
     seekStepLargeSec: 30,
     autoAdvanceOnEnd: true,
-  }
+    equalizerGainsDb: defaultEqualizerGainsDb(),
+  };
 }

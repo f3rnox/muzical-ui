@@ -1,6 +1,6 @@
-'use client'
+"use client";
 
-import Link from 'next/link'
+import Link from "next/link";
 import {
   useCallback,
   useEffect,
@@ -9,54 +9,56 @@ import {
   useRef,
   useState,
   type KeyboardEvent,
-} from 'react'
-import BrowsePanel from '@/components/BrowsePanel'
-import BrowseViewTabs from '@/components/BrowseViewTabs'
+} from "react";
+import BrowsePanel from "@/components/BrowsePanel";
+import BrowseViewTabs from "@/components/BrowseViewTabs";
 import HiddenYoutubePlayer, {
   type HiddenYoutubePlayerHandle,
-} from '@/components/HiddenYoutubePlayer'
-import { useLibrary } from '@/components/LibraryProvider'
-import { usePlaybackPreferences } from '@/components/PlaybackPreferencesProvider'
-import { DEFAULT_PLAYBACK_VOLUME } from '@/lib/playback/playback-preference-storage-keys'
-import { PLAYBACK_RATES } from '@/lib/playback/playback-rates'
-import type { RepeatMode } from '@/types/repeat-mode'
-import type { Track } from '@/types/track'
-import { formatDuration } from '@/lib/format-duration'
-import { getCoverBytesForTrack } from '@/lib/library/cover-bytes-cache'
-import ThemeToggle from '@/components/ThemeToggle'
-import AlbumCoverThumb from '@/components/AlbumCoverThumb'
-import FavoriteStarButton from '@/components/FavoriteStarButton'
-import { albumCompositeKey } from '@/lib/library/favorite-keys'
-import { groupTracksByArtist } from '@/lib/musicbrainz/group-tracks-by-artist'
-import TrackRowOverflowMenu from '@/components/TrackRowOverflowMenu'
-import buildTrackOverflowMenuItems from '@/lib/track/build-track-overflow-menu-items'
-import PanelResizeHandle from '@/components/PanelResizeHandle'
-import QueueLoadingSpinner from '@/components/QueueLoadingSpinner'
-import RecentBrowseSearchChip from '@/components/RecentBrowseSearchChip'
-import YouTubeStreamNotification from '@/components/YouTubeStreamNotification'
-import isMusicBrainzStreamTrack from '@/lib/library/is-musicbrainz-stream-track'
-import readAppVersion from '@/lib/read-app-version'
-import resolveYoutubeVideoId from '@/lib/youtube/resolve-youtube-video-id'
-import youtubeVideoThumbnailUrl from '@/lib/youtube/youtube-video-thumbnail-url'
-import LyricsPanel from '@/components/LyricsPanel'
+} from "@/components/HiddenYoutubePlayer";
+import GraphicEqualizer from "@/components/GraphicEqualizer";
+import { useLibrary } from "@/components/LibraryProvider";
+import { usePlaybackPreferences } from "@/components/PlaybackPreferencesProvider";
+import { DEFAULT_PLAYBACK_VOLUME } from "@/lib/playback/playback-preference-storage-keys";
+import { PLAYBACK_RATES } from "@/lib/playback/playback-rates";
+import useAudioEqualizer from "@/lib/playback/use-audio-equalizer";
+import type { RepeatMode } from "@/types/repeat-mode";
+import type { Track } from "@/types/track";
+import { formatDuration } from "@/lib/format-duration";
+import { getCoverBytesForTrack } from "@/lib/library/cover-bytes-cache";
+import ThemeToggle from "@/components/ThemeToggle";
+import AlbumCoverThumb from "@/components/AlbumCoverThumb";
+import FavoriteStarButton from "@/components/FavoriteStarButton";
+import { albumCompositeKey } from "@/lib/library/favorite-keys";
+import { groupTracksByArtist } from "@/lib/musicbrainz/group-tracks-by-artist";
+import TrackRowOverflowMenu from "@/components/TrackRowOverflowMenu";
+import buildTrackOverflowMenuItems from "@/lib/track/build-track-overflow-menu-items";
+import PanelResizeHandle from "@/components/PanelResizeHandle";
+import QueueLoadingSpinner from "@/components/QueueLoadingSpinner";
+import RecentBrowseSearchChip from "@/components/RecentBrowseSearchChip";
+import YouTubeStreamNotification from "@/components/YouTubeStreamNotification";
+import isMusicBrainzStreamTrack from "@/lib/library/is-musicbrainz-stream-track";
+import readAppVersion from "@/lib/read-app-version";
+import resolveYoutubeVideoId from "@/lib/youtube/resolve-youtube-video-id";
+import youtubeVideoThumbnailUrl from "@/lib/youtube/youtube-video-thumbnail-url";
+import LyricsPanel from "@/components/LyricsPanel";
 
-const STORAGE_LIBRARY_PANEL_PX = 'muzical.panelWidth.library'
-const STORAGE_QUEUE_PANEL_PX = 'muzical.panelWidth.queue'
+const STORAGE_LIBRARY_PANEL_PX = "muzical.panelWidth.library";
+const STORAGE_QUEUE_PANEL_PX = "muzical.panelWidth.queue";
 
-const LIBRARY_PANEL_MIN = 300
-const LIBRARY_PANEL_MAX = 960
-const QUEUE_PANEL_MIN = 420
+const LIBRARY_PANEL_MIN = 300;
+const LIBRARY_PANEL_MAX = 960;
+const QUEUE_PANEL_MIN = 420;
 // Minimum width for the player panel (aside). Used to clamp resizes.
-const PLAYER_PANEL_MIN = 350
+const PLAYER_PANEL_MIN = 350;
 
 function clampPanelPx(n: number, lo: number, hi: number): number {
-  return Math.min(hi, Math.max(lo, n))
+  return Math.min(hi, Math.max(lo, n));
 }
 
 function readStoredPanelPx(key: string, fallback: number): number {
-  if (typeof window === 'undefined') return fallback
-  const v = Number.parseInt(window.localStorage.getItem(key) ?? '', 10)
-  return Number.isFinite(v) ? v : fallback
+  if (typeof window === "undefined") return fallback;
+  const v = Number.parseInt(window.localStorage.getItem(key) ?? "", 10);
+  return Number.isFinite(v) ? v : fallback;
 }
 
 function clampLibraryQueueWidths(
@@ -64,76 +66,117 @@ function clampLibraryQueueWidths(
   libraryPx: number,
   queuePx: number,
 ): { libraryPx: number; queuePx: number } {
-  if (rowWidthPx <= 0) return { libraryPx, queuePx }
-  const maxSum = Math.max(LIBRARY_PANEL_MIN + QUEUE_PANEL_MIN, rowWidthPx - PLAYER_PANEL_MIN)
-  let L = clampPanelPx(libraryPx, LIBRARY_PANEL_MIN, LIBRARY_PANEL_MAX)
+  if (rowWidthPx <= 0) return { libraryPx, queuePx };
+  const maxSum = Math.max(
+    LIBRARY_PANEL_MIN + QUEUE_PANEL_MIN,
+    rowWidthPx - PLAYER_PANEL_MIN,
+  );
+  let L = clampPanelPx(libraryPx, LIBRARY_PANEL_MIN, LIBRARY_PANEL_MAX);
   // Intentionally no hard `QUEUE_PANEL_MAX` cap: the player panel minimum width is
   // enforced via `maxSum` below, and we don't want queue width to prevent it.
-  let Q = Math.max(QUEUE_PANEL_MIN, queuePx)
+  let Q = Math.max(QUEUE_PANEL_MIN, queuePx);
   if (L + Q > maxSum) {
-    const over = L + Q - maxSum
-    const takeFromL = Math.min(over, L - LIBRARY_PANEL_MIN)
-    L -= takeFromL
-    let r = over - takeFromL
-    const takeFromQ = Math.min(r, Q - QUEUE_PANEL_MIN)
-    Q -= takeFromQ
-    r -= takeFromQ
-    if (r > 0) L = Math.max(LIBRARY_PANEL_MIN, L - r)
+    const over = L + Q - maxSum;
+    const takeFromL = Math.min(over, L - LIBRARY_PANEL_MIN);
+    L -= takeFromL;
+    let r = over - takeFromL;
+    const takeFromQ = Math.min(r, Q - QUEUE_PANEL_MIN);
+    Q -= takeFromQ;
+    r -= takeFromQ;
+    if (r > 0) L = Math.max(LIBRARY_PANEL_MIN, L - r);
   }
-  return { libraryPx: L, queuePx: Q }
+  return { libraryPx: L, queuePx: Q };
 }
 
-function clampQueuePanelWidth(rowWidthPx: number, libraryPx: number, queuePx: number): number {
-  const maxQ = rowWidthPx - libraryPx - PLAYER_PANEL_MIN
-  return clampPanelPx(queuePx, QUEUE_PANEL_MIN, Math.max(QUEUE_PANEL_MIN, maxQ))
+function clampQueuePanelWidth(
+  rowWidthPx: number,
+  libraryPx: number,
+  queuePx: number,
+): number {
+  const maxQ = rowWidthPx - libraryPx - PLAYER_PANEL_MIN;
+  return clampPanelPx(
+    queuePx,
+    QUEUE_PANEL_MIN,
+    Math.max(QUEUE_PANEL_MIN, maxQ),
+  );
 }
 
 function IconPlay(props: { className?: string }) {
   return (
-    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden className={props.className}>
+    <svg
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden
+      className={props.className}
+    >
       <path d="M8 5v14l11-7L8 5z" />
     </svg>
-  )
+  );
 }
 
 function IconPause(props: { className?: string }) {
   return (
-    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden className={props.className}>
+    <svg
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden
+      className={props.className}
+    >
       <path d="M6 5h4v14H6V5zm8 0h4v14h-4V5z" />
     </svg>
-  )
+  );
 }
 
 function IconSkipBack(props: { className?: string }) {
   return (
-    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden className={props.className}>
+    <svg
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden
+      className={props.className}
+    >
       <path d="M6 6h2v12H6V6zm3.5 6 8.5 6V6l-8.5 6z" />
     </svg>
-  )
+  );
 }
 
 function IconSkipForward(props: { className?: string }) {
   return (
-    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden className={props.className}>
+    <svg
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden
+      className={props.className}
+    >
       <path d="M16 18h2V6h-2v12zM6 18l8.5-6L6 6v12z" />
     </svg>
-  )
+  );
 }
 
 function IconVolume(props: { className?: string }) {
   return (
-    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden className={props.className}>
+    <svg
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden
+      className={props.className}
+    >
       <path d="M3 10v4h4l5 5V5L7 10H3zm13.5 2A4.5 4.5 0 0 0 14 7.97v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z" />
     </svg>
-  )
+  );
 }
 
 function IconQueue(props: { className?: string }) {
   return (
-    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden className={props.className}>
+    <svg
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden
+      className={props.className}
+    >
       <path d="M4 6h16v2H4V6zm0 5h16v2H4v-2zm0 5h10v2H4v-2zm12 1v6l5-3-5-3z" />
     </svg>
-  )
+  );
 }
 
 function IconSettings(props: { className?: string }) {
@@ -151,7 +194,7 @@ function IconSettings(props: { className?: string }) {
       <circle cx="12" cy="12" r="3" />
       <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
     </svg>
-  )
+  );
 }
 
 function IconRepeatLoop(props: { className?: string; dimmed?: boolean }) {
@@ -164,14 +207,16 @@ function IconRepeatLoop(props: { className?: string; dimmed?: boolean }) {
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden
-      className={[props.className, props.dimmed ? 'opacity-40' : ''].filter(Boolean).join(' ')}
+      className={[props.className, props.dimmed ? "opacity-40" : ""]
+        .filter(Boolean)
+        .join(" ")}
     >
       <path d="M17 1l4 4-4 4" />
       <path d="M3 11V9a4 4 0 0 1 4-4h14" />
       <path d="M7 23l-4-4 4-4" />
       <path d="M21 13v2a4 4 0 0 1-4 4H3" />
     </svg>
-  )
+  );
 }
 
 function IconShuffle(props: { className?: string }) {
@@ -190,7 +235,7 @@ function IconShuffle(props: { className?: string }) {
         strokeLinejoin="round"
       />
     </svg>
-  )
+  );
 }
 
 function IconChevronRight(props: { className?: string }) {
@@ -207,7 +252,7 @@ function IconChevronRight(props: { className?: string }) {
     >
       <path d="m9 18 6-6-6-6" />
     </svg>
-  )
+  );
 }
 
 function IconLyrics(props: { className?: string }) {
@@ -228,7 +273,32 @@ function IconLyrics(props: { className?: string }) {
       <line x1="16" y1="17" x2="8" y2="17" />
       <polyline points="10 9 9 9 8 9" />
     </svg>
-  )
+  );
+}
+
+function IconEqualizer(props: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      className={props.className}
+    >
+      <line x1="4" y1="21" x2="4" y2="14" />
+      <line x1="4" y1="10" x2="4" y2="3" />
+      <line x1="12" y1="21" x2="12" y2="12" />
+      <line x1="12" y1="8" x2="12" y2="3" />
+      <line x1="20" y1="21" x2="20" y2="16" />
+      <line x1="20" y1="12" x2="20" y2="3" />
+      <line x1="2" y1="14" x2="6" y2="14" />
+      <line x1="10" y1="8" x2="14" y2="8" />
+      <line x1="18" y1="16" x2="22" y2="16" />
+    </svg>
+  );
 }
 
 /**
@@ -277,14 +347,16 @@ export default function MusicPlayer() {
     isQueueReady,
     patchTrackById,
     openAddToPlaylist,
-  } = useLibrary()
+  } = useLibrary();
   const {
     preferences,
     setRepeatMode,
     setShuffle,
     setPlaybackRate,
     setVolume: persistVolume,
-  } = usePlaybackPreferences()
+    setEqualizerBandGain,
+    resetEqualizer,
+  } = usePlaybackPreferences();
   const {
     repeatMode,
     shuffle,
@@ -293,233 +365,265 @@ export default function MusicPlayer() {
     seekStepSmallSec,
     seekStepLargeSec,
     rememberVolume,
-  } = preferences
-  const [activeQueueId, setActiveQueueId] = useState<string | null>(null)
-  const [isPlaying, setIsPlaying] = useState(false)
-  const [positionSec, setPositionSec] = useState(0)
-  const [mediaDuration, setMediaDuration] = useState(0)
-  const [sessionVolume, setSessionVolume] = useState<number | null>(null)
-  const [loadError, setLoadError] = useState<string | null>(null)
-  const [streamResolving, setStreamResolving] = useState(false)
-  const [coverArtUrl, setCoverArtUrl] = useState<string | null>(null)
-  const [layoutLg, setLayoutLg] = useState(false)
-  const [libraryPanelPx, setLibraryPanelPx] = useState(440)
-  const [queuePanelPx, setQueuePanelPx] = useState(300)
-  const [showLyrics, setShowLyrics] = useState(false)
-  const volume = rememberVolume ? preferences.volume : (sessionVolume ?? DEFAULT_PLAYBACK_VOLUME)
+    equalizerGainsDb,
+  } = preferences;
+  const [activeQueueId, setActiveQueueId] = useState<string | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [positionSec, setPositionSec] = useState(0);
+  const [mediaDuration, setMediaDuration] = useState(0);
+  const [sessionVolume, setSessionVolume] = useState<number | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [streamResolving, setStreamResolving] = useState(false);
+  const [coverArtUrl, setCoverArtUrl] = useState<string | null>(null);
+  const [layoutLg, setLayoutLg] = useState(false);
+  const [libraryPanelPx, setLibraryPanelPx] = useState(440);
+  const [queuePanelPx, setQueuePanelPx] = useState(300);
+  const [showLyrics, setShowLyrics] = useState(false);
+  const [showEqualizer, setShowEqualizer] = useState(false);
+  const volume = rememberVolume
+    ? preferences.volume
+    : (sessionVolume ?? DEFAULT_PLAYBACK_VOLUME);
 
-  const mainRowRef = useRef<HTMLDivElement>(null)
-  const shuffleHistoryRef = useRef<number[]>([])
-  const pendingRestorePositionRef = useRef<number | null>(null)
-  const activeQueueIdRef = useRef<string | null>(null)
-  const lastPlaybackReportMsRef = useRef(0)
-  const lastPlaybackStartQueueIdRef = useRef<string | null>(null)
-  const progressTrackIdRef = useRef<string | null>(null)
-  const progressPositionSecRef = useRef(0)
-  const pendingListenTrackIdRef = useRef<string | null>(null)
-  const pendingListenSecRef = useRef(0)
-  const libraryPanelPxRef = useRef(440)
-  const queuePanelPxRef = useRef(300)
-  const [dragOverQueueId, setDragOverQueueId] = useState<string | null>(null)
-  const [draggingQueueId, setDraggingQueueId] = useState<string | null>(null)
-  const [favoritesSuggestionsOpen, setFavoritesSuggestionsOpen] = useState(true)
+  const mainRowRef = useRef<HTMLDivElement>(null);
+  const shuffleHistoryRef = useRef<number[]>([]);
+  const pendingRestorePositionRef = useRef<number | null>(null);
+  const activeQueueIdRef = useRef<string | null>(null);
+  const lastPlaybackReportMsRef = useRef(0);
+  const lastPlaybackStartQueueIdRef = useRef<string | null>(null);
+  const progressTrackIdRef = useRef<string | null>(null);
+  const progressPositionSecRef = useRef(0);
+  const pendingListenTrackIdRef = useRef<string | null>(null);
+  const pendingListenSecRef = useRef(0);
+  const libraryPanelPxRef = useRef(440);
+  const queuePanelPxRef = useRef(300);
+  const [dragOverQueueId, setDragOverQueueId] = useState<string | null>(null);
+  const [draggingQueueId, setDraggingQueueId] = useState<string | null>(null);
+  const [favoritesSuggestionsOpen, setFavoritesSuggestionsOpen] =
+    useState(true);
   const panelResizeSessionRef = useRef<
-    | { kind: 'library-queue'; startLib: number; startQ: number }
-    | { kind: 'queue-player'; startQ: number }
+    | { kind: "library-queue"; startLib: number; startQ: number }
+    | { kind: "queue-player"; startQ: number }
     | null
-  >(null)
+  >(null);
 
-  const audioRef = useRef<HTMLAudioElement | null>(null)
-  const objectUrlRef = useRef<string | null>(null)
-  const coverObjectUrlRef = useRef<string | null>(null)
-  const hiddenYoutubeRef = useRef<HiddenYoutubePlayerHandle | null>(null)
-  const isPlayingRef = useRef(isPlaying)
-  const playbackRateRef = useRef(playbackRate)
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const objectUrlRef = useRef<string | null>(null);
+  const coverObjectUrlRef = useRef<string | null>(null);
+  const hiddenYoutubeRef = useRef<HiddenYoutubePlayerHandle | null>(null);
+  const isPlayingRef = useRef(isPlaying);
+  const playbackRateRef = useRef(playbackRate);
+  const ensureEqualizerReady = useAudioEqualizer(audioRef, equalizerGainsDb);
+
+  const playAudioElement = useCallback(
+    (el: HTMLAudioElement): void => {
+      void (async (): Promise<void> => {
+        await ensureEqualizerReady();
+        await el.play();
+      })().catch((e: unknown) => {
+        setLoadError(e instanceof Error ? e.message : "Playback failed");
+        setIsPlaying(false);
+      });
+    },
+    [ensureEqualizerReady],
+  );
 
   useLayoutEffect(() => {
-    isPlayingRef.current = isPlaying
-  }, [isPlaying])
+    isPlayingRef.current = isPlaying;
+  }, [isPlaying]);
 
   useLayoutEffect(() => {
-    playbackRateRef.current = playbackRate
-  }, [playbackRate])
+    playbackRateRef.current = playbackRate;
+  }, [playbackRate]);
 
   useLayoutEffect(() => {
-    libraryPanelPxRef.current = libraryPanelPx
-    queuePanelPxRef.current = queuePanelPx
-  }, [libraryPanelPx, queuePanelPx])
+    libraryPanelPxRef.current = libraryPanelPx;
+    queuePanelPxRef.current = queuePanelPx;
+  }, [libraryPanelPx, queuePanelPx]);
 
   useEffect(() => {
     queueMicrotask(() => {
-      setLibraryPanelPx(readStoredPanelPx(STORAGE_LIBRARY_PANEL_PX, 440))
-      setQueuePanelPx(readStoredPanelPx(STORAGE_QUEUE_PANEL_PX, 300))
-    })
-  }, [])
+      setLibraryPanelPx(readStoredPanelPx(STORAGE_LIBRARY_PANEL_PX, 440));
+      setQueuePanelPx(readStoredPanelPx(STORAGE_QUEUE_PANEL_PX, 300));
+    });
+  }, []);
 
   useEffect(() => {
-    if (!shuffle) shuffleHistoryRef.current = []
-  }, [shuffle])
+    if (!shuffle) shuffleHistoryRef.current = [];
+  }, [shuffle]);
 
   useLayoutEffect(() => {
-    if (typeof window === 'undefined') return
-    const mq = window.matchMedia('(min-width: 1024px)')
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia("(min-width: 1024px)");
     const apply = (): void => {
-      setLayoutLg(mq.matches)
-    }
-    apply()
-    mq.addEventListener('change', apply)
-    return () => mq.removeEventListener('change', apply)
-  }, [])
+      setLayoutLg(mq.matches);
+    };
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, []);
 
   useEffect(() => {
-    activeQueueIdRef.current = activeQueueId
-  }, [activeQueueId])
+    activeQueueIdRef.current = activeQueueId;
+  }, [activeQueueId]);
 
   useEffect(() => {
-    if (!playbackRestore) return
-    const { activeQueueId: nextActiveId, positionSec: nextPos } = playbackRestore
-    pendingRestorePositionRef.current = nextPos
-    consumePlaybackRestore()
+    if (!playbackRestore) return;
+    const { activeQueueId: nextActiveId, positionSec: nextPos } =
+      playbackRestore;
+    pendingRestorePositionRef.current = nextPos;
+    consumePlaybackRestore();
     void Promise.resolve().then(() => {
-      setActiveQueueId(nextActiveId)
-      setPositionSec(nextPos)
-      setIsPlaying(false)
-    })
-  }, [playbackRestore, consumePlaybackRestore])
+      setActiveQueueId(nextActiveId);
+      setPositionSec(nextPos);
+      setIsPlaying(false);
+    });
+  }, [playbackRestore, consumePlaybackRestore]);
 
   useEffect(() => {
-    if (!playNowRequest) return
-    const { activeQueueId: nextActiveId } = playNowRequest
-    consumePlayNowRequest()
-    shuffleHistoryRef.current = []
+    if (!playNowRequest) return;
+    const { activeQueueId: nextActiveId } = playNowRequest;
+    consumePlayNowRequest();
+    shuffleHistoryRef.current = [];
     void Promise.resolve().then(() => {
-      setActiveQueueId(nextActiveId)
-      setPositionSec(0)
-      setLoadError(null)
-      setIsPlaying(true)
-    })
-  }, [playNowRequest, consumePlayNowRequest])
+      setActiveQueueId(nextActiveId);
+      setPositionSec(0);
+      setLoadError(null);
+      setIsPlaying(true);
+    });
+  }, [playNowRequest, consumePlayNowRequest]);
 
   useEffect(() => {
-    const el = audioRef.current
-    const pos = el && Number.isFinite(el.currentTime) ? el.currentTime : 0
-    reportPlayback(activeQueueId, pos)
-  }, [activeQueueId, reportPlayback])
+    const el = audioRef.current;
+    const pos = el && Number.isFinite(el.currentTime) ? el.currentTime : 0;
+    reportPlayback(activeQueueId, pos);
+  }, [activeQueueId, reportPlayback]);
 
   const activeIndex = useMemo(() => {
-    if (queue.length === 0) return -1
+    if (queue.length === 0) return -1;
     if (activeQueueId) {
-      const i = queue.findIndex((q) => q.queueId === activeQueueId)
-      if (i >= 0) return i
+      const i = queue.findIndex((q) => q.queueId === activeQueueId);
+      if (i >= 0) return i;
     }
-    return 0
-  }, [queue, activeQueueId])
+    return 0;
+  }, [queue, activeQueueId]);
 
-  const current: Track | undefined = activeIndex >= 0 ? queue[activeIndex]?.track : undefined
+  const current: Track | undefined =
+    activeIndex >= 0 ? queue[activeIndex]?.track : undefined;
   useEffect(() => {
-    if (!isPlaying) return
-    if (!activeQueueId) return
-    const id = current?.id ?? ''
-    if (!id) return
-    if (lastPlaybackStartQueueIdRef.current === activeQueueId) return
-    lastPlaybackStartQueueIdRef.current = activeQueueId
-    recordTrackPlaybackStarted(id)
-  }, [activeQueueId, current?.id, isPlaying, recordTrackPlaybackStarted])
+    if (!isPlaying) return;
+    if (!activeQueueId) return;
+    const id = current?.id ?? "";
+    if (!id) return;
+    if (lastPlaybackStartQueueIdRef.current === activeQueueId) return;
+    lastPlaybackStartQueueIdRef.current = activeQueueId;
+    recordTrackPlaybackStarted(id);
+  }, [activeQueueId, current?.id, isPlaying, recordTrackPlaybackStarted]);
 
   const recentlyPlayedTracks = useMemo(() => {
-    if (recentlyPlayedTrackIds.length === 0) return []
-    const byId = new Map<string, Track>()
-    for (const t of libraryTracks) byId.set(t.id, t)
-    const out: Track[] = []
+    if (recentlyPlayedTrackIds.length === 0) return [];
+    const byId = new Map<string, Track>();
+    for (const t of libraryTracks) byId.set(t.id, t);
+    const out: Track[] = [];
     for (const id of recentlyPlayedTrackIds) {
-      const t = byId.get(id)
-      if (t) out.push(t)
-      if (out.length >= 8) break
+      const t = byId.get(id);
+      if (t) out.push(t);
+      if (out.length >= 8) break;
     }
-    return out
-  }, [recentlyPlayedTrackIds, libraryTracks])
+    return out;
+  }, [recentlyPlayedTrackIds, libraryTracks]);
 
   const rediscoverTracks = useMemo(() => {
-    if (libraryTracks.length === 0) return []
-    const recent = new Set(recentlyPlayedTrackIds.slice(0, 8))
+    if (libraryTracks.length === 0) return [];
+    const recent = new Set(recentlyPlayedTrackIds.slice(0, 8));
     return libraryTracks
       .filter((t) => {
-        if (recent.has(t.id)) return false
-        const stats = listeningStats[t.id]
-        return Boolean(stats?.lastPlayedAt && stats.playCount > 0)
+        if (recent.has(t.id)) return false;
+        const stats = listeningStats[t.id];
+        return Boolean(stats?.lastPlayedAt && stats.playCount > 0);
       })
       .sort((a, b) => {
-        const aPlayed = listeningStats[a.id]?.lastPlayedAt ?? 0
-        const bPlayed = listeningStats[b.id]?.lastPlayedAt ?? 0
-        return aPlayed - bPlayed
+        const aPlayed = listeningStats[a.id]?.lastPlayedAt ?? 0;
+        const bPlayed = listeningStats[b.id]?.lastPlayedAt ?? 0;
+        return aPlayed - bPlayed;
       })
-      .slice(0, 8)
-  }, [libraryTracks, listeningStats, recentlyPlayedTrackIds])
+      .slice(0, 8);
+  }, [libraryTracks, listeningStats, recentlyPlayedTrackIds]);
 
-  const libraryArtistMap = useMemo(() => groupTracksByArtist(libraryTracks), [libraryTracks])
+  const libraryArtistMap = useMemo(
+    () => groupTracksByArtist(libraryTracks),
+    [libraryTracks],
+  );
 
   const libraryAlbumMap = useMemo(() => {
-    const m = new Map<string, Track[]>()
+    const m = new Map<string, Track[]>();
     for (const t of libraryTracks) {
-      const key = albumCompositeKey(t.album, t.artist)
-      const arr = m.get(key) ?? []
-      arr.push(t)
-      m.set(key, arr)
+      const key = albumCompositeKey(t.album, t.artist);
+      const arr = m.get(key) ?? [];
+      arr.push(t);
+      m.set(key, arr);
     }
     for (const arr of m.values()) {
-      arr.sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base' }))
+      arr.sort((a, b) =>
+        a.title.localeCompare(b.title, undefined, { sensitivity: "base" }),
+      );
     }
-    return m
-  }, [libraryTracks])
+    return m;
+  }, [libraryTracks]);
 
   const favoritedArtistsList = useMemo(() => {
     return favoriteArtistNames
       .filter((n) => libraryArtistMap.has(n))
-      .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
-  }, [favoriteArtistNames, libraryArtistMap])
+      .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+  }, [favoriteArtistNames, libraryArtistMap]);
 
   const favoritedAlbumsList = useMemo(() => {
     return favoriteAlbumKeys
       .filter((k) => libraryAlbumMap.has(k))
       .sort((a, b) => {
-        const [albumA, artistA] = a.split('\u0000')
-        const [albumB, artistB] = b.split('\u0000')
+        const [albumA, artistA] = a.split("\u0000");
+        const [albumB, artistB] = b.split("\u0000");
         const c = albumA.localeCompare(albumB, undefined, {
-          sensitivity: 'base',
-        })
-        return c !== 0 ? c : artistA.localeCompare(artistB, undefined, { sensitivity: 'base' })
-      })
-  }, [favoriteAlbumKeys, libraryAlbumMap])
+          sensitivity: "base",
+        });
+        return c !== 0
+          ? c
+          : artistA.localeCompare(artistB, undefined, { sensitivity: "base" });
+      });
+  }, [favoriteAlbumKeys, libraryAlbumMap]);
 
   const favoritedTracks = useMemo(() => {
-    const set = new Set(favoriteSongIds)
+    const set = new Set(favoriteSongIds);
     return libraryTracks
       .filter((t) => set.has(t.id))
-      .sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base' }))
-  }, [libraryTracks, favoriteSongIds])
+      .sort((a, b) =>
+        a.title.localeCompare(b.title, undefined, { sensitivity: "base" }),
+      );
+  }, [libraryTracks, favoriteSongIds]);
 
   const allFavoriteTracksUnion = useMemo(() => {
-    const seen = new Set<string>()
-    const out: Track[] = []
+    const seen = new Set<string>();
+    const out: Track[] = [];
     const push = (t: Track): void => {
-      if (seen.has(t.id)) return
-      seen.add(t.id)
-      out.push(t)
-    }
+      if (seen.has(t.id)) return;
+      seen.add(t.id);
+      out.push(t);
+    };
     for (const id of favoriteSongIds) {
-      const t = libraryTracks.find((x) => x.id === id)
-      if (t) push(t)
+      const t = libraryTracks.find((x) => x.id === id);
+      if (t) push(t);
     }
     for (const name of favoriteArtistNames) {
-      const list = libraryArtistMap.get(name)
-      if (list) for (const t of list) push(t)
+      const list = libraryArtistMap.get(name);
+      if (list) for (const t of list) push(t);
     }
     for (const k of favoriteAlbumKeys) {
-      const list = libraryAlbumMap.get(k)
-      if (list) for (const t of list) push(t)
+      const list = libraryAlbumMap.get(k);
+      if (list) for (const t of list) push(t);
     }
-    out.sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base' }))
-    return out
+    out.sort((a, b) =>
+      a.title.localeCompare(b.title, undefined, { sensitivity: "base" }),
+    );
+    return out;
   }, [
     favoriteSongIds,
     favoriteArtistNames,
@@ -527,433 +631,463 @@ export default function MusicPlayer() {
     libraryTracks,
     libraryArtistMap,
     libraryAlbumMap,
-  ])
+  ]);
 
   const hasFavoriteSuggestions =
-    favoritedArtistsList.length > 0 || favoritedAlbumsList.length > 0 || favoritedTracks.length > 0
+    favoritedArtistsList.length > 0 ||
+    favoritedAlbumsList.length > 0 ||
+    favoritedTracks.length > 0;
 
   const favoriteSuggestionsSummary = useMemo((): string => {
-    const bits: string[] = []
-    const nArtists = favoritedArtistsList.length
-    const nAlbums = favoritedAlbumsList.length
-    const nSongs = favoritedTracks.length
-    if (nArtists > 0) bits.push(`${nArtists} artist${nArtists === 1 ? '' : 's'}`)
-    if (nAlbums > 0) bits.push(`${nAlbums} album${nAlbums === 1 ? '' : 's'}`)
-    if (nSongs > 0) bits.push(`${nSongs} song${nSongs === 1 ? '' : 's'}`)
-    return bits.join(' · ')
-  }, [favoritedArtistsList.length, favoritedAlbumsList.length, favoritedTracks.length])
+    const bits: string[] = [];
+    const nArtists = favoritedArtistsList.length;
+    const nAlbums = favoritedAlbumsList.length;
+    const nSongs = favoritedTracks.length;
+    if (nArtists > 0)
+      bits.push(`${nArtists} artist${nArtists === 1 ? "" : "s"}`);
+    if (nAlbums > 0) bits.push(`${nAlbums} album${nAlbums === 1 ? "" : "s"}`);
+    if (nSongs > 0) bits.push(`${nSongs} song${nSongs === 1 ? "" : "s"}`);
+    return bits.join(" · ");
+  }, [
+    favoritedArtistsList.length,
+    favoritedAlbumsList.length,
+    favoritedTracks.length,
+  ]);
 
   const suggestedTracks = useMemo(() => {
-    if (libraryTracks.length === 0) return []
-    const seen = new Set<string>()
-    const out: Track[] = []
+    if (libraryTracks.length === 0) return [];
+    const seen = new Set<string>();
+    const out: Track[] = [];
 
     for (const t of recentlyPlayedTracks) {
-      seen.add(t.id)
+      seen.add(t.id);
     }
     for (const id of favoriteSongIds) {
-      seen.add(id)
+      seen.add(id);
     }
 
     for (let i = 0; i < libraryTracks.length; i++) {
-      const t = libraryTracks[i]
-      if (seen.has(t.id)) continue
-      seen.add(t.id)
-      out.push(t)
-      if (out.length >= 12) break
+      const t = libraryTracks[i];
+      if (seen.has(t.id)) continue;
+      seen.add(t.id);
+      out.push(t);
+      if (out.length >= 12) break;
     }
-    return out
-  }, [libraryTracks, favoriteSongIds, recentlyPlayedTracks])
+    return out;
+  }, [libraryTracks, favoriteSongIds, recentlyPlayedTracks]);
 
   const homeRecentBrowseSearches = useMemo(
     () => recentBrowseSearches.slice(0, 8),
     [recentBrowseSearches],
-  )
+  );
 
   const durationSec = useMemo(() => {
-    const fromTrack = current?.durationSec ?? 0
-    const fromMedia = Number.isFinite(mediaDuration) && mediaDuration > 0 ? mediaDuration : 0
-    return Math.max(fromTrack, fromMedia)
-  }, [current?.durationSec, mediaDuration])
+    const fromTrack = current?.durationSec ?? 0;
+    const fromMedia =
+      Number.isFinite(mediaDuration) && mediaDuration > 0 ? mediaDuration : 0;
+    return Math.max(fromTrack, fromMedia);
+  }, [current?.durationSec, mediaDuration]);
 
   const flushListeningProgress = useCallback(() => {
-    const id = pendingListenTrackIdRef.current
-    const seconds = pendingListenSecRef.current
-    pendingListenTrackIdRef.current = null
-    pendingListenSecRef.current = 0
-    if (!id || seconds < 0.25) return
-    recordTrackPlaybackProgress(id, seconds)
-  }, [recordTrackPlaybackProgress])
+    const id = pendingListenTrackIdRef.current;
+    const seconds = pendingListenSecRef.current;
+    pendingListenTrackIdRef.current = null;
+    pendingListenSecRef.current = 0;
+    if (!id || seconds < 0.25) return;
+    recordTrackPlaybackProgress(id, seconds);
+  }, [recordTrackPlaybackProgress]);
 
   const recordPlaybackProgressForTrack = useCallback(
     (trackId: string, currentPositionSec: number) => {
       if (!isPlayingRef.current) {
-        progressTrackIdRef.current = trackId
-        progressPositionSecRef.current = currentPositionSec
-        return
+        progressTrackIdRef.current = trackId;
+        progressPositionSecRef.current = currentPositionSec;
+        return;
       }
       if (progressTrackIdRef.current !== trackId) {
-        progressTrackIdRef.current = trackId
-        progressPositionSecRef.current = currentPositionSec
-        return
+        progressTrackIdRef.current = trackId;
+        progressPositionSecRef.current = currentPositionSec;
+        return;
       }
-      const delta = currentPositionSec - progressPositionSecRef.current
-      progressPositionSecRef.current = currentPositionSec
-      if (delta <= 0 || delta > 5) return
-      if (pendingListenTrackIdRef.current && pendingListenTrackIdRef.current !== trackId) {
-        flushListeningProgress()
+      const delta = currentPositionSec - progressPositionSecRef.current;
+      progressPositionSecRef.current = currentPositionSec;
+      if (delta <= 0 || delta > 5) return;
+      if (
+        pendingListenTrackIdRef.current &&
+        pendingListenTrackIdRef.current !== trackId
+      ) {
+        flushListeningProgress();
       }
-      pendingListenTrackIdRef.current = trackId
-      pendingListenSecRef.current += delta
+      pendingListenTrackIdRef.current = trackId;
+      pendingListenSecRef.current += delta;
       if (pendingListenSecRef.current >= 5) {
-        flushListeningProgress()
+        flushListeningProgress();
       }
     },
     [flushListeningProgress],
-  )
+  );
 
   useEffect(() => {
-    progressTrackIdRef.current = current?.id ?? null
-    progressPositionSecRef.current = 0
+    progressTrackIdRef.current = current?.id ?? null;
+    progressPositionSecRef.current = 0;
     return () => {
-      flushListeningProgress()
-    }
-  }, [activeQueueId, current?.id, flushListeningProgress])
+      flushListeningProgress();
+    };
+  }, [activeQueueId, current?.id, flushListeningProgress]);
 
   useEffect(() => {
-    if (isPlaying) return
-    flushListeningProgress()
-  }, [flushListeningProgress, isPlaying])
+    if (isPlaying) return;
+    flushListeningProgress();
+  }, [flushListeningProgress, isPlaying]);
 
   useEffect(() => {
     return () => {
-      flushListeningProgress()
-    }
-  }, [flushListeningProgress])
+      flushListeningProgress();
+    };
+  }, [flushListeningProgress]);
 
   const markCurrentSkipped = useCallback((): void => {
-    if (!isPlayingRef.current) return
-    const id = current?.id
-    if (!id) return
-    flushListeningProgress()
+    if (!isPlayingRef.current) return;
+    const id = current?.id;
+    if (!id) return;
+    flushListeningProgress();
     if (durationSec > 0) {
-      const remainingSec = durationSec - positionSec
-      const nearEndSec = Math.min(15, Math.max(5, durationSec * 0.1))
-      if (remainingSec <= nearEndSec) return
+      const remainingSec = durationSec - positionSec;
+      const nearEndSec = Math.min(15, Math.max(5, durationSec * 0.1));
+      if (remainingSec <= nearEndSec) return;
     }
-    recordTrackSkipped(id)
-  }, [current?.id, durationSec, flushListeningProgress, positionSec, recordTrackSkipped])
+    recordTrackSkipped(id);
+  }, [
+    current?.id,
+    durationSec,
+    flushListeningProgress,
+    positionSec,
+    recordTrackSkipped,
+  ]);
 
   const selectIndex = useCallback(
     (index: number) => {
-      if (queue[index]?.queueId !== activeQueueIdRef.current) markCurrentSkipped()
-      shuffleHistoryRef.current = []
-      setActiveQueueId(queue[index]?.queueId ?? null)
-      setPositionSec(0)
-      setLoadError(null)
-      setIsPlaying(true)
+      if (queue[index]?.queueId !== activeQueueIdRef.current)
+        markCurrentSkipped();
+      shuffleHistoryRef.current = [];
+      setActiveQueueId(queue[index]?.queueId ?? null);
+      setPositionSec(0);
+      setLoadError(null);
+      setIsPlaying(true);
     },
     [markCurrentSkipped, queue],
-  )
+  );
 
   const goNext = useCallback((): void => {
-    if (queue.length === 0) return
-    const idx = activeIndex >= 0 ? activeIndex : 0
+    if (queue.length === 0) return;
+    const idx = activeIndex >= 0 ? activeIndex : 0;
 
     if (shuffle && queue.length > 1) {
-      shuffleHistoryRef.current.push(idx)
-      let j = idx
+      shuffleHistoryRef.current.push(idx);
+      let j = idx;
       for (let n = 0; n < 48 && j === idx; n++) {
-        j = Math.floor(Math.random() * queue.length)
+        j = Math.floor(Math.random() * queue.length);
       }
-      setActiveQueueId(queue[j]?.queueId ?? null)
-      setPositionSec(0)
-      setLoadError(null)
-      setIsPlaying(true)
-      return
+      setActiveQueueId(queue[j]?.queueId ?? null);
+      setPositionSec(0);
+      setLoadError(null);
+      setIsPlaying(true);
+      return;
     }
 
     if (idx < queue.length - 1) {
-      setActiveQueueId(queue[idx + 1]?.queueId ?? null)
-      setPositionSec(0)
-      setLoadError(null)
-      setIsPlaying(true)
-      return
+      setActiveQueueId(queue[idx + 1]?.queueId ?? null);
+      setPositionSec(0);
+      setLoadError(null);
+      setIsPlaying(true);
+      return;
     }
-    if (repeatMode === 'all') {
-      setActiveQueueId(queue[0]?.queueId ?? null)
-      setPositionSec(0)
-      setLoadError(null)
-      setIsPlaying(true)
-      return
+    if (repeatMode === "all") {
+      setActiveQueueId(queue[0]?.queueId ?? null);
+      setPositionSec(0);
+      setLoadError(null);
+      setIsPlaying(true);
+      return;
     }
-    setIsPlaying(false)
-  }, [activeIndex, queue, repeatMode, shuffle])
+    setIsPlaying(false);
+  }, [activeIndex, queue, repeatMode, shuffle]);
 
   const goPrev = useCallback((): void => {
-    if (queue.length === 0) return
-    const idx = activeIndex >= 0 ? activeIndex : 0
+    if (queue.length === 0) return;
+    const idx = activeIndex >= 0 ? activeIndex : 0;
 
     if (shuffle && shuffleHistoryRef.current.length > 0) {
-      const prevIdx = shuffleHistoryRef.current.pop()
+      const prevIdx = shuffleHistoryRef.current.pop();
       if (prevIdx !== undefined && prevIdx >= 0 && prevIdx < queue.length) {
-        setActiveQueueId(queue[prevIdx]?.queueId ?? null)
-        setPositionSec(0)
-        setLoadError(null)
-        setIsPlaying(true)
-        return
+        setActiveQueueId(queue[prevIdx]?.queueId ?? null);
+        setPositionSec(0);
+        setLoadError(null);
+        setIsPlaying(true);
+        return;
       }
     }
 
     if (idx > 0) {
-      setActiveQueueId(queue[idx - 1]?.queueId ?? null)
-      setPositionSec(0)
-      setLoadError(null)
-      setIsPlaying(true)
-      return
+      setActiveQueueId(queue[idx - 1]?.queueId ?? null);
+      setPositionSec(0);
+      setLoadError(null);
+      setIsPlaying(true);
+      return;
     }
-    if (repeatMode === 'all') {
-      setActiveQueueId(queue[queue.length - 1]?.queueId ?? null)
-      setPositionSec(0)
-      setLoadError(null)
-      setIsPlaying(true)
+    if (repeatMode === "all") {
+      setActiveQueueId(queue[queue.length - 1]?.queueId ?? null);
+      setPositionSec(0);
+      setLoadError(null);
+      setIsPlaying(true);
     }
-  }, [activeIndex, queue, repeatMode, shuffle])
+  }, [activeIndex, queue, repeatMode, shuffle]);
 
   const cycleRepeatMode = useCallback((): void => {
-    const next: RepeatMode = repeatMode === 'off' ? 'all' : repeatMode === 'all' ? 'one' : 'off'
-    setRepeatMode(next)
-  }, [repeatMode, setRepeatMode])
+    const next: RepeatMode =
+      repeatMode === "off" ? "all" : repeatMode === "all" ? "one" : "off";
+    setRepeatMode(next);
+  }, [repeatMode, setRepeatMode]);
 
   const toggleShuffle = useCallback((): void => {
-    setShuffle(!shuffle)
-  }, [shuffle, setShuffle])
+    setShuffle(!shuffle);
+  }, [shuffle, setShuffle]);
 
   const clampPanelsToRow = useCallback((): void => {
-    const rowW = mainRowRef.current?.getBoundingClientRect().width ?? 0
-    if (rowW <= 0) return
+    const rowW = mainRowRef.current?.getBoundingClientRect().width ?? 0;
+    if (rowW <= 0) return;
     const { libraryPx, queuePx } = clampLibraryQueueWidths(
       rowW,
       libraryPanelPxRef.current,
       queuePanelPxRef.current,
-    )
-    setLibraryPanelPx(libraryPx)
-    setQueuePanelPx(queuePx)
-  }, [])
+    );
+    setLibraryPanelPx(libraryPx);
+    setQueuePanelPx(queuePx);
+  }, []);
 
   const persistPanelWidths = useCallback((): void => {
     try {
-      window.localStorage.setItem(STORAGE_LIBRARY_PANEL_PX, String(libraryPanelPxRef.current))
-      window.localStorage.setItem(STORAGE_QUEUE_PANEL_PX, String(queuePanelPxRef.current))
+      window.localStorage.setItem(
+        STORAGE_LIBRARY_PANEL_PX,
+        String(libraryPanelPxRef.current),
+      );
+      window.localStorage.setItem(
+        STORAGE_QUEUE_PANEL_PX,
+        String(queuePanelPxRef.current),
+      );
     } catch {
       /* ignore */
     }
-  }, [])
+  }, []);
 
   const onLibraryQueueResizeStart = useCallback((): void => {
     panelResizeSessionRef.current = {
-      kind: 'library-queue',
+      kind: "library-queue",
       startLib: libraryPanelPxRef.current,
       startQ: queuePanelPxRef.current,
-    }
-  }, [])
+    };
+  }, []);
 
   const onLibraryQueueResizeMove = useCallback((dx: number): void => {
-    const s = panelResizeSessionRef.current
-    if (!s || s.kind !== 'library-queue') return
-    const rowW = mainRowRef.current?.getBoundingClientRect().width ?? 0
-    const next = clampLibraryQueueWidths(rowW, s.startLib + dx, s.startQ - dx)
-    setLibraryPanelPx(next.libraryPx)
-    setQueuePanelPx(next.queuePx)
-  }, [])
+    const s = panelResizeSessionRef.current;
+    if (!s || s.kind !== "library-queue") return;
+    const rowW = mainRowRef.current?.getBoundingClientRect().width ?? 0;
+    const next = clampLibraryQueueWidths(rowW, s.startLib + dx, s.startQ - dx);
+    setLibraryPanelPx(next.libraryPx);
+    setQueuePanelPx(next.queuePx);
+  }, []);
 
   const onQueuePlayerResizeStart = useCallback((): void => {
     panelResizeSessionRef.current = {
-      kind: 'queue-player',
+      kind: "queue-player",
       startQ: queuePanelPxRef.current,
-    }
-  }, [])
+    };
+  }, []);
 
   const onQueuePlayerResizeMove = useCallback((dx: number): void => {
-    const s = panelResizeSessionRef.current
-    if (!s || s.kind !== 'queue-player') return
-    const rowW = mainRowRef.current?.getBoundingClientRect().width ?? 0
-    const nextQ = clampQueuePanelWidth(rowW, libraryPanelPxRef.current, s.startQ + dx)
-    setQueuePanelPx(nextQ)
-  }, [])
+    const s = panelResizeSessionRef.current;
+    if (!s || s.kind !== "queue-player") return;
+    const rowW = mainRowRef.current?.getBoundingClientRect().width ?? 0;
+    const nextQ = clampQueuePanelWidth(
+      rowW,
+      libraryPanelPxRef.current,
+      s.startQ + dx,
+    );
+    setQueuePanelPx(nextQ);
+  }, []);
 
   const onPanelResizeEnd = useCallback((): void => {
-    panelResizeSessionRef.current = null
-    persistPanelWidths()
-  }, [persistPanelWidths])
+    panelResizeSessionRef.current = null;
+    persistPanelWidths();
+  }, [persistPanelWidths]);
 
   useEffect(() => {
-    if (!layoutLg) return undefined
+    if (!layoutLg) return undefined;
     const onResize = (): void => {
-      clampPanelsToRow()
-    }
-    window.addEventListener('resize', onResize)
-    clampPanelsToRow()
-    return () => window.removeEventListener('resize', onResize)
-  }, [layoutLg, clampPanelsToRow])
+      clampPanelsToRow();
+    };
+    window.addEventListener("resize", onResize);
+    clampPanelsToRow();
+    return () => window.removeEventListener("resize", onResize);
+  }, [layoutLg, clampPanelsToRow]);
 
   useEffect(() => {
-    const el = audioRef.current
-    if (!el) return undefined
-    el.volume = volume
-  }, [volume])
+    const el = audioRef.current;
+    if (!el) return undefined;
+    el.volume = volume;
+  }, [volume]);
 
   useEffect(() => {
-    const el = audioRef.current
-    if (!el) return undefined
-    el.playbackRate = playbackRate
-  }, [playbackRate])
+    const el = audioRef.current;
+    if (!el) return undefined;
+    el.playbackRate = playbackRate;
+  }, [playbackRate]);
 
   useEffect(() => {
     if (coverObjectUrlRef.current) {
-      URL.revokeObjectURL(coverObjectUrlRef.current)
-      coverObjectUrlRef.current = null
+      URL.revokeObjectURL(coverObjectUrlRef.current);
+      coverObjectUrlRef.current = null;
     }
-    setCoverArtUrl(null)
+    setCoverArtUrl(null);
 
-    if (!current || (!current.library && !current.youtubeQuery && !current.audioUrl)) {
-      const el = audioRef.current
+    if (
+      !current ||
+      (!current.library && !current.youtubeQuery && !current.audioUrl)
+    ) {
+      const el = audioRef.current;
       if (el) {
-        el.pause()
-        el.removeAttribute('src')
-        el.load()
+        el.pause();
+        el.removeAttribute("src");
+        el.load();
       }
       if (objectUrlRef.current) {
-        URL.revokeObjectURL(objectUrlRef.current)
-        objectUrlRef.current = null
+        URL.revokeObjectURL(objectUrlRef.current);
+        objectUrlRef.current = null;
       }
-      return undefined
+      return undefined;
     }
 
-    const youtubeVideoId = current.youtubeVideoId?.trim()
+    const youtubeVideoId = current.youtubeVideoId?.trim();
     if (!current.library && youtubeVideoId) {
-      const el = audioRef.current
+      const el = audioRef.current;
       if (el) {
-        el.pause()
-        el.removeAttribute('src')
-        el.load()
+        el.pause();
+        el.removeAttribute("src");
+        el.load();
       }
       if (objectUrlRef.current) {
-        URL.revokeObjectURL(objectUrlRef.current)
-        objectUrlRef.current = null
+        URL.revokeObjectURL(objectUrlRef.current);
+        objectUrlRef.current = null;
       }
-      setCoverArtUrl(youtubeVideoThumbnailUrl(youtubeVideoId))
-      return undefined
+      setCoverArtUrl(youtubeVideoThumbnailUrl(youtubeVideoId));
+      return undefined;
     }
 
     if (!current.library) {
-      const el = audioRef.current
+      const el = audioRef.current;
       if (el) {
-        el.pause()
-        el.removeAttribute('src')
-        el.load()
+        el.pause();
+        el.removeAttribute("src");
+        el.load();
       }
       if (objectUrlRef.current) {
-        URL.revokeObjectURL(objectUrlRef.current)
-        objectUrlRef.current = null
+        URL.revokeObjectURL(objectUrlRef.current);
+        objectUrlRef.current = null;
       }
-      return undefined
+      return undefined;
     }
-    let cancelled = false
-    const pendingPos = pendingRestorePositionRef.current
+    let cancelled = false;
+    const pendingPos = pendingRestorePositionRef.current;
     const rid = requestAnimationFrame(() => {
-      setMediaDuration(0)
-      setPositionSec(pendingPos ?? 0)
-    })
+      setMediaDuration(0);
+      setPositionSec(pendingPos ?? 0);
+    });
     void (async (): Promise<void> => {
-      setLoadError(null)
-      const file = await resolveFileForTrack(current)
-      if (cancelled) return
+      setLoadError(null);
+      const file = await resolveFileForTrack(current);
+      if (cancelled) return;
       if (!file) {
-        setLoadError('Could not read this file from the library.')
-        return
+        setLoadError("Could not read this file from the library.");
+        return;
       }
-      const coverBytesPromise = getCoverBytesForTrack(current.id, file)
-      const url = URL.createObjectURL(file)
+      const coverBytesPromise = getCoverBytesForTrack(current.id, file);
+      const url = URL.createObjectURL(file);
       if (objectUrlRef.current) {
-        URL.revokeObjectURL(objectUrlRef.current)
+        URL.revokeObjectURL(objectUrlRef.current);
       }
-      objectUrlRef.current = url
+      objectUrlRef.current = url;
       if (cancelled) {
-        return
+        return;
       }
-      const coverBytes = await coverBytesPromise
-      if (cancelled) return
+      const coverBytes = await coverBytesPromise;
+      if (cancelled) return;
       if (coverBytes) {
-        const coverUrl = URL.createObjectURL(new Blob([coverBytes.data], { type: coverBytes.mime }))
-        coverObjectUrlRef.current = coverUrl
-        setCoverArtUrl(coverUrl)
+        const coverUrl = URL.createObjectURL(
+          new Blob([coverBytes.data], { type: coverBytes.mime }),
+        );
+        coverObjectUrlRef.current = coverUrl;
+        setCoverArtUrl(coverUrl);
       }
-      const el = audioRef.current
+      const el = audioRef.current;
       if (!el || cancelled) {
-        return
+        return;
       }
-      el.src = url
-      el.load()
-      el.playbackRate = playbackRateRef.current
+      el.src = url;
+      el.load();
+      el.playbackRate = playbackRateRef.current;
       if (isPlayingRef.current) {
-        void el.play().catch((e: unknown) => {
-          setLoadError(e instanceof Error ? e.message : 'Playback failed')
-          setIsPlaying(false)
-        })
+        playAudioElement(el);
       }
-    })()
+    })();
     return (): void => {
-      cancelled = true
-      cancelAnimationFrame(rid)
+      cancelled = true;
+      cancelAnimationFrame(rid);
       if (coverObjectUrlRef.current) {
-        URL.revokeObjectURL(coverObjectUrlRef.current)
-        coverObjectUrlRef.current = null
+        URL.revokeObjectURL(coverObjectUrlRef.current);
+        coverObjectUrlRef.current = null;
       }
-    }
-  }, [current, resolveFileForTrack])
+    };
+  }, [current, resolveFileForTrack, playAudioElement]);
 
-  const playbackYoutubeVideoId = current?.youtubeVideoId?.trim() || null
+  const playbackYoutubeVideoId = current?.youtubeVideoId?.trim() || null;
 
   useEffect(() => {
-    if (!playbackYoutubeVideoId || current?.library) return undefined
-    setCoverArtUrl(youtubeVideoThumbnailUrl(playbackYoutubeVideoId))
-    return undefined
-  }, [playbackYoutubeVideoId, current?.library, current?.id])
-  const youtubeStreamActive = Boolean(playbackYoutubeVideoId)
-  const needsYoutubeResolve = Boolean(current?.youtubeQuery?.trim() && !playbackYoutubeVideoId)
+    if (!playbackYoutubeVideoId || current?.library) return undefined;
+    setCoverArtUrl(youtubeVideoThumbnailUrl(playbackYoutubeVideoId));
+    return undefined;
+  }, [playbackYoutubeVideoId, current?.library, current?.id]);
+  const youtubeStreamActive = Boolean(playbackYoutubeVideoId);
+  const needsYoutubeResolve = Boolean(
+    current?.youtubeQuery?.trim() && !playbackYoutubeVideoId,
+  );
 
   const handleTrackEnded = useCallback((): void => {
-    flushListeningProgress()
+    flushListeningProgress();
     if (current?.id) {
-      recordTrackPlaybackCompleted(current.id)
+      recordTrackPlaybackCompleted(current.id);
     }
-    if (repeatMode === 'one') {
+    if (repeatMode === "one") {
       if (current?.id) {
-        recordTrackPlaybackStarted(current.id)
+        recordTrackPlaybackStarted(current.id);
       }
       if (youtubeStreamActive && hiddenYoutubeRef.current) {
-        hiddenYoutubeRef.current.seekTo(0)
-        setPositionSec(0)
-        setIsPlaying(true)
-        return
+        hiddenYoutubeRef.current.seekTo(0);
+        setPositionSec(0);
+        setIsPlaying(true);
+        return;
       }
-      const el = audioRef.current
+      const el = audioRef.current;
       if (el) {
-        el.currentTime = 0
-        setPositionSec(0)
-        void el.play().catch((e: unknown) => {
-          setLoadError(e instanceof Error ? e.message : 'Playback failed')
-          setIsPlaying(false)
-        })
+        el.currentTime = 0;
+        setPositionSec(0);
+        playAudioElement(el);
       }
-      return
+      return;
     }
     if (!autoAdvanceOnEnd) {
-      setIsPlaying(false)
-      return
+      setIsPlaying(false);
+      return;
     }
-    goNext()
+    goNext();
   }, [
     current?.id,
     repeatMode,
@@ -963,202 +1097,240 @@ export default function MusicPlayer() {
     flushListeningProgress,
     recordTrackPlaybackCompleted,
     recordTrackPlaybackStarted,
-  ])
+    playAudioElement,
+  ]);
 
   useEffect(() => {
-    const query = current?.youtubeQuery?.trim()
+    const query = current?.youtubeQuery?.trim();
     if (!query || current?.youtubeVideoId?.trim()) {
-      queueMicrotask(() => setStreamResolving(false))
-      return undefined
+      queueMicrotask(() => setStreamResolving(false));
+      return undefined;
     }
 
-    const controller = new AbortController()
-    queueMicrotask(() => setStreamResolving(true))
+    const controller = new AbortController();
+    queueMicrotask(() => setStreamResolving(true));
 
     void resolveYoutubeVideoId(query, controller.signal)
       .then((videoId) => {
-        if (controller.signal.aborted) return
+        if (controller.signal.aborted) return;
         if (videoId && current?.id) {
           patchTrackById(current.id, (t) => ({
             ...t,
             youtubeVideoId: videoId,
-          }))
-          setLoadError(null)
+          }));
+          setLoadError(null);
         } else if (!videoId) {
-          setLoadError('Could not find a YouTube video for this track.')
+          setLoadError("Could not find a YouTube video for this track.");
         }
       })
       .catch((err: unknown) => {
-        if (controller.signal.aborted) return
-        if (err instanceof Error && err.name === 'AbortError') return
-        if (typeof err === 'object' && err !== null && 'name' in err && err.name === 'AbortError') {
-          return
+        if (controller.signal.aborted) return;
+        if (err instanceof Error && err.name === "AbortError") return;
+        if (
+          typeof err === "object" &&
+          err !== null &&
+          "name" in err &&
+          err.name === "AbortError"
+        ) {
+          return;
         }
-        setLoadError(err instanceof Error ? err.message : 'Could not resolve YouTube stream.')
+        setLoadError(
+          err instanceof Error
+            ? err.message
+            : "Could not resolve YouTube stream.",
+        );
       })
       .finally(() => {
-        if (!controller.signal.aborted) setStreamResolving(false)
-      })
+        if (!controller.signal.aborted) setStreamResolving(false);
+      });
 
     return (): void => {
-      controller.abort()
-    }
-  }, [current?.id, current?.youtubeQuery, current?.youtubeVideoId, patchTrackById])
+      controller.abort();
+    };
+  }, [
+    current?.id,
+    current?.youtubeQuery,
+    current?.youtubeVideoId,
+    patchTrackById,
+  ]);
 
   const onYoutubeDuration = useCallback(
     (seconds: number) => {
-      setMediaDuration(seconds)
-      if (current?.id) bumpTrackDuration(current.id, seconds)
+      setMediaDuration(seconds);
+      if (current?.id) bumpTrackDuration(current.id, seconds);
     },
     [bumpTrackDuration, current?.id],
-  )
+  );
 
   useEffect(() => {
-    if (!youtubeStreamActive) return undefined
+    if (!youtubeStreamActive) return undefined;
     const tick = (): void => {
-      const t = hiddenYoutubeRef.current?.getCurrentTime() ?? 0
+      const t = hiddenYoutubeRef.current?.getCurrentTime() ?? 0;
       if (Number.isFinite(t) && t >= 0) {
-        setPositionSec(t)
-        if (current?.id) recordPlaybackProgressForTrack(current.id, t)
-        reportPlayback(activeQueueIdRef.current, t)
+        setPositionSec(t);
+        if (current?.id) recordPlaybackProgressForTrack(current.id, t);
+        reportPlayback(activeQueueIdRef.current, t);
       }
-      const d = hiddenYoutubeRef.current?.getDuration() ?? 0
-      if (Number.isFinite(d) && d > 0) setMediaDuration(d)
-    }
-    tick()
-    const id = window.setInterval(tick, 500)
+      const d = hiddenYoutubeRef.current?.getDuration() ?? 0;
+      if (Number.isFinite(d) && d > 0) setMediaDuration(d);
+    };
+    tick();
+    const id = window.setInterval(tick, 500);
     return (): void => {
-      window.clearInterval(id)
-    }
-  }, [current?.id, youtubeStreamActive, recordPlaybackProgressForTrack, reportPlayback])
+      window.clearInterval(id);
+    };
+  }, [
+    current?.id,
+    youtubeStreamActive,
+    recordPlaybackProgressForTrack,
+    reportPlayback,
+  ]);
 
   useEffect(() => {
-    const el = audioRef.current
-    if (!el) return undefined
-    if (!el.src) return undefined
+    const el = audioRef.current;
+    if (!el) return undefined;
+    if (!el.src) return undefined;
     if (isPlaying) {
-      void el.play().catch((e: unknown) => {
-        setLoadError(e instanceof Error ? e.message : 'Playback failed')
-        setIsPlaying(false)
-      })
+      playAudioElement(el);
     } else {
-      el.pause()
+      el.pause();
     }
-  }, [isPlaying])
+  }, [isPlaying, playAudioElement]);
 
   useEffect(() => {
-    const el = audioRef.current
-    if (!el || !current) return undefined
+    const el = audioRef.current;
+    if (!el || !current) return undefined;
     const onTime = (): void => {
-      setPositionSec(el.currentTime)
-      recordPlaybackProgressForTrack(current.id, el.currentTime)
-      const now = Date.now()
+      setPositionSec(el.currentTime);
+      recordPlaybackProgressForTrack(current.id, el.currentTime);
+      const now = Date.now();
       if (now - lastPlaybackReportMsRef.current >= 2000) {
-        lastPlaybackReportMsRef.current = now
-        reportPlayback(activeQueueIdRef.current, el.currentTime)
+        lastPlaybackReportMsRef.current = now;
+        reportPlayback(activeQueueIdRef.current, el.currentTime);
       }
-    }
+    };
     const onMeta = (): void => {
       if (Number.isFinite(el.duration) && el.duration > 0) {
-        setMediaDuration(el.duration)
-        bumpTrackDuration(current.id, el.duration)
+        setMediaDuration(el.duration);
+        bumpTrackDuration(current.id, el.duration);
       }
-      const pending = pendingRestorePositionRef.current
+      const pending = pendingRestorePositionRef.current;
       if (pending != null && pending > 0) {
-        const seekTo = Math.min(pending, el.duration > 0 ? el.duration : pending)
-        el.currentTime = seekTo
-        setPositionSec(seekTo)
-        pendingRestorePositionRef.current = null
-        reportPlayback(activeQueueIdRef.current, seekTo)
+        const seekTo = Math.min(
+          pending,
+          el.duration > 0 ? el.duration : pending,
+        );
+        el.currentTime = seekTo;
+        setPositionSec(seekTo);
+        pendingRestorePositionRef.current = null;
+        reportPlayback(activeQueueIdRef.current, seekTo);
       }
-    }
+    };
     const onEnded = (): void => {
-      handleTrackEnded()
-    }
-    el.addEventListener('timeupdate', onTime)
-    el.addEventListener('loadedmetadata', onMeta)
-    el.addEventListener('ended', onEnded)
+      handleTrackEnded();
+    };
+    el.addEventListener("timeupdate", onTime);
+    el.addEventListener("loadedmetadata", onMeta);
+    el.addEventListener("ended", onEnded);
     return (): void => {
-      el.removeEventListener('timeupdate', onTime)
-      el.removeEventListener('loadedmetadata', onMeta)
-      el.removeEventListener('ended', onEnded)
-    }
-  }, [current, bumpTrackDuration, handleTrackEnded, recordPlaybackProgressForTrack, reportPlayback])
+      el.removeEventListener("timeupdate", onTime);
+      el.removeEventListener("loadedmetadata", onMeta);
+      el.removeEventListener("ended", onEnded);
+    };
+  }, [
+    current,
+    bumpTrackDuration,
+    handleTrackEnded,
+    recordPlaybackProgressForTrack,
+    reportPlayback,
+  ]);
 
   useEffect(() => {
     return (): void => {
       if (objectUrlRef.current) {
-        URL.revokeObjectURL(objectUrlRef.current)
-        objectUrlRef.current = null
+        URL.revokeObjectURL(objectUrlRef.current);
+        objectUrlRef.current = null;
       }
       if (coverObjectUrlRef.current) {
-        URL.revokeObjectURL(coverObjectUrlRef.current)
-        coverObjectUrlRef.current = null
+        URL.revokeObjectURL(coverObjectUrlRef.current);
+        coverObjectUrlRef.current = null;
       }
-    }
-  }, [])
+    };
+  }, []);
 
   const onSeekBarPointer = useCallback(
     (ratio: number) => {
-      const r = Math.min(1, Math.max(0, ratio))
+      const r = Math.min(1, Math.max(0, ratio));
       if (youtubeStreamActive && hiddenYoutubeRef.current) {
-        const total = durationSec > 0 ? durationSec : hiddenYoutubeRef.current.getDuration()
+        const total =
+          durationSec > 0
+            ? durationSec
+            : hiddenYoutubeRef.current.getDuration();
         if (total > 0) {
-          const next = r * total
-          hiddenYoutubeRef.current.seekTo(next)
-          setPositionSec(next)
-          reportPlayback(activeQueueIdRef.current, next)
+          const next = r * total;
+          hiddenYoutubeRef.current.seekTo(next);
+          setPositionSec(next);
+          reportPlayback(activeQueueIdRef.current, next);
         }
-        return
+        return;
       }
-      const el = audioRef.current
+      const el = audioRef.current;
       if (!el || !Number.isFinite(el.duration) || el.duration <= 0) {
         if (durationSec > 0) {
-          setPositionSec(r * durationSec)
-          if (el) el.currentTime = r * durationSec
+          setPositionSec(r * durationSec);
+          if (el) el.currentTime = r * durationSec;
         }
-        return
+        return;
       }
-      const next = Math.min(el.duration, Math.max(0, r * el.duration))
-      el.currentTime = next
-      setPositionSec(next)
-      reportPlayback(activeQueueIdRef.current, next)
+      const next = Math.min(el.duration, Math.max(0, r * el.duration));
+      el.currentTime = next;
+      setPositionSec(next);
+      reportPlayback(activeQueueIdRef.current, next);
     },
     [youtubeStreamActive, durationSec, reportPlayback],
-  )
+  );
 
   const onSeekBarKeyDown = useCallback(
     (e: KeyboardEvent<HTMLDivElement>): void => {
-      if (durationSec <= 0) return
+      if (durationSec <= 0) return;
 
-      let nextTime: number | null = null
+      let nextTime: number | null = null;
 
-      if (e.key === 'ArrowLeft') nextTime = positionSec - seekStepSmallSec
-      else if (e.key === 'ArrowRight') nextTime = positionSec + seekStepSmallSec
-      else if (e.key === 'PageDown') nextTime = positionSec - seekStepLargeSec
-      else if (e.key === 'PageUp') nextTime = positionSec + seekStepLargeSec
-      else if (e.key === 'Home') nextTime = 0
-      else if (e.key === 'End') nextTime = durationSec
-      else return
+      if (e.key === "ArrowLeft") nextTime = positionSec - seekStepSmallSec;
+      else if (e.key === "ArrowRight")
+        nextTime = positionSec + seekStepSmallSec;
+      else if (e.key === "PageDown") nextTime = positionSec - seekStepLargeSec;
+      else if (e.key === "PageUp") nextTime = positionSec + seekStepLargeSec;
+      else if (e.key === "Home") nextTime = 0;
+      else if (e.key === "End") nextTime = durationSec;
+      else return;
 
-      e.preventDefault()
-      const clamped = Math.min(durationSec, Math.max(0, nextTime))
-      onSeekBarPointer(clamped / durationSec)
+      e.preventDefault();
+      const clamped = Math.min(durationSec, Math.max(0, nextTime));
+      onSeekBarPointer(clamped / durationSec);
     },
-    [durationSec, onSeekBarPointer, positionSec, seekStepLargeSec, seekStepSmallSec],
-  )
+    [
+      durationSec,
+      onSeekBarPointer,
+      positionSec,
+      seekStepLargeSec,
+      seekStepSmallSec,
+    ],
+  );
 
   const statusLabel = isScanning
-    ? 'Scanning…'
+    ? "Scanning…"
     : youtubePrefetchActive
-      ? `Prefetching ${youtubePrefetchVideoCount} YouTube video${youtubePrefetchVideoCount === 1 ? '' : 's'}…`
-      : `${libraryTracks.length} in library · ${queue.length} in queue`
+      ? `Prefetching ${youtubePrefetchVideoCount} YouTube video${youtubePrefetchVideoCount === 1 ? "" : "s"}…`
+      : `${libraryTracks.length} in library · ${queue.length} in queue`;
 
-  const queueRowGapClass = compactLists ? 'gap-2' : 'gap-3'
-  const queueRowPadClass = compactLists ? 'px-3 py-2' : 'px-4 py-2.5'
-  const queueRemoveButtonPadClass = compactLists ? 'px-1.5 py-1.5' : 'px-2 py-2'
-  const emptyQueueCardGapClass = compactLists ? 'gap-2' : 'gap-3'
-  const emptyQueueCardPadClass = compactLists ? 'p-2' : 'p-3'
+  const queueRowGapClass = compactLists ? "gap-2" : "gap-3";
+  const queueRowPadClass = compactLists ? "px-3 py-2" : "px-4 py-2.5";
+  const queueRemoveButtonPadClass = compactLists
+    ? "px-1.5 py-1.5"
+    : "px-2 py-2";
+  const emptyQueueCardGapClass = compactLists ? "gap-2" : "gap-3";
+  const emptyQueueCardPadClass = compactLists ? "p-2" : "p-3";
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col bg-zinc-100 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
@@ -1228,7 +1400,9 @@ export default function MusicPlayer() {
       >
         <div
           className="flex min-h-0 min-w-0 flex-col overflow-hidden max-lg:flex-2 max-lg:w-full lg:h-full lg:min-w-0 lg:shrink-0"
-          style={layoutLg ? { width: libraryPanelPx, flex: '0 0 auto' } : undefined}
+          style={
+            layoutLg ? { width: libraryPanelPx, flex: "0 0 auto" } : undefined
+          }
         >
           <BrowsePanel />
         </div>
@@ -1240,7 +1414,9 @@ export default function MusicPlayer() {
         />
         <section
           className="flex min-h-0 min-w-0 flex-col overflow-hidden border-b border-zinc-200 bg-white dark:border-zinc-800/80 dark:bg-zinc-950/50 max-lg:flex-1 max-lg:w-full lg:h-full lg:shrink-0 lg:border-b-0 lg:border-r lg:border-zinc-200 lg:dark:border-zinc-800"
-          style={layoutLg ? { width: queuePanelPx, flex: '0 0 auto' } : undefined}
+          style={
+            layoutLg ? { width: queuePanelPx, flex: "0 0 auto" } : undefined
+          }
         >
           {showLyrics ? (
             <LyricsPanel track={current} onClose={() => setShowLyrics(false)} />
@@ -1256,11 +1432,11 @@ export default function MusicPlayer() {
                   <button
                     type="button"
                     onClick={() => {
-                      markCurrentSkipped()
-                      clearQueue()
-                      setActiveQueueId(null)
-                      setIsPlaying(false)
-                      setPositionSec(0)
+                      markCurrentSkipped();
+                      clearQueue();
+                      setActiveQueueId(null);
+                      setIsPlaying(false);
+                      setPositionSec(0);
                     }}
                     className="text-xs font-medium text-zinc-500 underline-offset-2 hover:text-zinc-800 hover:underline dark:hover:text-zinc-300"
                   >
@@ -1305,7 +1481,9 @@ export default function MusicPlayer() {
                               </div>
                               <div className="flex shrink-0 items-center gap-2">
                                 <span className="text-[11px] tabular-nums text-zinc-400 dark:text-zinc-500">
-                                  {t.durationSec > 0 ? formatDuration(t.durationSec) : '—'}
+                                  {t.durationSec > 0
+                                    ? formatDuration(t.durationSec)
+                                    : "—"}
                                 </span>
                                 <FavoriteStarButton
                                   className="rounded-full"
@@ -1313,8 +1491,8 @@ export default function MusicPlayer() {
                                   onPress={() => toggleFavoriteTrack(t)}
                                   label={
                                     isFavoriteSong(t.id)
-                                      ? 'Remove song from favorites'
-                                      : 'Add song to favorites'
+                                      ? "Remove song from favorites"
+                                      : "Add song to favorites"
                                   }
                                 />
                                 <button
@@ -1377,18 +1555,21 @@ export default function MusicPlayer() {
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <button
                             type="button"
-                            onClick={() => setFavoritesSuggestionsOpen((open) => !open)}
+                            onClick={() =>
+                              setFavoritesSuggestionsOpen((open) => !open)
+                            }
                             aria-expanded={favoritesSuggestionsOpen}
                             className="flex min-w-0 items-center gap-1 rounded-md py-0.5 text-left text-xs font-medium uppercase tracking-wider text-zinc-500 transition hover:text-zinc-700 dark:hover:text-zinc-300"
                           >
                             <IconChevronRight
                               className={[
-                                'h-3.5 w-3.5 shrink-0 text-zinc-400 transition-transform',
-                                favoritesSuggestionsOpen ? 'rotate-90' : '',
-                              ].join(' ')}
+                                "h-3.5 w-3.5 shrink-0 text-zinc-400 transition-transform",
+                                favoritesSuggestionsOpen ? "rotate-90" : "",
+                              ].join(" ")}
                             />
                             <span>Favorites</span>
-                            {!favoritesSuggestionsOpen && favoriteSuggestionsSummary ? (
+                            {!favoritesSuggestionsOpen &&
+                            favoriteSuggestionsSummary ? (
                               <span className="truncate font-normal normal-case tracking-normal text-zinc-400">
                                 · {favoriteSuggestionsSummary}
                               </span>
@@ -1413,7 +1594,8 @@ export default function MusicPlayer() {
                                 </p>
                                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                                   {favoritedArtistsList.map((name) => {
-                                    const tracks = libraryArtistMap.get(name) ?? []
+                                    const tracks =
+                                      libraryArtistMap.get(name) ?? [];
                                     return (
                                       <div
                                         key={name}
@@ -1425,14 +1607,16 @@ export default function MusicPlayer() {
                                           </p>
                                           <p className="text-xs text-zinc-500 dark:text-zinc-400">
                                             {tracks.length} track
-                                            {tracks.length === 1 ? '' : 's'}
+                                            {tracks.length === 1 ? "" : "s"}
                                           </p>
                                         </div>
                                         <div className="flex shrink-0 items-center gap-2">
                                           <FavoriteStarButton
                                             className="rounded-full"
                                             filled={isFavoriteArtist(name)}
-                                            onPress={() => toggleFavoriteArtist(name)}
+                                            onPress={() =>
+                                              toggleFavoriteArtist(name)
+                                            }
                                             label="Remove artist from favorites"
                                           />
                                           <button
@@ -1445,7 +1629,7 @@ export default function MusicPlayer() {
                                           </button>
                                         </div>
                                       </div>
-                                    )
+                                    );
                                   })}
                                 </div>
                               </div>
@@ -1457,9 +1641,10 @@ export default function MusicPlayer() {
                                 </p>
                                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                                   {favoritedAlbumsList.map((key) => {
-                                    const [album, artist] = key.split('\u0000')
-                                    const tracks = libraryAlbumMap.get(key) ?? []
-                                    const sample = tracks[0]
+                                    const [album, artist] = key.split("\u0000");
+                                    const tracks =
+                                      libraryAlbumMap.get(key) ?? [];
+                                    const sample = tracks[0];
                                     return (
                                       <div
                                         key={key}
@@ -1478,14 +1663,16 @@ export default function MusicPlayer() {
                                           </p>
                                           <p className="text-[11px] text-zinc-400 dark:text-zinc-500">
                                             {tracks.length} track
-                                            {tracks.length === 1 ? '' : 's'}
+                                            {tracks.length === 1 ? "" : "s"}
                                           </p>
                                         </div>
                                         <div className="flex shrink-0 items-center gap-2">
                                           <FavoriteStarButton
                                             className="rounded-full"
                                             filled={isFavoriteAlbum(key)}
-                                            onPress={() => toggleFavoriteAlbum(key)}
+                                            onPress={() =>
+                                              toggleFavoriteAlbum(key)
+                                            }
                                             label="Remove album from favorites"
                                           />
                                           <button
@@ -1498,7 +1685,7 @@ export default function MusicPlayer() {
                                           </button>
                                         </div>
                                       </div>
-                                    )
+                                    );
                                   })}
                                 </div>
                               </div>
@@ -1524,7 +1711,9 @@ export default function MusicPlayer() {
                                       </div>
                                       <div className="flex shrink-0 items-center gap-2">
                                         <span className="text-[11px] tabular-nums text-zinc-400 dark:text-zinc-500">
-                                          {t.durationSec > 0 ? formatDuration(t.durationSec) : '—'}
+                                          {t.durationSec > 0
+                                            ? formatDuration(t.durationSec)
+                                            : "—"}
                                         </span>
                                         <FavoriteStarButton
                                           className="rounded-full"
@@ -1550,7 +1739,8 @@ export default function MusicPlayer() {
                       </div>
                     ) : null}
 
-                    {homeRecentBrowseSearches.length > 0 || suggestedTracks.length > 0 ? (
+                    {homeRecentBrowseSearches.length > 0 ||
+                    suggestedTracks.length > 0 ? (
                       <div className="mt-6">
                         <p className="mb-2 text-xs font-medium uppercase tracking-wider text-zinc-500">
                           Suggestions
@@ -1574,9 +1764,9 @@ export default function MusicPlayer() {
                                 tabIndex={0}
                                 onClick={() => addToQueue(t)}
                                 onKeyDown={(e) => {
-                                  if (e.key === 'Enter' || e.key === ' ') {
-                                    e.preventDefault()
-                                    addToQueue(t)
+                                  if (e.key === "Enter" || e.key === " ") {
+                                    e.preventDefault();
+                                    addToQueue(t);
                                   }
                                 }}
                                 aria-label={`Add ${t.title} to queue`}
@@ -1592,7 +1782,9 @@ export default function MusicPlayer() {
                                 </div>
                                 <div className="flex shrink-0 items-center gap-2">
                                   <span className="text-[11px] tabular-nums text-zinc-400 dark:text-zinc-500">
-                                    {t.durationSec > 0 ? formatDuration(t.durationSec) : '—'}
+                                    {t.durationSec > 0
+                                      ? formatDuration(t.durationSec)
+                                      : "—"}
                                   </span>
                                   <FavoriteStarButton
                                     className="rounded-full"
@@ -1600,8 +1792,8 @@ export default function MusicPlayer() {
                                     onPress={() => toggleFavoriteTrack(t)}
                                     label={
                                       isFavoriteSong(t.id)
-                                        ? 'Remove song from favorites'
-                                        : 'Add song to favorites'
+                                        ? "Remove song from favorites"
+                                        : "Add song to favorites"
                                     }
                                   />
                                 </div>
@@ -1619,45 +1811,56 @@ export default function MusicPlayer() {
                     aria-label="Track queue"
                   >
                     {queue.map((row, index) => {
-                      const track = row.track
-                      const selected = index === activeIndex
+                      const track = row.track;
+                      const selected = index === activeIndex;
                       const isDropTarget =
-                        dragOverQueueId === row.queueId && draggingQueueId !== row.queueId
-                      const isStreamTrack = isMusicBrainzStreamTrack(track)
-                      const isSavedInLibrary = libraryTracks.some((t) => t.id === track.id)
+                        dragOverQueueId === row.queueId &&
+                        draggingQueueId !== row.queueId;
+                      const isStreamTrack = isMusicBrainzStreamTrack(track);
+                      const isSavedInLibrary = libraryTracks.some(
+                        (t) => t.id === track.id,
+                      );
                       return (
                         <li
                           key={row.queueId}
                           className={[
-                            'group/row flex items-center gap-0',
-                            selected ? 'bg-accent-50/90 dark:bg-white/6' : '',
-                            isDropTarget ? 'ring-1 ring-accent-400/30' : '',
-                          ].join(' ')}
+                            "group/row flex items-center gap-0",
+                            selected ? "bg-accent-50/90 dark:bg-white/6" : "",
+                            isDropTarget ? "ring-1 ring-accent-400/30" : "",
+                          ].join(" ")}
                           onDragOver={(e) => {
-                            if (!draggingQueueId) return
-                            e.preventDefault()
-                            if (dragOverQueueId !== row.queueId) setDragOverQueueId(row.queueId)
+                            if (!draggingQueueId) return;
+                            e.preventDefault();
+                            if (dragOverQueueId !== row.queueId)
+                              setDragOverQueueId(row.queueId);
                           }}
                           onDrop={(e) => {
-                            e.preventDefault()
-                            const fromQueueId = draggingQueueId
-                            setDraggingQueueId(null)
-                            setDragOverQueueId(null)
-                            if (!fromQueueId) return
-                            if (fromQueueId === row.queueId) return
-                            const fromIndex = queue.findIndex((q) => q.queueId === fromQueueId)
-                            if (fromIndex < 0) return
+                            e.preventDefault();
+                            const fromQueueId = draggingQueueId;
+                            setDraggingQueueId(null);
+                            setDragOverQueueId(null);
+                            if (!fromQueueId) return;
+                            if (fromQueueId === row.queueId) return;
+                            const fromIndex = queue.findIndex(
+                              (q) => q.queueId === fromQueueId,
+                            );
+                            if (fromIndex < 0) return;
 
-                            const rect = (e.currentTarget as HTMLLIElement).getBoundingClientRect()
-                            const insertAfter = e.clientY > rect.top + rect.height / 2
+                            const rect = (
+                              e.currentTarget as HTMLLIElement
+                            ).getBoundingClientRect();
+                            const insertAfter =
+                              e.clientY > rect.top + rect.height / 2;
                             // Desired insertion index in the original list (before any splice shifting).
-                            const desiredInsertIndex = insertAfter ? index + 1 : index
+                            const desiredInsertIndex = insertAfter
+                              ? index + 1
+                              : index;
                             // Convert to insertion index after removal of the dragged item.
                             const adjustedToIndex =
                               fromIndex < desiredInsertIndex
                                 ? desiredInsertIndex - 1
-                                : desiredInsertIndex
-                            reorderQueueItems(fromIndex, adjustedToIndex)
+                                : desiredInsertIndex;
+                            reorderQueueItems(fromIndex, adjustedToIndex);
                           }}
                         >
                           <button
@@ -1667,23 +1870,25 @@ export default function MusicPlayer() {
                             onClick={() => selectIndex(index)}
                             draggable
                             onDragStart={(e) => {
-                              setDraggingQueueId(row.queueId)
-                              setDragOverQueueId(row.queueId)
-                              e.dataTransfer.effectAllowed = 'move'
-                              e.dataTransfer.setData('text/plain', row.queueId)
+                              setDraggingQueueId(row.queueId);
+                              setDragOverQueueId(row.queueId);
+                              e.dataTransfer.effectAllowed = "move";
+                              e.dataTransfer.setData("text/plain", row.queueId);
                             }}
                             onDragEnd={() => {
-                              setDraggingQueueId(null)
-                              setDragOverQueueId(null)
+                              setDraggingQueueId(null);
+                              setDragOverQueueId(null);
                             }}
                             className={[
                               `flex min-w-0 flex-1 items-center ${queueRowGapClass} border-l-2 border-transparent ${queueRowPadClass} text-left transition-colors`,
                               selected
-                                ? 'border-accent-500 dark:border-accent-400'
-                                : 'hover:bg-zinc-50 dark:hover:bg-zinc-900/60',
-                              'cursor-grab active:cursor-grabbing',
-                              isDropTarget ? 'border-accent-500/20 dark:border-accent-400/20' : '',
-                            ].join(' ')}
+                                ? "border-accent-500 dark:border-accent-400"
+                                : "hover:bg-zinc-50 dark:hover:bg-zinc-900/60",
+                              "cursor-grab active:cursor-grabbing",
+                              isDropTarget
+                                ? "border-accent-500/20 dark:border-accent-400/20"
+                                : "",
+                            ].join(" ")}
                           >
                             <span className="w-5 shrink-0 text-right text-[11px] tabular-nums text-zinc-400 dark:text-zinc-500">
                               {index + 1}
@@ -1697,16 +1902,18 @@ export default function MusicPlayer() {
                               </p>
                             </div>
                             <span className="shrink-0 text-[11px] tabular-nums text-zinc-400 dark:text-zinc-500">
-                              {track.durationSec > 0 ? formatDuration(track.durationSec) : '—'}
+                              {track.durationSec > 0
+                                ? formatDuration(track.durationSec)
+                                : "—"}
                             </span>
                           </button>
                           <div
                             className={[
-                              'flex shrink-0 items-center border-l pr-1 pl-0.5',
+                              "flex shrink-0 items-center border-l pr-1 pl-0.5",
                               selected
-                                ? 'border-accent-200/80 dark:border-white/8'
-                                : 'border-zinc-200 bg-zinc-50/80 dark:border-zinc-800 dark:bg-zinc-900/40',
-                            ].join(' ')}
+                                ? "border-accent-200/80 dark:border-white/8"
+                                : "border-zinc-200 bg-zinc-50/80 dark:border-zinc-800 dark:bg-zinc-900/40",
+                            ].join(" ")}
                           >
                             <FavoriteStarButton
                               className="rounded-none"
@@ -1714,8 +1921,8 @@ export default function MusicPlayer() {
                               onPress={() => toggleFavoriteTrack(track)}
                               label={
                                 isFavoriteSong(track.id)
-                                  ? 'Remove song from favorites'
-                                  : 'Add song to favorites'
+                                  ? "Remove song from favorites"
+                                  : "Add song to favorites"
                               }
                             />
                             <TrackRowOverflowMenu
@@ -1724,7 +1931,8 @@ export default function MusicPlayer() {
                                 track,
                                 onViewDetails: openTrackDetails,
                                 onViewRelatedSongs: openRelatedSongs,
-                                onAddToPlaylist: (track) => openAddToPlaylist(track, track.title),
+                                onAddToPlaylist: (track) =>
+                                  openAddToPlaylist(track, track.title),
                                 onDownload: downloadTrack,
                                 onSave:
                                   isStreamTrack && !isSavedInLibrary
@@ -1739,16 +1947,18 @@ export default function MusicPlayer() {
                               type="button"
                               aria-label={`Remove ${track.title} from queue`}
                               onClick={() => {
-                                const isCurrent = activeQueueId === row.queueId
-                                if (isCurrent) markCurrentSkipped()
+                                const isCurrent = activeQueueId === row.queueId;
+                                if (isCurrent) markCurrentSkipped();
                                 const nextId = isCurrent
-                                  ? (queue[index + 1]?.queueId ?? queue[index - 1]?.queueId ?? null)
-                                  : activeQueueId
-                                removeFromQueue(row.queueId)
-                                setActiveQueueId(nextId)
+                                  ? (queue[index + 1]?.queueId ??
+                                    queue[index - 1]?.queueId ??
+                                    null)
+                                  : activeQueueId;
+                                removeFromQueue(row.queueId);
+                                setActiveQueueId(nextId);
                                 if (isCurrent && !nextId) {
-                                  setIsPlaying(false)
-                                  setPositionSec(0)
+                                  setIsPlaying(false);
+                                  setPositionSec(0);
                                 }
                               }}
                               className={`shrink-0 ${queueRemoveButtonPadClass} text-[11px] text-zinc-500 opacity-80 transition hover:bg-zinc-200/80 hover:text-zinc-900 sm:opacity-0 sm:group-hover/row:opacity-100 dark:hover:bg-zinc-800 dark:hover:text-zinc-100`}
@@ -1757,7 +1967,7 @@ export default function MusicPlayer() {
                             </button>
                           </div>
                         </li>
-                      )
+                      );
                     })}
                   </ul>
                 )}
@@ -1788,46 +1998,54 @@ export default function MusicPlayer() {
               ) : (
                 <div className="flex h-full w-full items-center justify-center p-8">
                   <span className="select-none text-6xl font-bold tracking-tighter text-accent-800/20 dark:text-zinc-700/90">
-                    {current?.album ? current.album.charAt(0) : '♪'}
+                    {current?.album ? current.album.charAt(0) : "♪"}
                   </span>
                 </div>
               )}
             </div>
             <div className="text-center">
               <p className="truncate text-lg font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
-                {current?.title ?? '—'}
+                {current?.title ?? "—"}
               </p>
               <p className="mt-1 truncate text-sm text-zinc-600 dark:text-zinc-400">
-                {current?.artist ?? ''}
+                {current?.artist ?? ""}
               </p>
               <p className="mt-0.5 truncate text-xs text-zinc-500 dark:text-zinc-600">
-                {current?.album ?? ''}
+                {current?.album ?? ""}
               </p>
             </div>
           </div>
 
           <div className="shrink-0 space-y-2.5">
+            {showEqualizer ? (
+              <GraphicEqualizer
+                gainsDb={equalizerGainsDb}
+                onBandChange={setEqualizerBandGain}
+                onReset={resetEqualizer}
+                onClose={() => setShowEqualizer(false)}
+              />
+            ) : null}
             <div className="flex items-center justify-between text-xs tabular-nums text-zinc-500">
               <span>{formatDuration(positionSec)}</span>
-              <span>{durationSec > 0 ? formatDuration(durationSec) : '—'}</span>
+              <span>{durationSec > 0 ? formatDuration(durationSec) : "—"}</span>
             </div>
             <div
               className="group relative h-2 cursor-pointer rounded-full bg-zinc-200 dark:bg-zinc-800"
               onPointerDown={(e) => {
-                const el = e.currentTarget
-                const rect = el.getBoundingClientRect()
-                const ratio = (e.clientX - rect.left) / Math.max(1, rect.width)
-                onSeekBarPointer(ratio)
+                const el = e.currentTarget;
+                const rect = el.getBoundingClientRect();
+                const ratio = (e.clientX - rect.left) / Math.max(1, rect.width);
+                onSeekBarPointer(ratio);
                 const move = (ev: PointerEvent): void => {
-                  const r = (ev.clientX - rect.left) / Math.max(1, rect.width)
-                  onSeekBarPointer(r)
-                }
+                  const r = (ev.clientX - rect.left) / Math.max(1, rect.width);
+                  onSeekBarPointer(r);
+                };
                 const up = (): void => {
-                  window.removeEventListener('pointermove', move)
-                  window.removeEventListener('pointerup', up)
-                }
-                window.addEventListener('pointermove', move)
-                window.addEventListener('pointerup', up)
+                  window.removeEventListener("pointermove", move);
+                  window.removeEventListener("pointerup", up);
+                };
+                window.addEventListener("pointermove", move);
+                window.addEventListener("pointerup", up);
               }}
               role="slider"
               tabIndex={0}
@@ -1851,8 +2069,8 @@ export default function MusicPlayer() {
                   type="button"
                   aria-label="Previous track"
                   onClick={() => {
-                    markCurrentSkipped()
-                    goPrev()
+                    markCurrentSkipped();
+                    goPrev();
                   }}
                   disabled={queue.length === 0}
                   className="rounded-full p-2.5 text-zinc-600 transition hover:bg-zinc-200 hover:text-zinc-900 disabled:cursor-not-allowed disabled:opacity-40 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
@@ -1861,7 +2079,7 @@ export default function MusicPlayer() {
                 </button>
                 <button
                   type="button"
-                  aria-label={isPlaying ? 'Pause' : 'Play'}
+                  aria-label={isPlaying ? "Pause" : "Play"}
                   onClick={() => setIsPlaying((p) => !p)}
                   disabled={queue.length === 0 || !current}
                   className="mx-0.5 flex h-12 w-12 items-center justify-center rounded-full bg-accent-500 text-zinc-950 shadow-md shadow-accent-600/20 transition hover:bg-accent-400 disabled:cursor-not-allowed disabled:opacity-40 dark:shadow-accent-900/30"
@@ -1876,8 +2094,8 @@ export default function MusicPlayer() {
                   type="button"
                   aria-label="Next track"
                   onClick={() => {
-                    markCurrentSkipped()
-                    goNext()
+                    markCurrentSkipped();
+                    goNext();
                   }}
                   disabled={queue.length === 0}
                   className="rounded-full p-2.5 text-zinc-600 transition hover:bg-zinc-200 hover:text-zinc-900 disabled:cursor-not-allowed disabled:opacity-40 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
@@ -1895,9 +2113,9 @@ export default function MusicPlayer() {
                   step={0.01}
                   value={volume}
                   onChange={(e) => {
-                    const v = Number(e.target.value)
-                    if (rememberVolume) persistVolume(v)
-                    else setSessionVolume(v)
+                    const v = Number(e.target.value);
+                    if (rememberVolume) persistVolume(v);
+                    else setSessionVolume(v);
                   }}
                   className="h-1 w-full min-w-0 cursor-pointer accent-accent-500"
                   aria-label="Volume"
@@ -1911,15 +2129,18 @@ export default function MusicPlayer() {
                 onClick={() => cycleRepeatMode()}
                 className="relative flex h-9 w-9 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-600 transition hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:border-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
                 aria-label={
-                  repeatMode === 'off'
-                    ? 'Repeat off. Click for repeat all.'
-                    : repeatMode === 'all'
-                      ? 'Repeat all. Click for repeat one.'
-                      : 'Repeat one. Click for repeat off.'
+                  repeatMode === "off"
+                    ? "Repeat off. Click for repeat all."
+                    : repeatMode === "all"
+                      ? "Repeat all. Click for repeat one."
+                      : "Repeat one. Click for repeat off."
                 }
               >
-                <IconRepeatLoop dimmed={repeatMode === 'off'} className="h-5 w-5" />
-                {repeatMode === 'one' ? (
+                <IconRepeatLoop
+                  dimmed={repeatMode === "off"}
+                  className="h-5 w-5"
+                />
+                {repeatMode === "one" ? (
                   <span className="absolute -right-0.5 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded bg-accent-500 px-0.5 text-[9px] font-bold leading-none text-zinc-950">
                     1
                   </span>
@@ -1929,13 +2150,13 @@ export default function MusicPlayer() {
                 type="button"
                 onClick={() => toggleShuffle()}
                 aria-pressed={shuffle}
-                aria-label={shuffle ? 'Shuffle on' : 'Shuffle off'}
+                aria-label={shuffle ? "Shuffle on" : "Shuffle off"}
                 className={[
-                  'flex h-9 w-9 items-center justify-center rounded-full border transition',
+                  "flex h-9 w-9 items-center justify-center rounded-full border transition",
                   shuffle
-                    ? 'border-accent-500/50 bg-accent-500/15 text-accent-800 dark:text-accent-300'
-                    : 'border-zinc-200 bg-white text-zinc-600 hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:border-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-100',
-                ].join(' ')}
+                    ? "border-accent-500/50 bg-accent-500/15 text-accent-800 dark:text-accent-300"
+                    : "border-zinc-200 bg-white text-zinc-600 hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:border-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-100",
+                ].join(" ")}
               >
                 <IconShuffle className="h-5 w-5" />
               </button>
@@ -1943,15 +2164,29 @@ export default function MusicPlayer() {
                 type="button"
                 onClick={() => setShowLyrics((prev) => !prev)}
                 aria-pressed={showLyrics}
-                aria-label={showLyrics ? 'Hide lyrics' : 'Show lyrics'}
+                aria-label={showLyrics ? "Hide lyrics" : "Show lyrics"}
                 className={[
-                  'flex h-9 w-9 items-center justify-center rounded-full border transition',
+                  "flex h-9 w-9 items-center justify-center rounded-full border transition",
                   showLyrics
-                    ? 'border-accent-500/50 bg-accent-500/15 text-accent-800 dark:text-accent-300'
-                    : 'border-zinc-200 bg-white text-zinc-600 hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:border-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-100',
-                ].join(' ')}
+                    ? "border-accent-500/50 bg-accent-500/15 text-accent-800 dark:text-accent-300"
+                    : "border-zinc-200 bg-white text-zinc-600 hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:border-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-100",
+                ].join(" ")}
               >
                 <IconLyrics className="h-5 w-5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowEqualizer((prev) => !prev)}
+                aria-pressed={showEqualizer}
+                aria-label={showEqualizer ? "Hide equalizer" : "Show equalizer"}
+                className={[
+                  "flex h-9 w-9 items-center justify-center rounded-full border transition",
+                  showEqualizer
+                    ? "border-accent-500/50 bg-accent-500/15 text-accent-800 dark:text-accent-300"
+                    : "border-zinc-200 bg-white text-zinc-600 hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:border-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-100",
+                ].join(" ")}
+              >
+                <IconEqualizer className="h-5 w-5" />
               </button>
               <label className="flex items-center gap-2 text-xs text-zinc-600 dark:text-zinc-400">
                 <span className="sr-only">Playback speed</span>
@@ -1966,7 +2201,7 @@ export default function MusicPlayer() {
                 >
                   {PLAYBACK_RATES.map((r) => (
                     <option key={r} value={r}>
-                      {r === 1 ? '1×' : `${r}×`}
+                      {r === 1 ? "1×" : `${r}×`}
                     </option>
                   ))}
                 </select>
@@ -1976,5 +2211,5 @@ export default function MusicPlayer() {
         </aside>
       </div>
     </div>
-  )
+  );
 }
