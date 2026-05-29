@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.22](https://github.com/f3rnox/muzical-ui/compare/v0.1.21...v0.1.22) (2026-05-29)
+
+
+### Features
+
+* persist queue and playback state ([2d46a29](https://github.com/f3rnox/muzical-ui/commit/2d46a29865f7e2684d4716ac5c62e29e60adc311))
+
 ### [0.1.21](https://github.com/f3rnox/muzical-ui/compare/v0.1.20...v0.1.21) (2026-05-29)
 
 
