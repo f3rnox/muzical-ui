@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useLibrary } from '@/components/LibraryProvider'
 import RecentBrowseSearchSuggestions from '@/components/RecentBrowseSearchSuggestions'
@@ -302,6 +302,25 @@ function tracksUnderFolderPath(tracksAtRoot: readonly Track[], folderPath: strin
   })
 }
 
+function IconHamburger(props: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      className={props.className}
+    >
+      <path d="M3 6h18" />
+      <path d="M3 12h18" />
+      <path d="M3 18h18" />
+    </svg>
+  )
+}
+
 /**
  * Browse the scanned catalog by artist, album, or folder; search and add tracks to the queue.
  */
@@ -327,6 +346,10 @@ export default function LibraryBrowser() {
   const searchParams = useSearchParams()
   const [mode, setMode] = useState<BrowseMode>('artist')
   const [query, setQuery] = useState('')
+  // Hamburger menu for browse mode pills - moved up to be declared before useEffect that depends on it
+  const [modesMenuOpen, setModesMenuOpen] = useState(false)
+  const modesMenuRef = useRef<HTMLDivElement | null>(null)
+  const modesMenuId = useId()
 
   useSyncBrowseSearchFromUrl(searchParams, setQuery)
 
@@ -338,12 +361,35 @@ export default function LibraryBrowser() {
     }, 800)
     return () => window.clearTimeout(id)
   }, [query, recordRecentBrowseSearch])
+
+  // Dismiss mode menu on outside click or Escape (modeled after TrackRowOverflowMenu)
+  useEffect(() => {
+    if (!modesMenuOpen) return undefined
+    const onPointerDown = (event: PointerEvent): void => {
+      const target = event.target
+      if (!(target instanceof Node)) return
+      if (!modesMenuRef.current?.contains(target)) {
+        setModesMenuOpen(false)
+      }
+    }
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') setModesMenuOpen(false)
+    }
+    document.addEventListener('pointerdown', onPointerDown)
+    document.addEventListener('keydown', onKeyDown)
+    return (): void => {
+      document.removeEventListener('pointerdown', onPointerDown)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [modesMenuOpen])
+
   const [artistPick, setArtistPick] = useState<string | null>(null)
   const [albumPick, setAlbumPick] = useState<string | null>(null)
   const [albumMetadataEditKey, setAlbumMetadataEditKey] = useState<string | null>(null)
   const [artistMetadataEditName, setArtistMetadataEditName] = useState<string | null>(null)
   const [folderRootId, setFolderRootId] = useState<string | null>(null)
   const [folderPath, setFolderPath] = useState('')
+
   const filtered = useMemo(() => filterTracksByQuery(libraryTracks, query), [libraryTracks, query])
   const searchActive = query.trim().length > 0
   const compact = compactLists
@@ -870,34 +916,61 @@ export default function LibraryBrowser() {
     <section className="flex h-full min-h-0 flex-1 flex-col overflow-hidden border-b border-zinc-200 bg-zinc-50/80 dark:border-zinc-800 dark:bg-zinc-900/30 lg:border-b-0 lg:border-r">
       <div className="shrink-0 space-y-3 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
         <h2 className="text-xs font-medium uppercase tracking-wider text-zinc-500">Library</h2>
-        <input
-          type="search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Artists, albums, folders, or song titles…"
-          className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 shadow-sm outline-none ring-accent-500/0 transition focus:border-accent-400 focus:ring-2 focus:ring-accent-500/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100 dark:focus:border-accent-500/60"
-          aria-label="Search library"
-        />
-        <RecentBrowseSearchSuggestions source="library" onSelect={setQuery} />
-        <div className="flex flex-wrap gap-1">
-          {(['artist', 'album', 'folder', 'favorites', 'playlists', 'history'] as const).map(
-            (m) => (
-              <button
-                key={m}
-                type="button"
-                onClick={() => goMode(m)}
-                className={[
-                  'cursor-pointer rounded-full px-3 py-1 text-xs font-medium capitalize transition',
-                  mode === m
-                    ? 'bg-accent-500 text-zinc-950'
-                    : 'bg-zinc-200 text-zinc-700 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700',
-                ].join(' ')}
+        <div className="flex items-center gap-2">
+          {/* Hamburger menu containing the former pill buttons for browse modes */}
+          <div ref={modesMenuRef} className="relative shrink-0">
+            <button
+              type="button"
+              aria-haspopup="menu"
+              aria-expanded={modesMenuOpen}
+              aria-controls={modesMenuId}
+              aria-label="Library browse modes"
+              onClick={() => setModesMenuOpen((prev) => !prev)}
+              className="flex h-9 items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-2 text-zinc-600 transition hover:bg-zinc-50 hover:text-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+            >
+              <IconHamburger className="h-4 w-4" />
+              <span className="text-[10px] font-medium uppercase tracking-[0.5px] text-zinc-500 dark:text-zinc-400">
+                {mode}
+              </span>
+            </button>
+            {modesMenuOpen ? (
+              <div
+                id={modesMenuId}
+                role="menu"
+                className="absolute left-0 top-full z-30 mt-1 min-w-[9rem] overflow-hidden rounded-lg border border-zinc-200 bg-white py-1 shadow-lg dark:border-zinc-700 dark:bg-zinc-900"
               >
-                {m}
-              </button>
-            ),
-          )}
+                {(['artist', 'album', 'folder', 'favorites', 'playlists', 'history'] as const).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      goMode(m)
+                      setModesMenuOpen(false)
+                    }}
+                    className={[
+                      'block w-full cursor-pointer px-3 py-1.5 text-left text-sm capitalize transition',
+                      mode === m
+                        ? 'bg-accent-500/10 font-medium text-accent-700 dark:bg-accent-500/20 dark:text-accent-400'
+                        : 'text-zinc-800 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800',
+                    ].join(' ')}
+                  >
+                    {m}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Artists, albums, folders, or song titles…"
+            className="min-w-0 flex-1 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 shadow-sm outline-none ring-accent-500/0 transition focus:border-accent-400 focus:ring-2 focus:ring-accent-500/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100 dark:focus:border-accent-500/60"
+            aria-label="Search library"
+          />
         </div>
+        <RecentBrowseSearchSuggestions source="library" onSelect={setQuery} />
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto px-2 py-2">
