@@ -1,6 +1,4 @@
-import { buildLastfmGetUrl, buildLastfmPostBody } from "@/lib/lastfm/sign-lastfm-request";
 import lastfmErrorMessageFromBody from "@/lib/lastfm/lastfm-error-message-from-body";
-import logLastfmRequestFailed from "@/lib/lastfm/log-lastfm-request-failed";
 
 const LASTFM_AUTH_URL = "https://www.last.fm/api/auth/";
 
@@ -12,8 +10,28 @@ export type LastfmSessionResult =
   | { ok: true; sessionKey: string; username: string }
   | { ok: false; message: string };
 
+async function callSignedProxy(
+  method: string,
+  params: Record<string, string | number | undefined>,
+  apiKey: string,
+  apiSecret: string,
+): Promise<{ ok: boolean; body: unknown; status?: number }> {
+  try {
+    const res = await fetch("/api/lastfm/signed", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ method, params, apiKey, apiSecret }),
+    });
+    const json = await res.json().catch(() => ({}));
+    return { ok: res.ok, body: json, status: res.status };
+  } catch (e) {
+    return { ok: false, body: { error: "proxy network error" } };
+  }
+}
+
 /**
  * Step 1 of desktop auth: obtain a request token (requires api key + secret to sign).
+ * Signature is computed on the server to guarantee correctness.
  */
 export async function getLastfmAuthToken(
   apiKey: string,
@@ -22,30 +40,19 @@ export async function getLastfmAuthToken(
   if (!apiKey || !apiSecret) {
     return { ok: false, message: "Last.fm API key and shared secret are required" };
   }
-  const url = buildLastfmGetUrl("auth.getToken", {}, apiKey, apiSecret);
 
-  try {
-    const res = await fetch(url, {
-      headers: { "User-Agent": "Muzical/1.0 (https://github.com/f3rnox/muzical-ui)" },
-    });
-    const text = await res.text();
-    let body: unknown = {};
-    try {
-      body = text ? JSON.parse(text) : {};
-    } catch {}
-    if (!res.ok) {
-      logLastfmRequestFailed({ url, status: res.status, statusText: res.statusText, body, bodyText: text.slice(0, 500) });
-      return { ok: false, message: lastfmErrorMessageFromBody(body) ?? "Failed to get auth token" };
-    }
-    const token = (body as { token?: string })?.token?.trim();
-    if (!token) {
-      return { ok: false, message: lastfmErrorMessageFromBody(body) ?? "No token in response" };
-    }
-    return { ok: true, token };
-  } catch (error) {
-    logLastfmRequestFailed({ url, error });
-    return { ok: false, message: "Network error obtaining Last.fm token" };
+  const { ok, body } = await callSignedProxy("auth.getToken", {}, apiKey, apiSecret);
+
+  if (!ok) {
+    const message = lastfmErrorMessageFromBody(body) ?? (body as any)?.error ?? "Failed to get auth token";
+    return { ok: false, message };
   }
+
+  const token = (body as { token?: string })?.token?.trim();
+  if (!token) {
+    return { ok: false, message: lastfmErrorMessageFromBody(body) ?? "No token in response" };
+  }
+  return { ok: true, token };
 }
 
 /**
@@ -60,6 +67,7 @@ export function buildLastfmAuthUrl(apiKey: string, token: string): string {
 
 /**
  * Step 2 (after user authorizes): exchange token for a session key.
+ * Signature computed server-side via proxy.
  */
 export async function getLastfmSession(
   apiKey: string,
@@ -69,44 +77,19 @@ export async function getLastfmSession(
   if (!apiKey || !apiSecret || !token) {
     return { ok: false, message: "API key, secret and token required" };
   }
-  const body = buildLastfmPostBody("auth.getSession", { token }, apiKey, apiSecret);
 
-  const url = new URL("https://ws.audioscrobbler.com/2.0/");
-  try {
-    const res = await fetch(url, {
-      method: "POST",
-      body,
-      headers: {
-        "User-Agent": "Muzical/1.0 (https://github.com/f3rnox/muzical-ui)",
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-    });
-    const text = await res.text();
-    let bodyJson: unknown = {};
-    try {
-      bodyJson = text ? JSON.parse(text) : {};
-    } catch {}
+  const { ok, body } = await callSignedProxy("auth.getSession", { token }, apiKey, apiSecret);
 
-    if (!res.ok) {
-      logLastfmRequestFailed({
-        url,
-        status: res.status,
-        statusText: res.statusText,
-        body: bodyJson,
-        bodyText: text.slice(0, 500),
-      });
-      return { ok: false, message: lastfmErrorMessageFromBody(bodyJson) ?? "Failed to get session" };
-    }
-
-    const session = (bodyJson as { session?: { key?: string; name?: string } })?.session;
-    const sk = session?.key?.trim();
-    const name = session?.name?.trim();
-    if (!sk || !name) {
-      return { ok: false, message: lastfmErrorMessageFromBody(bodyJson) ?? "Invalid session response" };
-    }
-    return { ok: true, sessionKey: sk, username: name };
-  } catch (error) {
-    logLastfmRequestFailed({ url, error });
-    return { ok: false, message: "Network error completing Last.fm authorization" };
+  if (!ok) {
+    const message = lastfmErrorMessageFromBody(body) ?? (body as any)?.error ?? "Failed to get session";
+    return { ok: false, message };
   }
+
+  const session = (body as { session?: { key?: string; name?: string } })?.session;
+  const sk = session?.key?.trim();
+  const name = session?.name?.trim();
+  if (!sk || !name) {
+    return { ok: false, message: lastfmErrorMessageFromBody(body) ?? "Invalid session response" };
+  }
+  return { ok: true, sessionKey: sk, username: name };
 }

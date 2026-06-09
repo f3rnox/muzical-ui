@@ -508,22 +508,10 @@ export default function MusicPlayer() {
     playbackRateRef.current = playbackRate;
   }, [playbackRate]);
 
-  // Sync refs for Last.fm scrobble helpers (declared early, used by callbacks before some values in source)
+  // lastfmEnabledRef is safe to sync early (its state declared early)
   useLayoutEffect(() => {
     lastfmEnabledRef.current = lastfmScrobblingEnabled;
   }, [lastfmScrobblingEnabled]);
-  useLayoutEffect(() => {
-    currentTrackRef.current = current;
-  }, [current]);
-  useLayoutEffect(() => {
-    durationSecRef.current = durationSec;
-  }, [durationSec]);
-  useLayoutEffect(() => {
-    positionSecRef.current = positionSec;
-  }, [positionSec]);
-  useLayoutEffect(() => {
-    youtubeStreamActiveRef.current = youtubeStreamActive;
-  }, [youtubeStreamActive]);
 
   useLayoutEffect(() => {
     libraryPanelPxRef.current = libraryPanelPx;
@@ -1334,6 +1322,20 @@ export default function MusicPlayer() {
     return undefined;
   }, [playbackYoutubeVideoId, current?.library, current?.id]);
   const youtubeStreamActive = Boolean(playbackYoutubeVideoId);
+
+  // Sync refs for Last.fm scrobble helpers (must be after the values are declared in source)
+  useLayoutEffect(() => {
+    currentTrackRef.current = current;
+  }, [current]);
+  useLayoutEffect(() => {
+    durationSecRef.current = durationSec;
+  }, [durationSec]);
+  useLayoutEffect(() => {
+    positionSecRef.current = positionSec;
+  }, [positionSec]);
+  useLayoutEffect(() => {
+    youtubeStreamActiveRef.current = youtubeStreamActive;
+  }, [youtubeStreamActive]);
 
   // Dynamic accent from current cover art (only when enabled and we have a usable cover URL)
   useEffect(() => {

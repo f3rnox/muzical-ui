@@ -1,6 +1,4 @@
-import { buildLastfmPostBody } from "@/lib/lastfm/sign-lastfm-request";
 import lastfmErrorMessageFromBody from "@/lib/lastfm/lastfm-error-message-from-body";
-import logLastfmRequestFailed from "@/lib/lastfm/log-lastfm-request-failed";
 import readStoredLastfmApiKey from "@/lib/lastfm/read-stored-lastfm-api-key";
 import readStoredLastfmSharedSecret from "@/lib/lastfm/read-stored-lastfm-shared-secret";
 import readStoredLastfmSessionKey from "@/lib/lastfm/read-stored-lastfm-session-key";
@@ -15,7 +13,9 @@ export type ScrobbleParams = {
   mbid?: string;
 };
 
-export type ScrobbleResult = { ok: true } | { ok: false; message: string; ignored?: boolean };
+export type ScrobbleResult =
+  | { ok: true; ignored?: boolean }
+  | { ok: false; message: string; ignored?: boolean };
 
 const ENDPOINT = "https://ws.audioscrobbler.com/2.0/";
 
@@ -40,49 +40,40 @@ export default async function performLastfmScrobble(
   }
 
   // Use array form [0] even for single scrobble (more robust)
-  const postParams: Record<string, string | number | undefined> = {
+  const callParams: Record<string, string | number | undefined> = {
     "artist[0]": artist,
     "track[0]": track,
     "timestamp[0]": ts,
     sk,
   };
-  if (params.album) postParams["album[0]"] = params.album.trim();
+  if (params.album) callParams["album[0]"] = params.album.trim();
   if (params.durationSec && Number.isFinite(params.durationSec) && params.durationSec > 0) {
-    postParams["duration[0]"] = Math.floor(params.durationSec);
+    callParams["duration[0]"] = Math.floor(params.durationSec);
   }
-  if (params.mbid) postParams["mbid[0]"] = params.mbid.trim();
-
-  const body = buildLastfmPostBody("track.scrobble", postParams, apiKey, secret);
-  const url = new URL(ENDPOINT);
+  if (params.mbid) callParams["mbid[0]"] = params.mbid.trim();
 
   try {
-    const res = await fetch(url, {
+    const res = await fetch("/api/lastfm/signed", {
       method: "POST",
-      body,
-      headers: {
-        "User-Agent": "Muzical/1.0 (https://github.com/f3rnox/muzical-ui)",
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        method: "track.scrobble",
+        params: callParams,
+        apiKey,
+        apiSecret: secret,
+      }),
     });
-    const text = await res.text();
-    let json: unknown = {};
-    try { json = text ? JSON.parse(text) : {}; } catch {}
+    const json: any = await res.json().catch(() => ({}));
 
     if (!res.ok) {
-      logLastfmRequestFailed({ url, status: res.status, statusText: res.statusText, body: json, bodyText: text.slice(0, 400) });
-      return { ok: false, message: lastfmErrorMessageFromBody(json) ?? "Scrobble failed" };
+      return { ok: false, message: lastfmErrorMessageFromBody(json) ?? json?.error ?? "Scrobble failed" };
     }
 
-    // Response shape: { scrobbles: { scrobble: { ignoredMessage: { code: "0" or other, ... } } } }
-    const scrobbles = (json as { scrobbles?: { scrobble?: { ignoredMessage?: { code?: string | number } } } })?.scrobbles;
+    const scrobbles = json?.scrobbles;
     const ignoredCode = scrobbles?.scrobble?.ignoredMessage?.code;
     const ignored = ignoredCode != null && String(ignoredCode) !== "0";
-    if (ignored) {
-      return { ok: true, ignored: true };
-    }
-    return { ok: true };
+    return { ok: true, ignored };
   } catch (error) {
-    logLastfmRequestFailed({ url, error });
     return { ok: false, message: "Network error submitting scrobble" };
   }
 }
