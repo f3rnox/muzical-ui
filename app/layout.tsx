@@ -1,4 +1,4 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import Script from 'next/script'
 import AppShell from '@/components/AppShell'
@@ -22,7 +22,31 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: 'Muzical',
-  description: 'Local music player',
+  description: 'Local music player — browse, queue and play your library completely offline.',
+  applicationName: 'Muzical',
+  manifest: '/manifest.webmanifest',
+  icons: {
+    icon: [
+      { url: '/icons/icon-192.jpg', sizes: '192x192', type: 'image/jpeg' },
+      { url: '/icons/icon-512.jpg', sizes: '512x512', type: 'image/jpeg' },
+      { url: '/favicon.ico', sizes: '32x32' },
+    ],
+    shortcut: '/favicon.ico',
+    apple: [
+      { url: '/icons/icon-192.jpg', sizes: '192x192', type: 'image/jpeg' },
+    ],
+  },
+  appleWebApp: {
+    capable: true,
+    title: 'Muzical',
+    statusBarStyle: 'black-translucent',
+  },
+}
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  themeColor: '#111111',
 }
 
 export default function RootLayout({

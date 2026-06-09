@@ -32,6 +32,7 @@ import type { Track } from "@/types/track";
 import { formatDuration } from "@/lib/format-duration";
 import { getCoverBytesForTrack } from "@/lib/library/cover-bytes-cache";
 import ThemeToggle from "@/components/ThemeToggle";
+import PwaInstallButton from "@/components/PwaInstallButton";
 import AlbumCoverThumb from "@/components/AlbumCoverThumb";
 import FavoriteStarButton from "@/components/FavoriteStarButton";
 import { albumCompositeKey } from "@/lib/library/favorite-keys";
@@ -48,6 +49,9 @@ import {
   subscribeDynamicAccentEnabled,
   writeDynamicAccentEnabled,
 } from "@/lib/accent/dynamic-accent-storage";
+import readStoredLastfmScrobblingEnabled, {
+  subscribeLastfmScrobblingEnabled,
+} from "@/lib/lastfm/read-stored-lastfm-scrobbling-enabled";
 import RecentBrowseSearchChip from "@/components/RecentBrowseSearchChip";
 import YouTubeStreamNotification from "@/components/YouTubeStreamNotification";
 
@@ -424,6 +428,7 @@ export default function MusicPlayer() {
   const [showLyrics, setShowLyrics] = useState(false);
   const [showEqualizer, setShowEqualizer] = useState(false);
   const [dynamicAccentEnabled, setDynamicAccentEnabled] = useState<boolean>(true);
+  const [lastfmScrobblingEnabled, setLastfmScrobblingEnabled] = useState(false);
   const [isPanelResizing, setIsPanelResizing] = useState(false);
   const [showKeyboardShortcutsHelp, setShowKeyboardShortcutsHelp] =
     useState(false);
@@ -438,6 +443,17 @@ export default function MusicPlayer() {
   const activeQueueIdRef = useRef<string | null>(null);
   const lastPlaybackReportMsRef = useRef(0);
   const lastPlaybackStartQueueIdRef = useRef<string | null>(null);
+  const lastfmPlayRef = useRef<{
+    queueId: string | null;
+    startTsSec: number;
+    nowPlayingSent: boolean;
+    scrobbled: boolean;
+  }>({ queueId: null, startTsSec: 0, nowPlayingSent: false, scrobbled: false });
+  const lastfmEnabledRef = useRef(false);
+  const currentTrackRef = useRef<Track | undefined>(undefined);
+  const durationSecRef = useRef(0);
+  const positionSecRef = useRef(0);
+  const youtubeStreamActiveRef = useRef(false);
   const progressTrackIdRef = useRef<string | null>(null);
   const progressPositionSecRef = useRef(0);
   const pendingListenTrackIdRef = useRef<string | null>(null);
@@ -492,6 +508,23 @@ export default function MusicPlayer() {
     playbackRateRef.current = playbackRate;
   }, [playbackRate]);
 
+  // Sync refs for Last.fm scrobble helpers (declared early, used by callbacks before some values in source)
+  useLayoutEffect(() => {
+    lastfmEnabledRef.current = lastfmScrobblingEnabled;
+  }, [lastfmScrobblingEnabled]);
+  useLayoutEffect(() => {
+    currentTrackRef.current = current;
+  }, [current]);
+  useLayoutEffect(() => {
+    durationSecRef.current = durationSec;
+  }, [durationSec]);
+  useLayoutEffect(() => {
+    positionSecRef.current = positionSec;
+  }, [positionSec]);
+  useLayoutEffect(() => {
+    youtubeStreamActiveRef.current = youtubeStreamActive;
+  }, [youtubeStreamActive]);
+
   useLayoutEffect(() => {
     libraryPanelPxRef.current = libraryPanelPx;
     queuePanelPxRef.current = queuePanelPx;
@@ -523,6 +556,28 @@ export default function MusicPlayer() {
       cancelAnimationFrame(id);
       unsub();
       window.removeEventListener("muzical:dynamic-accent-changed", onCustom as EventListener);
+    };
+  }, []);
+
+  // Last.fm scrobbling enabled (live updates from settings)
+  useEffect(() => {
+    const id = requestAnimationFrame(() => {
+      setLastfmScrobblingEnabled(readStoredLastfmScrobblingEnabled());
+    });
+    const unsub = subscribeLastfmScrobblingEnabled((next) => {
+      setLastfmScrobblingEnabled(next);
+    });
+    const onCustom = (e: Event) => {
+      const detail = (e as CustomEvent<{ enabled?: boolean }>).detail;
+      if (typeof detail?.enabled === "boolean") {
+        setLastfmScrobblingEnabled(detail.enabled);
+      }
+    };
+    window.addEventListener("muzical:lastfm-scrobbling-changed", onCustom as EventListener);
+    return () => {
+      cancelAnimationFrame(id);
+      unsub();
+      window.removeEventListener("muzical:lastfm-scrobbling-changed", onCustom as EventListener);
     };
   }, []);
 
@@ -606,7 +661,35 @@ export default function MusicPlayer() {
     if (lastPlaybackStartQueueIdRef.current === activeQueueId) return;
     lastPlaybackStartQueueIdRef.current = activeQueueId;
     recordTrackPlaybackStarted(id);
-  }, [activeQueueId, current?.id, isPlaying, recordTrackPlaybackStarted]);
+
+    // Last.fm: new play session + now playing
+    const startTs = Math.floor(Date.now() / 1000);
+    lastfmPlayRef.current = {
+      queueId: activeQueueId,
+      startTsSec: startTs,
+      nowPlayingSent: false,
+      scrobbled: false,
+    };
+    if (lastfmScrobblingEnabled && current) {
+      const artist = current.artist?.trim();
+      const title = current.title?.trim();
+      if (artist && title) {
+        void import("@/lib/lastfm/perform-lastfm-update-now-playing").then(
+          ({ default: perform }) => {
+            perform({
+              artist,
+              track: title,
+              album: current.album?.trim() || undefined,
+              durationSec: current.durationSec > 0 ? current.durationSec : undefined,
+            }).catch(() => {
+              /* silent */
+            });
+          },
+        );
+      }
+    }
+    lastfmPlayRef.current.nowPlayingSent = true;
+  }, [activeQueueId, current?.id, isPlaying, recordTrackPlaybackStarted, lastfmScrobblingEnabled, current]);
 
   const recentlyPlayedTracks = useMemo(() => {
     if (recentlyPlayedTrackIds.length === 0) return [];
@@ -816,6 +899,62 @@ export default function MusicPlayer() {
     [flushListeningProgress],
   );
 
+  // --- Last.fm scrobbling helpers (use refs to avoid source-order/TDZ issues with mid-file values) ---
+  const computeListenedSecForScrobble = useCallback((): number => {
+    if (youtubeStreamActiveRef.current && hiddenYoutubeRef.current) {
+      const t = hiddenYoutubeRef.current.getCurrentTime?.() ?? 0;
+      return Number.isFinite(t) && (t as number) >= 0 ? (t as number) : 0;
+    }
+    const el = audioRef.current;
+    if (el && Number.isFinite(el.currentTime) && el.currentTime >= 0) {
+      return el.currentTime;
+    }
+    return Math.max(0, positionSecRef.current);
+  }, []);
+
+  const qualifiesForScrobble = useCallback((listened: number, dur: number): boolean => {
+    if (!Number.isFinite(listened) || listened < 30) return false;
+    if (!Number.isFinite(dur) || dur <= 0) {
+      // No known duration: require a solid listen (4 minutes)
+      return listened >= 240;
+    }
+    const half = dur / 2;
+    const thresh = Math.min(half, 240);
+    return listened >= Math.max(30, thresh);
+  }, []);
+
+  const tryLastfmScrobble = useCallback(() => {
+    if (!lastfmEnabledRef.current) return;
+    const ref = lastfmPlayRef.current;
+    if (!ref.queueId || ref.scrobbled) return;
+    const track = currentTrackRef.current;
+    if (!track) return;
+    const artist = track.artist?.trim();
+    const title = track.title?.trim();
+    if (!artist || !title) return;
+    const listened = computeListenedSecForScrobble();
+    const dur = (durationSecRef.current > 0 ? durationSecRef.current : (track.durationSec ?? 0));
+    if (!qualifiesForScrobble(listened, dur)) return;
+
+    const timestamp = ref.startTsSec > 0
+      ? ref.startTsSec
+      : Math.floor(Date.now() / 1000) - Math.floor(listened || 0);
+
+    ref.scrobbled = true;
+
+    void import("@/lib/lastfm/perform-lastfm-scrobble").then(({ default: perform }) => {
+      perform({
+        artist,
+        track: title,
+        timestamp,
+        album: track.album?.trim() || undefined,
+        durationSec: dur > 0 ? dur : undefined,
+      }).catch(() => {
+        /* silent; scrobble is best-effort */
+      });
+    });
+  }, [computeListenedSecForScrobble, qualifiesForScrobble]);
+
   useEffect(() => {
     progressTrackIdRef.current = current?.id ?? null;
     progressPositionSecRef.current = 0;
@@ -837,6 +976,7 @@ export default function MusicPlayer() {
 
   const markCurrentSkipped = useCallback((): void => {
     if (!isPlayingRef.current) return;
+    tryLastfmScrobble();
     const id = current?.id;
     if (!id) return;
     flushListeningProgress();
@@ -852,6 +992,7 @@ export default function MusicPlayer() {
     flushListeningProgress,
     positionSec,
     recordTrackSkipped,
+    tryLastfmScrobble,
   ]);
 
   const selectIndex = useCallback(
@@ -869,6 +1010,7 @@ export default function MusicPlayer() {
 
   const goNext = useCallback((): void => {
     if (queue.length === 0) return;
+    tryLastfmScrobble();
     const idx = activeIndex >= 0 ? activeIndex : 0;
 
     if (shuffle && queue.length > 1) {
@@ -899,10 +1041,11 @@ export default function MusicPlayer() {
       return;
     }
     setIsPlaying(false);
-  }, [activeIndex, queue, repeatMode, shuffle]);
+  }, [activeIndex, queue, repeatMode, shuffle, tryLastfmScrobble]);
 
   const goPrev = useCallback((): void => {
     if (queue.length === 0) return;
+    tryLastfmScrobble();
     const idx = activeIndex >= 0 ? activeIndex : 0;
 
     if (shuffle && shuffleHistoryRef.current.length > 0) {
@@ -929,7 +1072,7 @@ export default function MusicPlayer() {
       setLoadError(null);
       setIsPlaying(true);
     }
-  }, [activeIndex, queue, repeatMode, shuffle]);
+  }, [activeIndex, queue, repeatMode, shuffle, tryLastfmScrobble]);
 
   const cycleRepeatMode = useCallback((): void => {
     const next: RepeatMode =
@@ -1225,6 +1368,7 @@ export default function MusicPlayer() {
 
   const handleTrackEnded = useCallback((): void => {
     flushListeningProgress();
+    tryLastfmScrobble();
     if (current?.id) {
       recordTrackPlaybackCompleted(current.id);
     }
@@ -1261,6 +1405,7 @@ export default function MusicPlayer() {
     recordTrackPlaybackCompleted,
     recordTrackPlaybackStarted,
     playAudioElement,
+    tryLastfmScrobble,
   ]);
 
   useEffect(() => {
@@ -1803,6 +1948,7 @@ export default function MusicPlayer() {
           >
             <IconHelp className="h-4 w-4 sm:h-[18px] sm:w-[18px]" />
           </button>
+          <PwaInstallButton />
           <ThemeToggle />
         </div>
       </header>

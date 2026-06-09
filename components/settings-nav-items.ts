@@ -26,7 +26,7 @@ export const SETTINGS_NAV_ITEMS: readonly SettingsNavItem[] = [
   {
     href: "/settings/lastfm",
     label: "Last.fm",
-    description: "API key for related song discovery via track.getSimilar.",
+    description: "API key, shared secret, and optional scrobbling (now playing + play history).",
   },
   {
     href: "/settings/playback",
