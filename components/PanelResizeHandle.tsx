@@ -7,6 +7,8 @@ export type PanelResizeHandleProps = {
   onSessionStart: () => void
   onSessionMove: (deltaXFromStart: number) => void
   onSessionEnd: () => void
+  /** Optional handler for double-click to snap/reset panel sizes smoothly. */
+  onDoubleClick?: () => void
 }
 
 /**
@@ -50,6 +52,7 @@ export default function PanelResizeHandle(props: PanelResizeHandleProps) {
       aria-label={ariaLabel}
       tabIndex={0}
       onPointerDown={onPointerDown}
+      onDoubleClick={props.onDoubleClick}
       className="group relative z-10 flex w-0 shrink-0 cursor-col-resize justify-center outline-none max-lg:hidden"
     >
       <div

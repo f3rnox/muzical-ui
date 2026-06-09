@@ -39,6 +39,15 @@ import { groupTracksByArtist } from "@/lib/musicbrainz/group-tracks-by-artist";
 
 import PanelResizeHandle from "@/components/PanelResizeHandle";
 import QueueLoadingSpinner from "@/components/QueueLoadingSpinner";
+import {
+  applyDynamicAccentFromCover,
+  applyDynamicAccentVars,
+} from "@/lib/accent/extract-cover-color";
+import {
+  readDynamicAccentEnabled,
+  subscribeDynamicAccentEnabled,
+  writeDynamicAccentEnabled,
+} from "@/lib/accent/dynamic-accent-storage";
 import RecentBrowseSearchChip from "@/components/RecentBrowseSearchChip";
 import YouTubeStreamNotification from "@/components/YouTubeStreamNotification";
 
@@ -414,6 +423,8 @@ export default function MusicPlayer() {
   const [queuePanelPx, setQueuePanelPx] = useState(300);
   const [showLyrics, setShowLyrics] = useState(false);
   const [showEqualizer, setShowEqualizer] = useState(false);
+  const [dynamicAccentEnabled, setDynamicAccentEnabled] = useState<boolean>(true);
+  const [isPanelResizing, setIsPanelResizing] = useState(false);
   const [showKeyboardShortcutsHelp, setShowKeyboardShortcutsHelp] =
     useState(false);
   const [browserPlayerExpanded, setBrowserPlayerExpanded] = useState(false);
@@ -442,6 +453,12 @@ export default function MusicPlayer() {
     | { kind: "queue-player"; startQ: number }
     | null
   >(null);
+
+  // Width transition is smooth for snaps/double-clicks and lyrics toggles,
+  // but disabled during active drag to keep resize feel instant.
+  const panelWidthTransitionClass = isPanelResizing
+    ? "transition-none"
+    : "transition-[width] duration-200 ease-out";
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const objectUrlRef = useRef<string | null>(null);
@@ -485,6 +502,28 @@ export default function MusicPlayer() {
       setLibraryPanelPx(readStoredPanelPx(STORAGE_LIBRARY_PANEL_PX, 440));
       setQueuePanelPx(readStoredPanelPx(STORAGE_QUEUE_PANEL_PX, 300));
     });
+  }, []);
+
+  // Dynamic accent setting: init + live subscribe so toggling in settings applies immediately
+  useEffect(() => {
+    const id = requestAnimationFrame(() => {
+      setDynamicAccentEnabled(readDynamicAccentEnabled());
+    });
+    const unsub = subscribeDynamicAccentEnabled((next) => {
+      setDynamicAccentEnabled(next);
+    });
+    const onCustom = (e: Event) => {
+      const detail = (e as CustomEvent<{ enabled?: boolean }>).detail;
+      if (detail && typeof detail.enabled === "boolean") {
+        setDynamicAccentEnabled(detail.enabled);
+      }
+    };
+    window.addEventListener("muzical:dynamic-accent-changed", onCustom as EventListener);
+    return () => {
+      cancelAnimationFrame(id);
+      unsub();
+      window.removeEventListener("muzical:dynamic-accent-changed", onCustom as EventListener);
+    };
   }, []);
 
   useEffect(() => {
@@ -939,6 +978,7 @@ export default function MusicPlayer() {
   }, []);
 
   const onLibraryQueueResizeStart = useCallback((): void => {
+    setIsPanelResizing(true);
     panelResizeSessionRef.current = {
       kind: "library-queue",
       startLib: libraryPanelPxRef.current,
@@ -956,6 +996,7 @@ export default function MusicPlayer() {
   }, []);
 
   const onQueuePlayerResizeStart = useCallback((): void => {
+    setIsPanelResizing(true);
     panelResizeSessionRef.current = {
       kind: "queue-player",
       startQ: queuePanelPxRef.current,
@@ -976,8 +1017,43 @@ export default function MusicPlayer() {
 
   const onPanelResizeEnd = useCallback((): void => {
     panelResizeSessionRef.current = null;
+    setIsPanelResizing(false);
     persistPanelWidths();
   }, [persistPanelWidths]);
+
+  // Double-click snaps for fluid resize: animates via width transition on panels
+  const snapLibraryQueueDefaults = useCallback((): void => {
+    const rowW = mainRowRef.current?.getBoundingClientRect().width ?? 0;
+    const next = clampLibraryQueueWidths(rowW, 440, 300);
+    setLibraryPanelPx(next.libraryPx);
+    setQueuePanelPx(next.queuePx);
+    // persist after state settles
+    queueMicrotask(() => {
+      try {
+        window.localStorage.setItem(STORAGE_LIBRARY_PANEL_PX, String(next.libraryPx));
+        window.localStorage.setItem(STORAGE_QUEUE_PANEL_PX, String(next.queuePx));
+      } catch {
+        /* ignore */
+      }
+    });
+  }, []);
+
+  const snapQueueDefault = useCallback((): void => {
+    const rowW = mainRowRef.current?.getBoundingClientRect().width ?? 0;
+    if (rowW <= 0) {
+      setQueuePanelPx(300);
+      return;
+    }
+    const nextQ = clampQueuePanelWidth(rowW, libraryPanelPxRef.current, 300);
+    setQueuePanelPx(nextQ);
+    queueMicrotask(() => {
+      try {
+        window.localStorage.setItem(STORAGE_QUEUE_PANEL_PX, String(nextQ));
+      } catch {
+        /* ignore */
+      }
+    });
+  }, []);
 
   useEffect(() => {
     if (!layoutLg) return undefined;
@@ -1115,6 +1191,34 @@ export default function MusicPlayer() {
     return undefined;
   }, [playbackYoutubeVideoId, current?.library, current?.id]);
   const youtubeStreamActive = Boolean(playbackYoutubeVideoId);
+
+  // Dynamic accent from current cover art (only when enabled and we have a usable cover URL)
+  useEffect(() => {
+    let cancelled = false;
+    const enabled = dynamicAccentEnabled;
+
+    if (!enabled || !coverArtUrl) {
+      applyDynamicAccentVars(null);
+      return () => {
+        if (!cancelled) applyDynamicAccentVars(null);
+      };
+    }
+
+    // Kick off extraction + apply (async, fire-and-forget safe)
+    void (async () => {
+      try {
+        await applyDynamicAccentFromCover(coverArtUrl);
+      } catch {
+        // ignore; applier already cleared on failure paths
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      // When cover changes or feature flips, clear so palette rules win again
+      applyDynamicAccentVars(null);
+    };
+  }, [coverArtUrl, dynamicAccentEnabled]);
   const needsYoutubeResolve = Boolean(
     current?.youtubeQuery?.trim() && !playbackYoutubeVideoId,
   );
@@ -1374,6 +1478,8 @@ export default function MusicPlayer() {
         URL.revokeObjectURL(coverObjectUrlRef.current);
         coverObjectUrlRef.current = null;
       }
+      // Ensure we don't leave custom accent vars on the document when unmounting
+      applyDynamicAccentVars(null);
     };
   }, []);
 
@@ -1760,7 +1866,7 @@ export default function MusicPlayer() {
           // Wide desktop (>=1024px): classic 3-column resizable layout with library | queue | now-playing
           <>
             <div
-              className="flex min-h-0 min-w-0 flex-col overflow-hidden max-lg:flex-2 max-lg:w-full lg:h-full lg:min-w-0 lg:shrink-0"
+              className={`flex min-h-0 min-w-0 flex-col overflow-hidden max-lg:flex-2 max-lg:w-full lg:h-full lg:min-w-0 lg:shrink-0 ${panelWidthTransitionClass}`}
               style={
                 layoutLg ? { width: libraryPanelPx, flex: "0 0 auto" } : undefined
               }
@@ -1772,40 +1878,48 @@ export default function MusicPlayer() {
               onSessionStart={onLibraryQueueResizeStart}
               onSessionMove={onLibraryQueueResizeMove}
               onSessionEnd={onPanelResizeEnd}
+              onDoubleClick={snapLibraryQueueDefaults}
             />
         <section
-          className="flex min-h-0 min-w-0 flex-col overflow-hidden border-b border-zinc-200 bg-white dark:border-zinc-800/80 dark:bg-zinc-950/50 max-lg:flex-1 max-lg:w-full lg:h-full lg:shrink-0 lg:border-b-0 lg:border-r lg:border-zinc-200 lg:dark:border-zinc-800"
+          className={`flex min-h-0 min-w-0 flex-col overflow-hidden border-b border-zinc-200 bg-white dark:border-zinc-800/80 dark:bg-zinc-950/50 max-lg:flex-1 max-lg:w-full lg:h-full lg:shrink-0 lg:border-b-0 lg:border-r lg:border-zinc-200 lg:dark:border-zinc-800 ${panelWidthTransitionClass}`}
           style={
             layoutLg ? { width: queuePanelPx, flex: "0 0 auto" } : undefined
           }
         >
-          {showLyrics ? (
-            <LyricsPanel track={current} onClose={() => setShowLyrics(false)} />
-          ) : !isQueueReady ? (
-            <QueueLoadingSpinner />
-          ) : (
-            <>
-              <div className="flex h-11 shrink-0 items-center justify-between gap-2 border-b border-zinc-200 bg-white/80 px-3 dark:border-zinc-800 dark:bg-zinc-950/80">
-                <h2 className="text-xs font-medium uppercase leading-none tracking-wider text-zinc-500">
-                  Queue
-                </h2>
-                {queue.length > 0 ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      markCurrentSkipped();
-                      clearQueue();
-                      setActiveQueueId(null);
-                      setIsPlaying(false);
-                      setPositionSec(0);
-                    }}
-                    className="text-xs font-medium text-zinc-500 underline-offset-2 hover:text-zinc-800 hover:underline dark:hover:text-zinc-300"
-                  >
-                    Clear
-                  </button>
-                ) : null}
-              </div>
-              <div className="min-h-0 flex-1 overflow-auto pb-2">
+          {/* Fluid content switch: cross-fade + subtle slide when toggling Queue <-> Lyrics */}
+          <div className="relative flex h-full min-h-0 flex-col">
+            {/* Queue view (list or loading) */}
+            <div
+              className={`flex min-h-0 flex-col transition-all duration-200 ease-out ${
+                showLyrics ? "pointer-events-none opacity-0 translate-x-1" : "opacity-100 translate-x-0"
+              }`}
+              aria-hidden={showLyrics}
+            >
+              {!isQueueReady ? (
+                <QueueLoadingSpinner />
+              ) : (
+                <>
+                  <div className="flex h-11 shrink-0 items-center justify-between gap-2 border-b border-zinc-200 bg-white/80 px-3 dark:border-zinc-800 dark:bg-zinc-950/80">
+                    <h2 className="text-xs font-medium uppercase leading-none tracking-wider text-zinc-500">
+                      Queue
+                    </h2>
+                    {queue.length > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          markCurrentSkipped();
+                          clearQueue();
+                          setActiveQueueId(null);
+                          setIsPlaying(false);
+                          setPositionSec(0);
+                        }}
+                        className="text-xs font-medium text-zinc-500 underline-offset-2 hover:text-zinc-800 hover:underline dark:hover:text-zinc-300"
+                      >
+                        Clear
+                      </button>
+                    ) : null}
+                  </div>
+                  <div className="min-h-0 flex-1 overflow-auto pb-2">
                 {queue.length === 0 ? (
                   <div className="px-4 py-6">
                     <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
@@ -2192,12 +2306,25 @@ export default function MusicPlayer() {
               </div>
             </>
           )}
+            </div>
+
+            {/* Lyrics layer (slides/fades in over the queue area) */}
+            <div
+              className={`absolute inset-0 z-10 transition-all duration-200 ease-out ${
+                showLyrics ? "opacity-100 translate-x-0" : "pointer-events-none opacity-0 -translate-x-1"
+              }`}
+              aria-hidden={!showLyrics}
+            >
+              <LyricsPanel track={current} onClose={() => setShowLyrics(false)} />
+            </div>
+          </div>
         </section>
         <PanelResizeHandle
           aria-label="Resize queue and player panels"
           onSessionStart={onQueuePlayerResizeStart}
           onSessionMove={onQueuePlayerResizeMove}
           onSessionEnd={onPanelResizeEnd}
+          onDoubleClick={snapQueueDefault}
         />
         <aside className="flex min-h-0 min-w-0 flex-1 flex-col justify-between gap-3 overflow-hidden bg-zinc-50 p-4 dark:bg-transparent lg:h-full lg:min-w-0 lg:flex-1">
           <div className="mx-auto flex w-full max-w-[280px] shrink-0 flex-col gap-4">
