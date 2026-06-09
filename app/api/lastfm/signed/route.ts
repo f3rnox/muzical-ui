@@ -12,7 +12,6 @@ function buildSignedParams(
   params: Record<string, string | number | undefined>,
   apiKey: string,
   apiSecret: string,
-  includeFormat = true,
 ): Record<string, string> {
   const out: Record<string, string> = {};
   for (const [k, v] of Object.entries(params)) {
@@ -21,10 +20,12 @@ function buildSignedParams(
   }
   out.method = method;
   out.api_key = apiKey;
-  if (includeFormat && !out.format) {
-    out.format = "json";
-  }
 
+  // IMPORTANT: We deliberately do NOT include "format" in the signature base.
+  // We still send format=json for non-auth calls (to get JSON responses),
+  // but Last.fm's signature validation appears to ignore "format" (or expects
+  // the sig to be computed without it). Including it was causing error 13
+  // "Invalid method signature supplied" for updateNowPlaying / scrobble.
   const keys = Object.keys(out).sort();
   let sigBase = "";
   for (const k of keys) {
@@ -66,17 +67,23 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     const isAuthMethod = method === "auth.getToken" || method === "auth.getSession";
 
-    // For auth methods, do NOT include "format" in the signature or request body.
-    // This avoids any ambiguity with how Last.fm validates the signature for these calls.
-    // We will parse the default XML response with regex.
-    const signed = buildSignedParams(method, params, apiKey, apiSecret, /*includeFormat*/ !isAuthMethod);
+    if (method === "track.scrobble" || method === "track.updateNowPlaying") {
+      console.log(`[Last.fm proxy] ${method} request received`);
+    }
+
+    // Signature is built WITHOUT "format" (see buildSignedParams).
+    // We still send format=json below for non-auth calls so we get JSON back from Last.fm.
+    const signed = buildSignedParams(method, params, apiKey, apiSecret);
 
     const form = new URLSearchParams();
     for (const [k, v] of Object.entries(signed)) {
       form.set(k, v);
     }
-    // Only add format for non-auth calls (after signing for those).
-    if (!isAuthMethod && !form.has("format")) {
+
+    // For non-auth calls (scrobble, now-playing, etc.) we want a JSON response.
+    // Sending format after signing avoids polluting the signature string (which was
+    // causing "Invalid method signature supplied" / error 13).
+    if (!isAuthMethod) {
       form.set("format", "json");
     }
 

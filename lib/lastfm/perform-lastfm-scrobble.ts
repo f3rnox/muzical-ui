@@ -30,14 +30,20 @@ export default async function performLastfmScrobble(
   const secret = readStoredLastfmSharedSecret();
   const sk = readStoredLastfmSessionKey();
 
-  if (!apiKey || !secret || !sk) return { ok: false, message: "Last.fm not fully configured for scrobbling" };
+  if (!apiKey || !secret || !sk) {
+    console.log("[Last.fm] Scrobble skipped: missing credentials (apiKey/secret/sk)");
+    return { ok: false, message: "Last.fm not fully configured for scrobbling" };
+  }
 
   const artist = params.artist?.trim();
   const track = params.track?.trim();
   const ts = Math.floor(params.timestamp);
   if (!artist || !track || !Number.isFinite(ts) || ts <= 0) {
+    console.log("[Last.fm] Scrobble skipped: invalid artist/track/timestamp");
     return { ok: false, message: "artist, track and valid timestamp required" };
   }
+
+  console.log(`[Last.fm] Performing scrobble: "${artist} - ${track}" (ts=${ts})`);
 
   // Use array form [0] even for single scrobble (more robust)
   const callParams: Record<string, string | number | undefined> = {
@@ -72,8 +78,10 @@ export default async function performLastfmScrobble(
     const scrobbles = json?.scrobbles;
     const ignoredCode = scrobbles?.scrobble?.ignoredMessage?.code;
     const ignored = ignoredCode != null && String(ignoredCode) !== "0";
+    console.log(`[Last.fm] Scrobble response for "${artist} - ${track}": ok=true, ignored=${ignored}`);
     return { ok: true, ignored };
   } catch (error) {
+    console.log(`[Last.fm] Scrobble network error for "${artist} - ${track}":`, error);
     return { ok: false, message: "Network error submitting scrobble" };
   }
 }

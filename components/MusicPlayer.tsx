@@ -54,6 +54,7 @@ import readStoredLastfmScrobblingEnabled, {
 } from "@/lib/lastfm/read-stored-lastfm-scrobbling-enabled";
 import RecentBrowseSearchChip from "@/components/RecentBrowseSearchChip";
 import YouTubeStreamNotification from "@/components/YouTubeStreamNotification";
+import LastfmScrobbleNotification from "@/components/LastfmScrobbleNotification";
 
 import readAppVersion from "@/lib/read-app-version";
 import resolveYoutubeVideoId from "@/lib/youtube/resolve-youtube-video-id";
@@ -421,6 +422,7 @@ export default function MusicPlayer() {
   const [sessionVolume, setSessionVolume] = useState<number | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [streamResolving, setStreamResolving] = useState(false);
+  const [lastScrobbledTrack, setLastScrobbledTrack] = useState<{ artist: string; title: string } | null>(null);
   const [coverArtUrl, setCoverArtUrl] = useState<string | null>(null);
   const [layoutLg, setLayoutLg] = useState(false);
   const [libraryPanelPx, setLibraryPanelPx] = useState(440);
@@ -449,12 +451,58 @@ export default function MusicPlayer() {
     nowPlayingSent: boolean;
     scrobbled: boolean;
   }>({ queueId: null, startTsSec: 0, nowPlayingSent: false, scrobbled: false });
+  const pendingLastfmScrobbleRef = useRef<{
+    artist: string;
+    track: string;
+    timestamp: number;
+    album?: string;
+    durationSec?: number;
+  } | null>(null);
+  const scrobbleNotificationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastfmEnabledRef = useRef(false);
   const currentTrackRef = useRef<Track | undefined>(undefined);
   const durationSecRef = useRef(0);
   const positionSecRef = useRef(0);
   const youtubeStreamActiveRef = useRef(false);
   const progressTrackIdRef = useRef<string | null>(null);
+
+  // Last.fm scrobble submission + notification helpers (hoisted early so they can be
+  // referenced by the "new track begins" effect which appears earlier in source).
+  const showLastfmScrobbleNotification = useCallback((artist: string, title: string) => {
+    if (scrobbleNotificationTimerRef.current) {
+      clearTimeout(scrobbleNotificationTimerRef.current);
+    }
+    setLastScrobbledTrack({ artist, title });
+    scrobbleNotificationTimerRef.current = setTimeout(() => {
+      setLastScrobbledTrack(null);
+      scrobbleNotificationTimerRef.current = null;
+    }, 2600);
+  }, []);
+
+  const submitPendingLastfmScrobble = useCallback(() => {
+    const payload = pendingLastfmScrobbleRef.current;
+    if (!payload) return;
+    pendingLastfmScrobbleRef.current = null;
+
+    console.log(`[Last.fm] Submitting scrobble for "${payload.artist} - ${payload.track}"`);
+
+    void import("@/lib/lastfm/perform-lastfm-scrobble").then(({ default: perform }) => {
+      perform(payload)
+        .then((result) => {
+          if (result && result.ok && !result.ignored) {
+            console.log(`[Last.fm] Scrobble succeeded for "${payload.artist} - ${payload.track}"`);
+            showLastfmScrobbleNotification(payload.artist, payload.track);
+          } else if (result && result.ignored) {
+            console.log(`[Last.fm] Scrobble ignored by Last.fm for "${payload.artist} - ${payload.track}"`);
+          } else {
+            console.log(`[Last.fm] Scrobble failed for "${payload.artist} - ${payload.track}":`, result?.message || result);
+          }
+        })
+        .catch((err) => {
+          console.log(`[Last.fm] Scrobble error for "${payload.artist} - ${payload.track}":`, err);
+        });
+    });
+  }, [showLastfmScrobbleNotification]);
   const progressPositionSecRef = useRef(0);
   const pendingListenTrackIdRef = useRef<string | null>(null);
   const pendingListenSecRef = useRef(0);
@@ -646,6 +694,11 @@ export default function MusicPlayer() {
     if (!activeQueueId) return;
     const id = current?.id ?? "";
     if (!id) return;
+
+    // When a song begins to play, submit any pending scrobble from the track that just finished
+    // (or was skipped). This makes "scrobbling happen when a song begins to play".
+    submitPendingLastfmScrobble();
+
     if (lastPlaybackStartQueueIdRef.current === activeQueueId) return;
     lastPlaybackStartQueueIdRef.current = activeQueueId;
     recordTrackPlaybackStarted(id);
@@ -677,7 +730,7 @@ export default function MusicPlayer() {
       }
     }
     lastfmPlayRef.current.nowPlayingSent = true;
-  }, [activeQueueId, current?.id, isPlaying, recordTrackPlaybackStarted, lastfmScrobblingEnabled, current]);
+  }, [activeQueueId, current?.id, isPlaying, recordTrackPlaybackStarted, lastfmScrobblingEnabled, current, submitPendingLastfmScrobble]);
 
   const recentlyPlayedTracks = useMemo(() => {
     if (recentlyPlayedTrackIds.length === 0) return [];
@@ -930,17 +983,17 @@ export default function MusicPlayer() {
 
     ref.scrobbled = true;
 
-    void import("@/lib/lastfm/perform-lastfm-scrobble").then(({ default: perform }) => {
-      perform({
-        artist,
-        track: title,
-        timestamp,
-        album: track.album?.trim() || undefined,
-        durationSec: dur > 0 ? dur : undefined,
-      }).catch(() => {
-        /* silent; scrobble is best-effort */
-      });
-    });
+    console.log(`[Last.fm] Scrobble staged for "${artist} - ${title}" (listened ~${listened.toFixed(0)}s of ${dur || '?'}s)`);
+
+    // Stage the scrobble. It will be submitted when the *next* song begins to play
+    // (per the requirement that scrobbling happens on song start).
+    pendingLastfmScrobbleRef.current = {
+      artist,
+      track: title,
+      timestamp,
+      album: track.album?.trim() || undefined,
+      durationSec: dur > 0 ? dur : undefined,
+    };
   }, [computeListenedSecForScrobble, qualifiesForScrobble]);
 
   useEffect(() => {
@@ -954,7 +1007,9 @@ export default function MusicPlayer() {
   useEffect(() => {
     if (isPlaying) return;
     flushListeningProgress();
-  }, [flushListeningProgress, isPlaying]);
+    // Flush any qualified but not-yet-submitted scrobble when playback stops.
+    submitPendingLastfmScrobble();
+  }, [flushListeningProgress, isPlaying, submitPendingLastfmScrobble]);
 
   useEffect(() => {
     return () => {
@@ -1625,6 +1680,18 @@ export default function MusicPlayer() {
         URL.revokeObjectURL(coverObjectUrlRef.current);
         coverObjectUrlRef.current = null;
       }
+      if (scrobbleNotificationTimerRef.current) {
+        clearTimeout(scrobbleNotificationTimerRef.current);
+        scrobbleNotificationTimerRef.current = null;
+      }
+      // Best-effort: submit a final pending scrobble on unmount (e.g. closing the app)
+      if (pendingLastfmScrobbleRef.current) {
+        const p = pendingLastfmScrobbleRef.current;
+        pendingLastfmScrobbleRef.current = null;
+        void import("@/lib/lastfm/perform-lastfm-scrobble").then(({ default: perform }) => {
+          perform(p).catch(() => {});
+        });
+      }
       // Ensure we don't leave custom accent vars on the document when unmounting
       applyDynamicAccentVars(null);
     };
@@ -1887,6 +1954,18 @@ export default function MusicPlayer() {
       <YouTubeStreamNotification
         visible={streamResolving || (needsYoutubeResolve && isPlaying)}
         trackTitle={current?.title}
+      />
+      <LastfmScrobbleNotification
+        visible={!!lastScrobbledTrack}
+        artist={lastScrobbledTrack?.artist}
+        title={lastScrobbledTrack?.title}
+        onDismiss={() => {
+          if (scrobbleNotificationTimerRef.current) {
+            clearTimeout(scrobbleNotificationTimerRef.current);
+            scrobbleNotificationTimerRef.current = null;
+          }
+          setLastScrobbledTrack(null);
+        }}
       />
       <audio ref={audioRef} className="hidden" preload="metadata" />
       <HiddenYoutubePlayer

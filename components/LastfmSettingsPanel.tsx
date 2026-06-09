@@ -74,7 +74,7 @@ export default function LastfmSettingsPanel() {
     const key = apiKey.trim()
     const secret = sharedSecret.trim()
     if (!key || !secret) {
-      setAuthError('Enter both API key and shared secret first, then save credentials.')
+      setAuthError('Enter both API key and shared secret (connecting will save them for scrobbling).')
       return
     }
     setAuthBusy(true)
@@ -110,13 +110,20 @@ export default function LastfmSettingsPanel() {
       setAuthError(res.message)
       return
     }
+    // Persist the credentials that were successfully used for this connect,
+    // so that scrobbling (which requires apiKey + secret + sk) will work later.
+    writeStoredLastfmApiKey(key)
+    writeStoredLastfmSharedSecret(secret)
     writeStoredLastfmSessionKey(res.sessionKey)
     writeStoredLastfmUsername(res.username)
+    // Auto-enable scrobbling now that we have a connected account + creds
+    writeStoredLastfmScrobblingEnabled(true)
+    setScrobblingEnabled(true)
     setConnectedUsername(res.username)
     setHasSession(true)
     setAuthStep('idle')
     setPendingToken('')
-    notifySettingsSaved(`Connected to Last.fm as ${res.username}`)
+    notifySettingsSaved(`Connected to Last.fm as ${res.username} (scrobbling enabled)`)
   }, [apiKey, sharedSecret, pendingToken, notifySettingsSaved])
 
   const cancelAuth = useCallback(() => {
