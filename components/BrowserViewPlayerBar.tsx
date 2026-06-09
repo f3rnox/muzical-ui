@@ -528,14 +528,16 @@ export default function BrowserViewPlayerBar({
           </p>
         </button>
 
-        <TransportControls
-          isPlaying={isPlaying}
-          canPlay={canPlay}
-          onTogglePlay={onTogglePlay}
-          onPrev={onPrev}
-          onNext={onNext}
-          size="sm"
-        />
+        {!expanded && (
+          <TransportControls
+            isPlaying={isPlaying}
+            canPlay={canPlay}
+            onTogglePlay={onTogglePlay}
+            onPrev={onPrev}
+            onNext={onNext}
+            size="sm"
+          />
+        )}
 
         <button
           type="button"
@@ -545,7 +547,7 @@ export default function BrowserViewPlayerBar({
           className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-600 transition hover:border-zinc-300 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:border-zinc-600 dark:hover:bg-zinc-800"
         >
           <IconChevronUp
-            className={['h-5 w-5 transition-transform duration-300', expanded ? '' : 'rotate-180'].join(
+            className={['h-5 w-5 transition-transform duration-300', expanded ? 'rotate-180' : ''].join(
               ' ',
             )}
           />
