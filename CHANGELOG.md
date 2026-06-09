@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.23](https://github.com/f3rnox/muzical-ui/compare/v0.1.22...v0.1.23) (2026-06-09)
+
+
+### Features
+
+* add dynamic accent color feature from album art ([72a3923](https://github.com/f3rnox/muzical-ui/commit/72a392350f2f078bb92d3c5637e68f2d8b2cae8f))
+* add library browser view ([db84253](https://github.com/f3rnox/muzical-ui/commit/db84253b36cbf3db82499a68724683c1adce9d9e))
+* finish mobile optimization ([17743d2](https://github.com/f3rnox/muzical-ui/commit/17743d25a33d8a2e469139c02f247afe5c3fbae7))
+* last.fm scrobbling, offline PWA, update deps ([353fe8f](https://github.com/f3rnox/muzical-ui/commit/353fe8ffa04edc5f4411a95c7707d5d23756d197))
+* move library view mode pill buttons into hamburger menu ([534653f](https://github.com/f3rnox/muzical-ui/commit/534653f55980363271808d70fbc9bd1e51b205c6))
+* WIP mobile optimization ([cf7eaea](https://github.com/f3rnox/muzical-ui/commit/cf7eaea71fb5cdcd25395be3e00d692e720102ea))
+
+
+### Bug Fixes
+
+* album art flicker in library song details panel ([87cf0b5](https://github.com/f3rnox/muzical-ui/commit/87cf0b566c59bf4f2ca93567b371857a965f3982))
+* last.fm account connection ([fb5a576](https://github.com/f3rnox/muzical-ui/commit/fb5a57600eb7ffab6b6db830460fa8e14215fa68))
+* last.fm scrobbling ([1bc974a](https://github.com/f3rnox/muzical-ui/commit/1bc974a92471b4d92b0542ce431db5317d71e3ce))
+* library browser bottom-bar icons ([4de0d2c](https://github.com/f3rnox/muzical-ui/commit/4de0d2c9d707a413832afefaad3de9591d083d8a))
+
 ### [0.1.22](https://github.com/f3rnox/muzical-ui/compare/v0.1.21...v0.1.22) (2026-05-29)
 
 
