@@ -20,6 +20,12 @@ export default function AlbumCoverThumb(props: AlbumCoverThumbProps) {
     props
   const { resolveFileForTrack } = useLibrary()
   const [coverUrl, setCoverUrl] = useState<string | null>(null)
+  const [loaded, setLoaded] = useState(false)
+
+  // Reset loaded state whenever the cover source changes (new track or new cover URL)
+  useEffect(() => {
+    setLoaded(false)
+  }, [coverUrl])
 
   useEffect(() => {
     let cancelled = false
@@ -53,8 +59,13 @@ export default function AlbumCoverThumb(props: AlbumCoverThumbProps) {
         if (u) URL.revokeObjectURL(u)
         return
       }
+
       createdUrl = u
-      setCoverUrl(u)
+      setCoverUrl(u) // set immediately — the <img> will be in the DOM and the browser will decode it
+
+      // Optional: warm a preloader (helps some browsers), but we drive the fade from the visible <img>'s onLoad
+      const preloader = new Image()
+      preloader.src = u
     })()
 
     return (): void => {
@@ -73,14 +84,23 @@ export default function AlbumCoverThumb(props: AlbumCoverThumbProps) {
       ].join(' ')}
       aria-hidden
     >
-      {coverUrl ? (
+      {coverUrl && (
         // eslint-disable-next-line @next/next/no-img-element -- blob URL from tags
-        <img src={coverUrl} alt="" className="absolute inset-0 h-full w-full object-cover" decoding="async" />
-      ) : (
-        <span className="flex h-full w-full items-center justify-center text-lg font-semibold tracking-tight text-accent-900/25 dark:text-zinc-600/90">
-          {letter}
-        </span>
+        <img
+          src={coverUrl}
+          alt=""
+          className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-200 ${loaded ? 'opacity-100' : 'opacity-0'}`}
+          decoding="async"
+          onLoad={() => setLoaded(true)}
+        />
       )}
+
+      {/* Letter placeholder is shown while the image is loading (or if no cover) to avoid blank flash/flicker */}
+      <span
+        className={`flex h-full w-full items-center justify-center text-lg font-semibold tracking-tight text-accent-900/25 dark:text-zinc-600/90 transition-opacity duration-200 ${loaded && coverUrl ? 'opacity-0' : 'opacity-100'}`}
+      >
+        {letter}
+      </span>
     </div>
   )
 }

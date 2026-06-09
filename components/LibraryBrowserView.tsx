@@ -47,6 +47,7 @@ export default function LibraryBrowserView() {
   const [selectedSong, setSelectedSong] = useState<Track | null>(null)
 
   const [isNarrow, setIsNarrow] = useState(false)
+
   useEffect(() => {
     if (typeof window === 'undefined') return
     const mq = window.matchMedia('(max-width: 1023px)')
@@ -485,7 +486,7 @@ export default function LibraryBrowserView() {
             isNarrow ? null : (
               <p className="py-4 text-center text-sm text-zinc-500">Select a song</p>
             )
-          ) : (
+          ) : isNarrow && selectedSong ? null : (
             <SongDetailsContent largeCover={false} />
           )}
         </div>
@@ -518,7 +519,7 @@ export default function LibraryBrowserView() {
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto p-4">
-              <SongDetailsContent largeCover />
+              <SongDetailsContent key={selectedSong.id} largeCover />
             </div>
           </div>
         )}
