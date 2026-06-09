@@ -330,6 +330,7 @@ export default function LibraryBrowser() {
     libraryTracks,
     listeningStats,
     addToQueue,
+    playNext,
     compactLists,
     favoriteSongIds,
     favoriteArtistNames,
@@ -338,10 +339,14 @@ export default function LibraryBrowser() {
     isFavoriteAlbum,
     toggleFavoriteArtist,
     toggleFavoriteAlbum,
+    toggleFavoriteTrack,
     removeAlbumFromLibrary,
     removeArtistFromLibrary,
+    removeFromLibrary,
     recordRecentBrowseSearch,
     openAddToPlaylist,
+    patchTrackById,
+    writeLibraryTracksToFiles,
   } = useLibrary()
   const searchParams = useSearchParams()
   const [mode, setMode] = useState<BrowseMode>('artist')
@@ -350,6 +355,7 @@ export default function LibraryBrowser() {
   const [modesMenuOpen, setModesMenuOpen] = useState(false)
   const modesMenuRef = useRef<HTMLDivElement | null>(null)
   const modesMenuId = useId()
+  const searchInputRef = useRef<HTMLInputElement | null>(null)
 
   useSyncBrowseSearchFromUrl(searchParams, setQuery)
 
@@ -383,12 +389,30 @@ export default function LibraryBrowser() {
     }
   }, [modesMenuOpen])
 
+  // Keyboard shortcut: focus library search (dispatched from global handler in MusicPlayer)
+  useEffect(() => {
+    const onFocusSearch = () => {
+      const el = searchInputRef.current
+      if (el) {
+        el.focus()
+        el.select()
+      }
+    }
+    window.addEventListener('muzical:focus-library-search', onFocusSearch as EventListener)
+    return () => window.removeEventListener('muzical:focus-library-search', onFocusSearch as EventListener)
+  }, [])
+
   const [artistPick, setArtistPick] = useState<string | null>(null)
   const [albumPick, setAlbumPick] = useState<string | null>(null)
   const [albumMetadataEditKey, setAlbumMetadataEditKey] = useState<string | null>(null)
   const [artistMetadataEditName, setArtistMetadataEditName] = useState<string | null>(null)
   const [folderRootId, setFolderRootId] = useState<string | null>(null)
   const [folderPath, setFolderPath] = useState('')
+  // Multi-select
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [selectionAnchorId, setSelectionAnchorId] = useState<string | null>(null)
+  // Bulk tag editor for multi-select
+  const [bulkEditTracks, setBulkEditTracks] = useState<Track[] | null>(null)
 
   const filtered = useMemo(() => filterTracksByQuery(libraryTracks, query), [libraryTracks, query])
   const searchActive = query.trim().length > 0
@@ -529,6 +553,100 @@ export default function LibraryBrowser() {
     },
     [addToQueue],
   )
+
+  // --- Multi-select helpers ---
+  const clearSelection = useCallback(() => {
+    setSelectedIds(new Set())
+    setSelectionAnchorId(null)
+  }, [])
+
+  const getTrackById = useCallback((id: string) => libraryTracks.find((t) => t.id === id) ?? null, [libraryTracks])
+
+  const selectedTracks = useMemo(() => {
+    const out: Track[] = []
+    for (const id of selectedIds) {
+      const t = getTrackById(id)
+      if (t) out.push(t)
+    }
+    return out
+  }, [selectedIds, getTrackById])
+
+  const toggleOne = useCallback((id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+    setSelectionAnchorId(id)
+  }, [])
+
+  // Simple stable order for range selection (based on the active filtered set).
+  // Using filtered keeps declaration order safe; specific sub-views still benefit from multi + select-all-visible.
+  const currentViewTrackIds = useMemo(() => filtered.map((t) => t.id), [filtered])
+
+  const toggleSelect = useCallback(
+    (track: Track, event: React.MouseEvent) => {
+      const id = track.id
+      const isShift = event.shiftKey
+      const isCtrl = event.ctrlKey || event.metaKey
+
+      if (isShift && selectionAnchorId && selectionAnchorId !== id) {
+        const list = currentViewTrackIds
+        const a = list.indexOf(selectionAnchorId)
+        const b = list.indexOf(id)
+        if (a !== -1 && b !== -1) {
+          const [lo, hi] = a < b ? [a, b] : [b, a]
+          const rangeIds = list.slice(lo, hi + 1)
+          setSelectedIds((prev) => {
+            const next = new Set(prev)
+            for (const rid of rangeIds) next.add(rid)
+            return next
+          })
+          setSelectionAnchorId(id)
+          return
+        }
+      }
+
+      if (isCtrl) {
+        toggleOne(id)
+        return
+      }
+
+      // Plain (checkbox or direct): toggle single, set anchor
+      toggleOne(id)
+    },
+    [currentViewTrackIds, selectionAnchorId, toggleOne],
+  )
+
+  const selectAllVisible = useCallback(() => {
+    const ids = new Set(currentViewTrackIds)
+    setSelectedIds(ids)
+    if (currentViewTrackIds.length > 0) {
+      setSelectionAnchorId(currentViewTrackIds[0]!)
+    }
+  }, [currentViewTrackIds])
+
+  const hasSelection = selectedIds.size > 0
+
+  // Clear selection when core navigation/query changes to avoid stale selections
+  useEffect(() => {
+    if (selectedIds.size > 0) {
+      // Keep only ids that still exist in library
+      setSelectedIds((prev) => {
+        const valid = new Set<string>()
+        for (const id of prev) {
+          if (getTrackById(id)) valid.add(id)
+        }
+        return valid
+      })
+    }
+  }, [libraryTracks, getTrackById])
+
+  useEffect(() => {
+    // When query or mode/pick changes significantly, clear to avoid confusion
+    clearSelection()
+  }, [query, mode, artistPick, albumPick, folderRootId, folderPath, clearSelection])
 
   const searchResults = useMemo(
     () => computeSearchResults(libraryTracks, roots, query),
@@ -785,6 +903,58 @@ export default function LibraryBrowser() {
     setAlbumMetadataEditKey(albumKey)
   }, [])
 
+  const openBulkTagEditor = useCallback((tracks: Track[]) => {
+    if (tracks.length === 0) return
+    setBulkEditTracks(tracks)
+  }, [])
+
+  const closeBulkTagEditor = useCallback(() => {
+    setBulkEditTracks(null)
+  }, [])
+
+  const applyBulkTags = useCallback(
+    async (fields: { title?: string; artist?: string; album?: string }) => {
+      const targets = bulkEditTracks ?? []
+      if (targets.length === 0) return
+
+      const title = fields.title?.trim() || undefined
+      const artist = fields.artist?.trim() || undefined
+      const album = fields.album?.trim() || undefined
+
+      if (!title && !artist && !album) {
+        closeBulkTagEditor()
+        return
+      }
+
+      // Apply in-memory patches
+      for (const t of targets) {
+        patchTrackById(t.id, (prev) => ({
+          ...prev,
+          title: title ?? prev.title,
+          artist: artist ?? prev.artist,
+          album: album ?? prev.album,
+        }))
+      }
+
+      // Attempt to persist tags to the original files (best effort)
+      const toWrite = targets.map((t) => ({
+        ...t,
+        title: title ?? t.title,
+        artist: artist ?? t.artist,
+        album: album ?? t.album,
+      }))
+      try {
+        await writeLibraryTracksToFiles(toWrite)
+      } catch {
+        // Ignore file write errors (permissions, etc.); in-memory is already updated
+      }
+
+      clearSelection()
+      closeBulkTagEditor()
+    },
+    [bulkEditTracks, patchTrackById, writeLibraryTracksToFiles, clearSelection, closeBulkTagEditor],
+  )
+
   const editingAlbumMeta = useMemo(() => {
     if (!albumMetadataEditKey) return null
     const tracks = libraryAlbumMap.get(albumMetadataEditKey) ?? []
@@ -869,7 +1039,14 @@ export default function LibraryBrowser() {
       <ul className={ulSpaceYClass}>
         {rows.map(({ track, stats }) => (
           <li key={track.id}>
-            <LibrarySongTrackRow track={track} compact={compact} onAdd={onAdd} />
+            <LibrarySongTrackRow
+              track={track}
+              compact={compact}
+              onAdd={onAdd}
+              selected={selectedIds.has(track.id)}
+              showCheckbox={hasSelection}
+              onToggleSelect={toggleSelect}
+            />
             <p className="px-2 pb-2 text-[11px] tabular-nums text-zinc-500 dark:text-zinc-400">
               {listeningSummary(stats)}
             </p>
@@ -962,18 +1139,102 @@ export default function LibraryBrowser() {
             ) : null}
           </div>
           <input
+            ref={searchInputRef}
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Artists, albums, folders, or song titles…"
             className="min-w-0 flex-1 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 shadow-sm outline-none ring-accent-500/0 transition focus:border-accent-400 focus:ring-2 focus:ring-accent-500/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100 dark:focus:border-accent-500/60"
             aria-label="Search library"
+            data-library-search
           />
         </div>
         <RecentBrowseSearchSuggestions source="library" onSelect={setQuery} />
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto px-2 py-2">
+        {hasSelection ? (
+          <div className="sticky top-0 z-10 mb-2 flex flex-wrap items-center gap-2 rounded-lg border border-accent-500/30 bg-white/95 px-2 py-1.5 text-xs shadow-sm backdrop-blur dark:border-accent-500/40 dark:bg-zinc-950/95">
+            <span className="px-1 font-medium text-accent-700 dark:text-accent-300">
+              {selectedIds.size} selected
+            </span>
+            <button
+              type="button"
+              onClick={() => onAddMany(selectedTracks)}
+              className="rounded border border-zinc-200 bg-white px-2 py-0.5 text-[11px] font-medium text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
+            >
+              Add to queue
+            </button>
+            <button
+              type="button"
+              onClick={() => playNext(selectedTracks)}
+              className="rounded border border-zinc-200 bg-white px-2 py-0.5 text-[11px] font-medium text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
+            >
+              Play next
+            </button>
+            <button
+              type="button"
+              onClick={() => openAddToPlaylist(selectedTracks, `${selectedIds.size} tracks`)}
+              className="rounded border border-zinc-200 bg-white px-2 py-0.5 text-[11px] font-medium text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
+            >
+              Add to playlist…
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                // Toggle fav on all: if any not favorited, add the missing; else remove all
+                const favSet = new Set(favoriteSongIds)
+                const allFav = selectedTracks.every((t) => favSet.has(t.id))
+                for (const t of selectedTracks) {
+                  const isFav = favSet.has(t.id)
+                  if (allFav ? isFav : !isFav) {
+                    toggleFavoriteTrack(t)
+                  }
+                }
+              }}
+              className="rounded border border-zinc-200 bg-white px-2 py-0.5 text-[11px] font-medium text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
+            >
+              Toggle favorite
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                // Edit tags for selection - open a bulk dialog (implemented below in file)
+                openBulkTagEditor(selectedTracks)
+              }}
+              className="rounded border border-zinc-200 bg-white px-2 py-0.5 text-[11px] font-medium text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
+            >
+              Edit tags…
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (selectedTracks.length > 0) {
+                  removeFromLibrary(selectedTracks)
+                }
+                clearSelection()
+              }}
+              className="rounded border border-red-200 bg-white px-2 py-0.5 text-[11px] font-medium text-red-600 transition hover:bg-red-50 dark:border-red-900/50 dark:bg-zinc-900 dark:text-red-400"
+            >
+              Remove from library
+            </button>
+            <button
+              type="button"
+              onClick={selectAllVisible}
+              className="ml-auto rounded border border-zinc-200 bg-white px-2 py-0.5 text-[11px] font-medium text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
+            >
+              Select all visible
+            </button>
+            <button
+              type="button"
+              onClick={clearSelection}
+              className="rounded px-2 py-0.5 text-[11px] font-medium text-zinc-500 underline-offset-2 hover:text-zinc-800 hover:underline dark:hover:text-zinc-300"
+            >
+              Clear
+            </button>
+          </div>
+        ) : null}
+
         {libraryTracks.length === 0 ? (
           <p className="px-2 py-6 text-center text-sm text-zinc-500">
             No library tracks yet. Configure folders in settings.
@@ -1150,7 +1411,14 @@ export default function LibraryBrowser() {
                     <ul className={ulSpaceYClass}>
                       {searchResults.songs.map((t) => (
                         <li key={t.id}>
-                          <LibrarySongTrackRow track={t} compact={compact} onAdd={onAdd} />
+                          <LibrarySongTrackRow
+                            track={t}
+                            compact={compact}
+                            onAdd={onAdd}
+                            selected={selectedIds.has(t.id)}
+                            showCheckbox={hasSelection}
+                            onToggleSelect={toggleSelect}
+                          />
                         </li>
                       ))}
                     </ul>
@@ -1289,6 +1557,9 @@ export default function LibraryBrowser() {
                       compact={compact}
                       onAdd={onAdd}
                       showArtist={false}
+                      selected={selectedIds.has(t.id)}
+                      showCheckbox={hasSelection}
+                      onToggleSelect={toggleSelect}
                     />
                   </li>
                 ))}
@@ -1434,7 +1705,14 @@ export default function LibraryBrowser() {
               <ul className={ulSpaceYClass}>
                 {(albumMap.get(albumPick) ?? []).map((t) => (
                   <li key={t.id}>
-                    <LibrarySongTrackRow track={t} compact={compact} onAdd={onAdd} />
+                    <LibrarySongTrackRow
+                      track={t}
+                      compact={compact}
+                      onAdd={onAdd}
+                      selected={selectedIds.has(t.id)}
+                      showCheckbox={hasSelection}
+                      onToggleSelect={toggleSelect}
+                    />
                   </li>
                 ))}
               </ul>
@@ -1662,7 +1940,14 @@ export default function LibraryBrowser() {
                     <ul className={ulSpaceYClass}>
                       {favoritedTracks.map((t) => (
                         <li key={t.id}>
-                          <LibrarySongTrackRow track={t} compact={compact} onAdd={onAdd} />
+                          <LibrarySongTrackRow
+                            track={t}
+                            compact={compact}
+                            onAdd={onAdd}
+                            selected={selectedIds.has(t.id)}
+                            showCheckbox={hasSelection}
+                            onToggleSelect={toggleSelect}
+                          />
                         </li>
                       ))}
                     </ul>
@@ -1784,6 +2069,9 @@ export default function LibraryBrowser() {
                     onAdd={onAdd}
                     showArtist={false}
                     indentClass={compact ? 'pl-3' : 'pl-4'}
+                    selected={selectedIds.has(t.id)}
+                    showCheckbox={hasSelection}
+                    onToggleSelect={toggleSelect}
                   />
                 </li>
               ))}
@@ -1817,6 +2105,147 @@ export default function LibraryBrowser() {
           }}
         />
       ) : null}
+
+      {/* Bulk tag editor dialog for multi-select */}
+      {bulkEditTracks && bulkEditTracks.length > 0 ? (
+        <BulkTagEditorDialog
+          tracks={bulkEditTracks}
+          onClose={closeBulkTagEditor}
+          onApply={applyBulkTags}
+        />
+      ) : null}
     </section>
+  )
+}
+
+/** Lightweight bulk metadata editor. Applies non-empty fields to all provided tracks (in-mem + file write). */
+function BulkTagEditorDialog(props: {
+  tracks: Track[]
+  onClose: () => void
+  onApply: (fields: { title?: string; artist?: string; album?: string }) => void | Promise<void>
+}) {
+  const { tracks, onClose, onApply } = props
+  const titleId = useId()
+  const panelRef = useRef<HTMLDivElement | null>(null)
+  const [title, setTitle] = useState('')
+  const [artist, setArtist] = useState('')
+  const [album, setAlbum] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const count = tracks.length
+  const label = count === 1 ? tracks[0]!.title : `${count} tracks`
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', onKey)
+    panelRef.current?.focus()
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  const canApply = (title.trim() || artist.trim() || album.trim()) && !saving
+
+  const submit = async () => {
+    if (!canApply) return
+    setSaving(true)
+    try {
+      await onApply({
+        title: title.trim() || undefined,
+        artist: artist.trim() || undefined,
+        album: album.trim() || undefined,
+      })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-zinc-900/50 p-4 sm:items-center"
+      role="presentation"
+      onClick={onClose}
+    >
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        className="flex w-full max-w-md flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-xl dark:border-zinc-700 dark:bg-zinc-950"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <header className="flex shrink-0 items-start justify-between gap-3 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
+          <div className="min-w-0">
+            <h2 id={titleId} className="text-base font-semibold text-zinc-900 dark:text-zinc-100">
+              Edit tags
+            </h2>
+            <p className="truncate text-sm text-zinc-500">{label}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="shrink-0 cursor-pointer rounded-lg px-2 py-1 text-sm font-medium text-zinc-600 transition hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800"
+          >
+            Close
+          </button>
+        </header>
+
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
+          <p className="text-xs text-zinc-500">
+            Leave a field blank to keep the existing value for all selected tracks.
+          </p>
+          <label className="block">
+            <span className="text-xs font-medium text-zinc-500">Title</span>
+            <input
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="(keep existing)"
+              className="mt-1 block w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 outline-none focus:border-accent-400 focus:ring-2 focus:ring-accent-500/20 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
+              autoFocus
+            />
+          </label>
+          <label className="block">
+            <span className="text-xs font-medium text-zinc-500">Artist</span>
+            <input
+              type="text"
+              value={artist}
+              onChange={(e) => setArtist(e.target.value)}
+              placeholder="(keep existing)"
+              className="mt-1 block w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 outline-none focus:border-accent-400 focus:ring-2 focus:ring-accent-500/20 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
+            />
+          </label>
+          <label className="block">
+            <span className="text-xs font-medium text-zinc-500">Album</span>
+            <input
+              type="text"
+              value={album}
+              onChange={(e) => setAlbum(e.target.value)}
+              placeholder="(keep existing)"
+              className="mt-1 block w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 outline-none focus:border-accent-400 focus:ring-2 focus:ring-accent-500/20 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
+            />
+          </label>
+        </div>
+
+        <div className="flex shrink-0 items-center justify-end gap-2 border-t border-zinc-200 px-4 py-3 dark:border-zinc-800">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={!canApply}
+            onClick={submit}
+            className="rounded-lg bg-accent-500 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-accent-600 disabled:cursor-not-allowed disabled:opacity-60 dark:text-zinc-950"
+          >
+            {saving ? 'Applying…' : 'Apply to selected'}
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }

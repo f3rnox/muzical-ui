@@ -12,7 +12,12 @@ export type KeyboardShortcutAction =
   | "cycleRepeat"
   | "toggleLyrics"
   | "toggleEqualizer"
-  | "openHelp";
+  | "openHelp"
+  | "focusLibrarySearch"
+  | "addCurrentToPlaylist"
+  | "jumpToNowPlaying"
+  | "toggleFavoriteCurrent"
+  | "clearQueue";
 
 export type KeyboardShortcutConfig = Record<
   KeyboardShortcutAction,

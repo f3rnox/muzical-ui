@@ -29,6 +29,10 @@ export type QueueTrackListProps = {
   onDownloadTrack: (track: Track) => void
   onAddTrackToLibrary: (track: Track) => void
   onRemoveTrackFromLibrary: (track: Track) => void
+  // Multi-select in queue
+  selectedQueueIds?: ReadonlySet<string>
+  showQueueCheckboxes?: boolean
+  onToggleQueueSelect?: (queueId: string, event?: React.MouseEvent) => void
 }
 
 export default function QueueTrackList({
@@ -52,6 +56,9 @@ export default function QueueTrackList({
   onDownloadTrack,
   onAddTrackToLibrary,
   onRemoveTrackFromLibrary,
+  selectedQueueIds,
+  showQueueCheckboxes,
+  onToggleQueueSelect,
 }: QueueTrackListProps) {
   const queueRowGapClass = compactLists ? 'gap-2' : 'gap-3'
   const queueRowPadClass = compactLists ? 'px-3 py-2' : 'px-4 py-2.5'
@@ -71,12 +78,17 @@ export default function QueueTrackList({
         const isStreamTrack = isMusicBrainzStreamTrack(track)
         const isSavedInLibrary = libraryTracks.some((t) => t.id === track.id)
 
+        const qSelected = selectedQueueIds?.has(row.queueId) ?? false
+        const showQCheck = showQueueCheckboxes ?? false
+
         return (
           <li
             key={row.queueId}
+            data-queue-id={row.queueId}
             className={[
               'group/row flex items-center gap-0',
               selected ? 'bg-accent-50/90 dark:bg-white/6' : '',
+              qSelected ? 'bg-accent-500/10 dark:bg-accent-500/15' : '',
               isDropTarget ? 'ring-1 ring-accent-400/30' : '',
             ].join(' ')}
             onDragOver={(e) => {
@@ -106,7 +118,15 @@ export default function QueueTrackList({
               type="button"
               role="option"
               aria-selected={selected}
-              onClick={() => onSelectIndex(index)}
+              onClick={(e) => {
+                const isDouble = e.detail === 2
+                if (onToggleQueueSelect && (showQCheck || e.ctrlKey || e.metaKey || e.shiftKey || isDouble)) {
+                  e.preventDefault()
+                  onToggleQueueSelect(row.queueId, isDouble ? undefined : e)
+                  return
+                }
+                onSelectIndex(index)
+              }}
               draggable
               onDragStart={(e) => {
                 onDraggingQueueIdChange(row.queueId)
@@ -127,6 +147,27 @@ export default function QueueTrackList({
                 isDropTarget ? 'border-accent-500/20 dark:border-accent-400/20' : '',
               ].join(' ')}
             >
+              {showQCheck ? (
+                <span
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onToggleQueueSelect?.(row.queueId, e)
+                  }}
+                  className={[
+                    'mr-2 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded border',
+                    qSelected
+                      ? 'border-accent-500 bg-accent-500 text-white'
+                      : 'border-zinc-300 bg-white dark:border-zinc-600 dark:bg-zinc-900',
+                  ].join(' ')}
+                  aria-hidden
+                >
+                  {qSelected ? (
+                    <svg viewBox="0 0 16 16" className="h-3 w-3" fill="currentColor">
+                      <path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.5 7.5a.75.75 0 0 1-1.06 0l-3-3a.75.75 0 0 1 1.06-1.06l2.47 2.47 6.97-6.97a.75.75 0 0 1 1.06 0z" />
+                    </svg>
+                  ) : null}
+                </span>
+              ) : null}
               <span className="w-5 shrink-0 text-right text-[11px] tabular-nums text-zinc-400 dark:text-zinc-500">
                 {index + 1}
               </span>
@@ -174,6 +215,9 @@ export default function QueueTrackList({
                       : undefined,
                   onRemoveFromLibrary: isSavedInLibrary
                     ? () => onRemoveTrackFromLibrary(track)
+                    : undefined,
+                  onSelect: onToggleQueueSelect
+                    ? () => onToggleQueueSelect(row.queueId)
                     : undefined,
                 })}
               />

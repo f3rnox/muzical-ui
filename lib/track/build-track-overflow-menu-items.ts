@@ -10,6 +10,8 @@ type BuildTrackOverflowMenuItemsOptions = {
   onRemoveFromLibrary?: () => void;
   onAddToPlaylist?: (track: Track) => void;
   onDownload?: (track: Track) => void;
+  /** Optional: enter multi-select / toggle selection for this row (primarily used in queue) */
+  onSelect?: () => void;
 };
 
 /**
@@ -31,6 +33,14 @@ export default function buildTrackOverflowMenuItems(
       id: "related",
       label: "Related songs",
       onSelect: () => options.onViewRelatedSongs!(options.track),
+    });
+  }
+
+  if (options.onSelect) {
+    items.push({
+      id: "select",
+      label: "Select",
+      onSelect: () => options.onSelect!(),
     });
   }
 

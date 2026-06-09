@@ -435,6 +435,68 @@ export default function MusicPlayer() {
   const [showKeyboardShortcutsHelp, setShowKeyboardShortcutsHelp] =
     useState(false);
   const [browserPlayerExpanded, setBrowserPlayerExpanded] = useState(false);
+  // Queue multi-select
+  const [selectedQueueIds, setSelectedQueueIds] = useState<Set<string>>(new Set());
+
+  const hasQueueSelection = selectedQueueIds.size > 0;
+  const selectedQueueTracks = useMemo(() => {
+    const out: Track[] = [];
+    for (const qid of selectedQueueIds) {
+      const row = queue.find((r) => r.queueId === qid);
+      if (row) out.push(row.track);
+    }
+    return out;
+  }, [selectedQueueIds, queue]);
+
+  const toggleQueueSelect = useCallback(
+    (queueId: string, event?: React.MouseEvent) => {
+      const isShift = !!event?.shiftKey;
+      const isCtrl = !!event?.ctrlKey || !!event?.metaKey;
+
+      setSelectedQueueIds((prev) => {
+        const next = new Set(prev);
+
+        if (isShift && queue.length > 0) {
+          const ids = queue.map((r) => r.queueId);
+          const current = Array.from(next);
+          const anchor = current.length > 0 ? current[current.length - 1] : activeQueueId || queue[0]?.queueId;
+          const a = ids.indexOf(anchor || '');
+          const b = ids.indexOf(queueId);
+          if (a !== -1 && b !== -1) {
+            const [lo, hi] = a < b ? [a, b] : [b, a];
+            for (let i = lo; i <= hi; i++) next.add(ids[i]!);
+            return next;
+          }
+        }
+
+        if (isCtrl) {
+          if (next.has(queueId)) next.delete(queueId);
+          else next.add(queueId);
+          return next;
+        }
+
+        if (next.has(queueId)) next.delete(queueId);
+        else next.add(queueId);
+        return next;
+      });
+    },
+    [queue, activeQueueId],
+  );
+
+  const clearQueueSelection = useCallback(() => {
+    setSelectedQueueIds(new Set());
+  }, []);
+
+  // Clean queue selection when the queue contents change
+  useEffect(() => {
+    setSelectedQueueIds((prev) => {
+      if (prev.size === 0) return prev;
+      const valid = new Set<string>();
+      const qids = new Set(queue.map((r) => r.queueId));
+      for (const id of prev) if (qids.has(id)) valid.add(id);
+      return valid.size === prev.size ? prev : valid;
+    });
+  }, [queue]);
   const volume = rememberVolume
     ? preferences.volume
     : (sessionVolume ?? DEFAULT_PLAYBACK_VOLUME);
@@ -1818,19 +1880,62 @@ export default function MusicPlayer() {
         case "openHelp":
           setShowKeyboardShortcutsHelp(true);
           break;
+        case "focusLibrarySearch":
+          // LibraryBrowser listens for this custom event to focus its search input.
+          window.dispatchEvent(new CustomEvent("muzical:focus-library-search"));
+          break;
+        case "addCurrentToPlaylist":
+          if (current) {
+            openAddToPlaylist(current, current.title);
+          }
+          break;
+        case "jumpToNowPlaying":
+          if (activeQueueId) {
+            const el = document.querySelector(
+              `[data-queue-id="${activeQueueId}"]`,
+            ) as HTMLElement | null;
+            el?.scrollIntoView({ block: "center", behavior: "smooth" });
+            // Briefly flash the row for visibility
+            if (el) {
+              el.classList.add("!bg-accent-100", "dark:!bg-white/10");
+              window.setTimeout(() => {
+                el.classList.remove("!bg-accent-100", "dark:!bg-white/10");
+              }, 900);
+            }
+          }
+          break;
+        case "toggleFavoriteCurrent":
+          if (current) {
+            toggleFavoriteTrack(current);
+          }
+          break;
+        case "clearQueue":
+          markCurrentSkipped();
+          clearQueue();
+          setActiveQueueId(null);
+          setIsPlaying(false);
+          setPositionSec(0);
+          clearQueueSelection();
+          break;
       }
     },
     [
+      activeQueueId,
+      clearQueue,
+      clearQueueSelection,
       current,
       cycleRepeatMode,
       goNext,
       goPrev,
       markCurrentSkipped,
+      openAddToPlaylist,
       queue.length,
       seekBySeconds,
       seekStepLargeSec,
       seekStepSmallSec,
+      setIsPlaying,
       setPlayerVolume,
+      toggleFavoriteTrack,
       toggleShuffle,
       volume,
     ],
@@ -1891,6 +1996,13 @@ export default function MusicPlayer() {
         setIsPlaying(false);
         setPositionSec(0);
       }
+      // also drop from selection if present
+      setSelectedQueueIds((prev) => {
+        if (!prev.has(queueId)) return prev;
+        const n = new Set(prev);
+        n.delete(queueId);
+        return n;
+      });
     },
     [activeQueueId, markCurrentSkipped, queue, removeFromQueue],
   );
@@ -1920,6 +2032,7 @@ export default function MusicPlayer() {
             setActiveQueueId(null);
             setIsPlaying(false);
             setPositionSec(0);
+            clearQueueSelection();
           }}
           className="text-xs font-medium text-zinc-500 underline-offset-2 hover:text-zinc-800 hover:underline dark:hover:text-zinc-300"
         >
@@ -1947,6 +2060,9 @@ export default function MusicPlayer() {
         onDownloadTrack={downloadTrack}
         onAddTrackToLibrary={addToLibrary}
         onRemoveTrackFromLibrary={removeFromLibrary}
+        selectedQueueIds={selectedQueueIds}
+        showQueueCheckboxes={hasQueueSelection}
+        onToggleQueueSelect={toggleQueueSelect}
       />
     </>
   );
@@ -2132,21 +2248,78 @@ export default function MusicPlayer() {
                     <h2 className="text-xs font-medium uppercase leading-none tracking-wider text-zinc-500">
                       Queue
                     </h2>
-                    {queue.length > 0 ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          markCurrentSkipped();
-                          clearQueue();
-                          setActiveQueueId(null);
-                          setIsPlaying(false);
-                          setPositionSec(0);
-                        }}
-                        className="text-xs font-medium text-zinc-500 underline-offset-2 hover:text-zinc-800 hover:underline dark:hover:text-zinc-300"
-                      >
-                        Clear
-                      </button>
-                    ) : null}
+                    <div className="flex items-center gap-2">
+                      {hasQueueSelection ? (
+                        <>
+                          <span className="text-[10px] font-medium text-accent-600 dark:text-accent-400">
+                            {selectedQueueIds.size}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => openAddToPlaylist(selectedQueueTracks, `${selectedQueueIds.size} in queue`)}
+                            className="text-xs font-medium text-zinc-600 underline-offset-2 hover:text-zinc-900 hover:underline dark:text-zinc-400 dark:hover:text-zinc-100"
+                          >
+                            Playlist
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              for (const t of selectedQueueTracks) toggleFavoriteTrack(t)
+                            }}
+                            className="text-xs font-medium text-zinc-600 underline-offset-2 hover:text-zinc-900 hover:underline dark:text-zinc-400 dark:hover:text-zinc-100"
+                          >
+                            Fav
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const toRemove = Array.from(selectedQueueIds)
+                              let nextActive = activeQueueId
+                              if (activeQueueId && selectedQueueIds.has(activeQueueId)) {
+                                const remaining = queue.filter((r) => !selectedQueueIds.has(r.queueId))
+                                nextActive = remaining[0]?.queueId ?? null
+                              }
+                              // Remove one by one (provider API)
+                              for (const qid of toRemove) {
+                                removeFromQueue(qid)
+                              }
+                              if (nextActive !== activeQueueId) setActiveQueueId(nextActive)
+                              if (!nextActive) {
+                                setIsPlaying(false)
+                                setPositionSec(0)
+                              }
+                              clearQueueSelection()
+                            }}
+                            className="text-xs font-medium text-red-600 underline-offset-2 hover:text-red-700 hover:underline dark:text-red-400"
+                          >
+                            Remove
+                          </button>
+                          <button
+                            type="button"
+                            onClick={clearQueueSelection}
+                            className="text-xs font-medium text-zinc-500 underline-offset-2 hover:text-zinc-800 hover:underline dark:hover:text-zinc-300"
+                          >
+                            Deselect
+                          </button>
+                        </>
+                      ) : null}
+                      {queue.length > 0 ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            markCurrentSkipped();
+                            clearQueue();
+                            setActiveQueueId(null);
+                            setIsPlaying(false);
+                            setPositionSec(0);
+                            clearQueueSelection();
+                          }}
+                          className="text-xs font-medium text-zinc-500 underline-offset-2 hover:text-zinc-800 hover:underline dark:hover:text-zinc-300"
+                        >
+                          Clear
+                        </button>
+                      ) : null}
+                    </div>
                   </div>
                   <div className="min-h-0 flex-1 overflow-auto pb-2">
                 {queue.length === 0 ? (
@@ -2530,6 +2703,9 @@ export default function MusicPlayer() {
                     onDownloadTrack={downloadTrack}
                     onAddTrackToLibrary={addToLibrary}
                     onRemoveTrackFromLibrary={removeFromLibrary}
+                    selectedQueueIds={selectedQueueIds}
+                    showQueueCheckboxes={hasQueueSelection}
+                    onToggleQueueSelect={toggleQueueSelect}
                   />
                 )}
               </div>

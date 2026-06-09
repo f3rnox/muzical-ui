@@ -81,6 +81,31 @@ export const KEYBOARD_SHORTCUT_ACTIONS: readonly KeyboardShortcutActionDefinitio
       label: "Shortcut help",
       description: "Open this keyboard shortcut list.",
     },
+    {
+      id: "focusLibrarySearch",
+      label: "Focus library search",
+      description: "Focus the search input in the library panel.",
+    },
+    {
+      id: "addCurrentToPlaylist",
+      label: "Add current to playlist",
+      description: "Open the add-to-playlist dialog for the now playing track.",
+    },
+    {
+      id: "jumpToNowPlaying",
+      label: "Jump to now playing",
+      description: "Scroll the queue to highlight the current track.",
+    },
+    {
+      id: "toggleFavoriteCurrent",
+      label: "Favorite current track",
+      description: "Toggle favorite for the now playing track.",
+    },
+    {
+      id: "clearQueue",
+      label: "Clear queue",
+      description: "Remove all tracks from the queue.",
+    },
   ] as const;
 
 export const DEFAULT_KEYBOARD_SHORTCUTS: KeyboardShortcutConfig = {
@@ -98,6 +123,11 @@ export const DEFAULT_KEYBOARD_SHORTCUTS: KeyboardShortcutConfig = {
   toggleLyrics: "KeyL",
   toggleEqualizer: "KeyE",
   openHelp: "Shift+Slash",
+  focusLibrarySearch: "Ctrl+KeyF",
+  addCurrentToPlaylist: "Ctrl+KeyP",
+  jumpToNowPlaying: "Ctrl+KeyQ",
+  toggleFavoriteCurrent: "Ctrl+KeyB",
+  clearQueue: "Ctrl+KeyK",
 };
 
 const MODIFIER_CODES = new Set([
