@@ -45,6 +45,7 @@ export default function LibraryBrowserView() {
   const [selectedArtist, setSelectedArtist] = useState<string | null>(null)
   const [selectedAlbum, setSelectedAlbum] = useState<string | null>(null)
   const [selectedSong, setSelectedSong] = useState<Track | null>(null)
+  const [query, setQuery] = useState('')
 
   const [isNarrow, setIsNarrow] = useState(false)
 
@@ -61,7 +62,17 @@ export default function LibraryBrowserView() {
   const ulSpaceYClass = compact ? 'space-y-0.25' : 'space-y-0.5'
   const rowPadLgClass = compact ? 'px-2 py-2' : 'px-3 py-2.5'
 
-  const artistMap = useMemo(() => groupByArtist(libraryTracks), [libraryTracks])
+  const q = query.trim().toLowerCase()
+  const tracksForView = useMemo(() => {
+    if (!q) return libraryTracks
+    return libraryTracks.filter((t) =>
+      t.title.toLowerCase().includes(q) ||
+      t.artist.toLowerCase().includes(q) ||
+      t.album.toLowerCase().includes(q),
+    )
+  }, [libraryTracks, q])
+
+  const artistMap = useMemo(() => groupByArtist(tracksForView), [tracksForView])
 
   const artistNames = useMemo(
     () =>
@@ -103,6 +114,27 @@ export default function LibraryBrowserView() {
     if (!selectedAlbum) return []
     return albumMapForArtist.get(selectedAlbum) ?? []
   }, [selectedAlbum, albumMapForArtist])
+
+  useEffect(() => {
+    if (selectedArtist && !artistMap.has(selectedArtist)) {
+      setSelectedArtist(null)
+      setSelectedAlbum(null)
+      setSelectedSong(null)
+    }
+  }, [artistMap, selectedArtist])
+
+  useEffect(() => {
+    if (selectedAlbum && !albumMapForArtist.has(selectedAlbum)) {
+      setSelectedAlbum(null)
+      setSelectedSong(null)
+    }
+  }, [albumMapForArtist, selectedAlbum])
+
+  useEffect(() => {
+    if (selectedSong && !songsForAlbum.some((t) => t.id === selectedSong.id)) {
+      setSelectedSong(null)
+    }
+  }, [songsForAlbum, selectedSong])
 
   const onAdd = useCallback((t: Track) => addToQueue(t), [addToQueue])
 
@@ -273,15 +305,27 @@ export default function LibraryBrowserView() {
   const albumsCompact = isNarrow && !!selectedAlbum
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row relative">
-      {/* Artists column */}
-      <div
-        className={[
-          'flex w-full min-w-0 flex-col overflow-hidden',
-          artistsCompact ? 'flex-none' : 'flex-1',
-          'lg:w-1/5 lg:border-r lg:border-zinc-200 lg:dark:border-zinc-800 lg:flex-none',
-        ].join(' ')}
-      >
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      {/* Search input for library browse (filters artist/album/song by name) */}
+      <div className="shrink-0 border-b border-zinc-200 px-3 py-2 dark:border-zinc-800">
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search artists, albums, or songs…"
+          className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm text-zinc-900 shadow-sm outline-none ring-accent-500/0 transition focus:border-accent-400 focus:ring-2 focus:ring-accent-500/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100 dark:focus:border-accent-500/60"
+          aria-label="Search library"
+        />
+      </div>
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row relative">
+        {/* Artists column */}
+        <div
+          className={[
+            'flex w-full min-w-0 flex-col overflow-hidden',
+            artistsCompact ? 'flex-none' : 'flex-1',
+            'lg:w-1/5 lg:border-r lg:border-zinc-200 lg:dark:border-zinc-800 lg:flex-none',
+          ].join(' ')}
+        >
         <div className="flex h-10 shrink-0 items-center border-b border-zinc-200 px-3 dark:border-zinc-800 lg:h-11">
           <h2 className="text-xs font-medium uppercase tracking-wider text-zinc-500">Artists</h2>
         </div>
@@ -523,6 +567,7 @@ export default function LibraryBrowserView() {
             </div>
           </div>
         )}
+      </div>
     </div>
   )
 }
