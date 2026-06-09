@@ -494,8 +494,10 @@ export default function MusicPlayer() {
             showLastfmScrobbleNotification(payload.artist, payload.track);
           } else if (result && result.ignored) {
             console.log(`[Last.fm] Scrobble ignored by Last.fm for "${payload.artist} - ${payload.track}"`);
+          } else if (result && !result.ok) {
+            console.log(`[Last.fm] Scrobble failed for "${payload.artist} - ${payload.track}":`, result.message);
           } else {
-            console.log(`[Last.fm] Scrobble failed for "${payload.artist} - ${payload.track}":`, result?.message || result);
+            console.log(`[Last.fm] Scrobble failed for "${payload.artist} - ${payload.track}":`, result);
           }
         })
         .catch((err) => {
