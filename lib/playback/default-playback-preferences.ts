@@ -1,5 +1,6 @@
 import { DEFAULT_PLAYBACK_VOLUME } from "@/lib/playback/playback-preference-storage-keys";
 import { defaultEqualizerGainsDb } from "@/lib/playback/equalizer";
+import { defaultKeyboardShortcuts } from "@/lib/keyboard-shortcuts";
 import type { PlaybackPreferences } from "@/types/playback-preferences";
 
 /**
@@ -16,5 +17,6 @@ export default function defaultPlaybackPreferences(): PlaybackPreferences {
     seekStepLargeSec: 30,
     autoAdvanceOnEnd: true,
     equalizerGainsDb: defaultEqualizerGainsDb(),
+    keyboardShortcuts: defaultKeyboardShortcuts(),
   };
 }

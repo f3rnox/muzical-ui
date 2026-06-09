@@ -1,5 +1,6 @@
 import {
   AUTO_ADVANCE_ON_END_STORAGE_KEY,
+  KEYBOARD_SHORTCUTS_STORAGE_KEY,
   PLAYBACK_RATE_STORAGE_KEY,
   REMEMBER_VOLUME_STORAGE_KEY,
   REPEAT_MODE_STORAGE_KEY,
@@ -48,6 +49,10 @@ export default function writeStoredPlaybackPreferences(
     window.localStorage.setItem(
       EQUALIZER_GAINS_STORAGE_KEY,
       JSON.stringify(normalizeEqualizerGainsDb(prefs.equalizerGainsDb)),
+    );
+    window.localStorage.setItem(
+      KEYBOARD_SHORTCUTS_STORAGE_KEY,
+      JSON.stringify(prefs.keyboardShortcuts),
     );
   } catch {
     /* ignore */

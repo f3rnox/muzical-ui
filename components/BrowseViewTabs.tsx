@@ -9,11 +9,12 @@ export type { BrowseView } from '@/types/browse-view'
 
 export { default as parseBrowseView } from '@/lib/browse/parse-browse-view'
 
-const BROWSE_VIEWS: readonly BrowseView[] = ['library', 'musicbrainz', 'youtube']
+const BROWSE_VIEWS: readonly BrowseView[] = ['library', 'musicbrainz', 'youtube', 'browser']
 
 function browseViewLabel(id: BrowseView): string {
   if (id === 'musicbrainz') return 'MusicBrainz'
   if (id === 'youtube') return 'YouTube'
+  if (id === 'browser') return 'Browse'
   return 'Library'
 }
 

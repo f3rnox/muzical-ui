@@ -35,6 +35,12 @@ export const SETTINGS_NAV_ITEMS: readonly SettingsNavItem[] = [
       "Queue restore, repeat, shuffle, speed, volume, seek steps, and auto-advance.",
   },
   {
+    href: "/settings/shortcuts",
+    label: "Shortcuts",
+    description:
+      "Keyboard controls for playback, seeking, volume, panels, and help.",
+  },
+  {
     href: "/settings/browse",
     label: "Browse",
     description:

@@ -139,6 +139,7 @@ type LibraryContextValue = {
   rescanAll: () => Promise<void>;
   addToQueue: (items: Track | readonly Track[]) => void;
   playNow: (items: Track | readonly Track[]) => void;
+  playNext: (items: Track | readonly Track[]) => void;
   addToLibrary: (items: Track | readonly Track[]) => void;
   removeFromLibrary: (items: Track | readonly Track[]) => void;
   removeAlbumFromLibrary: (albumKey: string) => void;
@@ -1079,6 +1080,60 @@ export function LibraryProvider(props: { children: ReactNode }) {
     setPlayNowRequest(null);
   }, []);
 
+  const playNext = useCallback((items: Track | readonly Track[]) => {
+    const list = Array.isArray(items) ? [...items] : [items];
+    if (list.length === 0) return;
+    const rows: QueuedTrack[] = list.map((track) => ({
+      queueId: crypto.randomUUID(),
+      track,
+    }));
+
+    const startIfEmpty = {
+      shouldStart: false,
+      firstId: null as string | null,
+    };
+
+    setQueue((prev) => {
+      if (prev.length === 0) {
+        startIfEmpty.shouldStart = true;
+        startIfEmpty.firstId = rows[0]!.queueId;
+        return rows;
+      }
+      const activeId = playbackReportRef.current.activeQueueId;
+      let insertAt = prev.length;
+      if (activeId) {
+        const activeIndex = prev.findIndex((q) => q.queueId === activeId);
+        if (activeIndex >= 0) insertAt = activeIndex + 1;
+      }
+      const next = [...prev];
+      next.splice(insertAt, 0, ...rows);
+      return next;
+    });
+
+    if (!startIfEmpty.shouldStart || !startIfEmpty.firstId) return;
+
+    playbackReportRef.current = {
+      activeQueueId: startIfEmpty.firstId,
+      positionSec: 0,
+      isPlaying: true,
+    };
+    setPlayNowRequest({ activeQueueId: startIfEmpty.firstId });
+    if (rememberLastQueueRef.current) {
+      if (persistPlaybackTimerRef.current) {
+        clearTimeout(persistPlaybackTimerRef.current);
+        persistPlaybackTimerRef.current = null;
+      }
+      writeStoredPlaybackSnapshot({
+        trackIds: list.map((t) => t.id),
+        tracks: list,
+        activeTrackId: list[0]!.id,
+        activeQueueIndex: 0,
+        positionSec: 0,
+        wasPlaying: true,
+      });
+    }
+  }, []);
+
   const addToLibrary = useCallback(
     (items: Track | readonly Track[]) => {
       const list = (Array.isArray(items) ? items : [items]).map(
@@ -1868,6 +1923,7 @@ export function LibraryProvider(props: { children: ReactNode }) {
       rescanAll,
       addToQueue,
       playNow,
+      playNext,
       addToLibrary,
       removeFromLibrary,
       removeAlbumFromLibrary,
@@ -1953,6 +2009,7 @@ export function LibraryProvider(props: { children: ReactNode }) {
       rescanAll,
       addToQueue,
       playNow,
+      playNext,
       addToLibrary,
       removeFromLibrary,
       removeAlbumFromLibrary,

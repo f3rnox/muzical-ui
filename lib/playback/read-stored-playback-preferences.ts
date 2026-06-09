@@ -1,4 +1,5 @@
 import defaultPlaybackPreferences from "@/lib/playback/default-playback-preferences";
+import { normalizeKeyboardShortcutConfig } from "@/lib/keyboard-shortcuts";
 import {
   EQUALIZER_GAINS_STORAGE_KEY,
   normalizeEqualizerGainsDb,
@@ -6,6 +7,7 @@ import {
 import { PLAYBACK_RATES } from "@/lib/playback/playback-rates";
 import {
   AUTO_ADVANCE_ON_END_STORAGE_KEY,
+  KEYBOARD_SHORTCUTS_STORAGE_KEY,
   DEFAULT_PLAYBACK_VOLUME,
   PLAYBACK_RATE_STORAGE_KEY,
   REMEMBER_VOLUME_STORAGE_KEY,
@@ -85,6 +87,18 @@ function readEqualizerGainsDb(): number[] {
   }
 }
 
+function readKeyboardShortcuts(): PlaybackPreferences["keyboardShortcuts"] {
+  const defaults = defaultPlaybackPreferences();
+  if (typeof window === "undefined") return defaults.keyboardShortcuts;
+  try {
+    const raw = window.localStorage.getItem(KEYBOARD_SHORTCUTS_STORAGE_KEY);
+    if (!raw) return defaults.keyboardShortcuts;
+    return normalizeKeyboardShortcutConfig(JSON.parse(raw));
+  } catch {
+    return defaults.keyboardShortcuts;
+  }
+}
+
 /**
  * Loads playback preferences from localStorage with validation.
  */
@@ -114,5 +128,6 @@ export default function readStoredPlaybackPreferences(): PlaybackPreferences {
       defaults.autoAdvanceOnEnd,
     ),
     equalizerGainsDb: readEqualizerGainsDb(),
+    keyboardShortcuts: readKeyboardShortcuts(),
   };
 }

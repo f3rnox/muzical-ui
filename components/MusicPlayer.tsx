@@ -10,11 +10,17 @@ import {
   useState,
   type KeyboardEvent,
 } from "react";
+import { useSearchParams } from 'next/navigation'
 import BrowsePanel from "@/components/BrowsePanel";
 import BrowseViewTabs from "@/components/BrowseViewTabs";
+import BrowserViewPlayerBar from "@/components/BrowserViewPlayerBar";
+import LibraryBrowserView from "@/components/LibraryBrowserView";
+import QueueTrackList from "@/components/QueueTrackList";
+import parseBrowseView from "@/lib/browse/parse-browse-view";
 import HiddenYoutubePlayer, {
   type HiddenYoutubePlayerHandle,
 } from "@/components/HiddenYoutubePlayer";
+import KeyboardShortcutsHelpDialog from "@/components/KeyboardShortcutsHelpDialog";
 import GraphicEqualizer from "@/components/GraphicEqualizer";
 import { useLibrary } from "@/components/LibraryProvider";
 import { usePlaybackPreferences } from "@/components/PlaybackPreferencesProvider";
@@ -30,17 +36,22 @@ import AlbumCoverThumb from "@/components/AlbumCoverThumb";
 import FavoriteStarButton from "@/components/FavoriteStarButton";
 import { albumCompositeKey } from "@/lib/library/favorite-keys";
 import { groupTracksByArtist } from "@/lib/musicbrainz/group-tracks-by-artist";
-import TrackRowOverflowMenu from "@/components/TrackRowOverflowMenu";
-import buildTrackOverflowMenuItems from "@/lib/track/build-track-overflow-menu-items";
+
 import PanelResizeHandle from "@/components/PanelResizeHandle";
 import QueueLoadingSpinner from "@/components/QueueLoadingSpinner";
 import RecentBrowseSearchChip from "@/components/RecentBrowseSearchChip";
 import YouTubeStreamNotification from "@/components/YouTubeStreamNotification";
-import isMusicBrainzStreamTrack from "@/lib/library/is-musicbrainz-stream-track";
+
 import readAppVersion from "@/lib/read-app-version";
 import resolveYoutubeVideoId from "@/lib/youtube/resolve-youtube-video-id";
 import youtubeVideoThumbnailUrl from "@/lib/youtube/youtube-video-thumbnail-url";
 import LyricsPanel from "@/components/LyricsPanel";
+import {
+  findActionForKeyboardShortcut,
+  normalizeKeyboardShortcutEvent,
+  shouldIgnoreKeyboardShortcutEvent,
+} from "@/lib/keyboard-shortcuts";
+import type { KeyboardShortcutAction } from "@/types/keyboard-shortcuts";
 
 const STORAGE_LIBRARY_PANEL_PX = "muzical.panelWidth.library";
 const STORAGE_QUEUE_PANEL_PX = "muzical.panelWidth.queue";
@@ -193,6 +204,25 @@ function IconSettings(props: { className?: string }) {
     >
       <circle cx="12" cy="12" r="3" />
       <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+    </svg>
+  );
+}
+
+function IconHelp(props: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      className={props.className}
+    >
+      <circle cx="12" cy="12" r="10" />
+      <path d="M9.1 9a3 3 0 1 1 4.8 2.4c-1 .7-1.9 1.3-1.9 2.6" />
+      <path d="M12 17h.01" />
     </svg>
   );
 }
@@ -384,6 +414,9 @@ export default function MusicPlayer() {
   const [queuePanelPx, setQueuePanelPx] = useState(300);
   const [showLyrics, setShowLyrics] = useState(false);
   const [showEqualizer, setShowEqualizer] = useState(false);
+  const [showKeyboardShortcutsHelp, setShowKeyboardShortcutsHelp] =
+    useState(false);
+  const [browserPlayerExpanded, setBrowserPlayerExpanded] = useState(false);
   const volume = rememberVolume
     ? preferences.volume
     : (sessionVolume ?? DEFAULT_PLAYBACK_VOLUME);
@@ -868,6 +901,15 @@ export default function MusicPlayer() {
   const toggleShuffle = useCallback((): void => {
     setShuffle(!shuffle);
   }, [shuffle, setShuffle]);
+
+  const setPlayerVolume = useCallback(
+    (nextVolume: number): void => {
+      const next = Math.min(1, Math.max(0, nextVolume));
+      if (rememberVolume) persistVolume(next);
+      else setSessionVolume(next);
+    },
+    [persistVolume, rememberVolume],
+  );
 
   const clampPanelsToRow = useCallback((): void => {
     const rowW = mainRowRef.current?.getBoundingClientRect().width ?? 0;
@@ -1367,6 +1409,18 @@ export default function MusicPlayer() {
     [youtubeStreamActive, durationSec, reportPlayback],
   );
 
+  const seekBySeconds = useCallback(
+    (deltaSec: number): void => {
+      if (durationSec <= 0) return;
+      const nextTime = Math.min(
+        durationSec,
+        Math.max(0, positionSec + deltaSec),
+      );
+      onSeekBarPointer(nextTime / durationSec);
+    },
+    [durationSec, onSeekBarPointer, positionSec],
+  );
+
   const onSeekBarKeyDown = useCallback(
     (e: KeyboardEvent<HTMLDivElement>): void => {
       if (durationSec <= 0) return;
@@ -1395,19 +1449,185 @@ export default function MusicPlayer() {
     ],
   );
 
+  const runKeyboardShortcutAction = useCallback(
+    (action: KeyboardShortcutAction): void => {
+      switch (action) {
+        case "playPause":
+          if (queue.length > 0 && current) setIsPlaying((prev) => !prev);
+          break;
+        case "previousTrack":
+          markCurrentSkipped();
+          goPrev();
+          break;
+        case "nextTrack":
+          markCurrentSkipped();
+          goNext();
+          break;
+        case "seekBackward":
+          seekBySeconds(-seekStepSmallSec);
+          break;
+        case "seekForward":
+          seekBySeconds(seekStepSmallSec);
+          break;
+        case "seekBackwardLarge":
+          seekBySeconds(-seekStepLargeSec);
+          break;
+        case "seekForwardLarge":
+          seekBySeconds(seekStepLargeSec);
+          break;
+        case "volumeDown":
+          setPlayerVolume(volume - 0.05);
+          break;
+        case "volumeUp":
+          setPlayerVolume(volume + 0.05);
+          break;
+        case "toggleShuffle":
+          toggleShuffle();
+          break;
+        case "cycleRepeat":
+          cycleRepeatMode();
+          break;
+        case "toggleLyrics":
+          setShowLyrics((prev) => !prev);
+          break;
+        case "toggleEqualizer":
+          setShowEqualizer((prev) => !prev);
+          break;
+        case "openHelp":
+          setShowKeyboardShortcutsHelp(true);
+          break;
+      }
+    },
+    [
+      current,
+      cycleRepeatMode,
+      goNext,
+      goPrev,
+      markCurrentSkipped,
+      queue.length,
+      seekBySeconds,
+      seekStepLargeSec,
+      seekStepSmallSec,
+      setPlayerVolume,
+      toggleShuffle,
+      volume,
+    ],
+  );
+
+  useEffect(() => {
+    const onKeyDown = (event: globalThis.KeyboardEvent): void => {
+      if (showKeyboardShortcutsHelp) return;
+      if (shouldIgnoreKeyboardShortcutEvent(event)) return;
+
+      const shortcut = normalizeKeyboardShortcutEvent(event);
+      if (!shortcut) return;
+
+      const action = findActionForKeyboardShortcut(
+        preferences.keyboardShortcuts,
+        shortcut,
+      );
+      if (!action) return;
+
+      event.preventDefault();
+      runKeyboardShortcutAction(action);
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [
+    preferences.keyboardShortcuts,
+    runKeyboardShortcutAction,
+    showKeyboardShortcutsHelp,
+  ]);
+
   const statusLabel = isScanning
     ? "Scanning…"
     : youtubePrefetchActive
       ? `Prefetching ${youtubePrefetchVideoCount} YouTube video${youtubePrefetchVideoCount === 1 ? "" : "s"}…`
       : `${libraryTracks.length} in library · ${queue.length} in queue`;
 
-  const queueRowGapClass = compactLists ? "gap-2" : "gap-3";
-  const queueRowPadClass = compactLists ? "px-3 py-2" : "px-4 py-2.5";
-  const queueRemoveButtonPadClass = compactLists
-    ? "px-1.5 py-1.5"
-    : "px-2 py-2";
   const emptyQueueCardGapClass = compactLists ? "gap-2" : "gap-3";
   const emptyQueueCardPadClass = compactLists ? "p-2" : "p-3";
+  const searchParams = useSearchParams();
+  const activeBrowseView = parseBrowseView(searchParams.get('view'));
+  const showBrowserView = activeBrowseView === 'browser';
+
+  useEffect(() => {
+    if (!showBrowserView) setBrowserPlayerExpanded(false);
+  }, [showBrowserView]);
+
+  const handleRemoveQueueItem = useCallback(
+    (queueId: string, index: number) => {
+      const isCurrent = activeQueueId === queueId;
+      if (isCurrent) markCurrentSkipped();
+      const nextId = isCurrent
+        ? (queue[index + 1]?.queueId ?? queue[index - 1]?.queueId ?? null)
+        : activeQueueId;
+      removeFromQueue(queueId);
+      setActiveQueueId(nextId);
+      if (isCurrent && !nextId) {
+        setIsPlaying(false);
+        setPositionSec(0);
+      }
+    },
+    [activeQueueId, markCurrentSkipped, queue, removeFromQueue],
+  );
+
+  const browserQueuePanel = showLyrics ? (
+    <LyricsPanel track={current} onClose={() => setShowLyrics(false)} />
+  ) : !isQueueReady ? (
+    <QueueLoadingSpinner />
+  ) : queue.length === 0 ? (
+    <div className="px-4 py-6">
+      <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Queue is empty</p>
+      <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+        Select songs in the browser and add them to the queue.
+      </p>
+    </div>
+  ) : (
+    <>
+      <div className="flex h-9 shrink-0 items-center justify-between gap-2 border-b border-zinc-200 bg-white/80 px-3 dark:border-zinc-800 dark:bg-zinc-950/80">
+        <h2 className="text-xs font-medium uppercase leading-none tracking-wider text-zinc-500">
+          Queue
+        </h2>
+        <button
+          type="button"
+          onClick={() => {
+            markCurrentSkipped();
+            clearQueue();
+            setActiveQueueId(null);
+            setIsPlaying(false);
+            setPositionSec(0);
+          }}
+          className="text-xs font-medium text-zinc-500 underline-offset-2 hover:text-zinc-800 hover:underline dark:hover:text-zinc-300"
+        >
+          Clear
+        </button>
+      </div>
+      <QueueTrackList
+        queue={queue}
+        activeIndex={activeIndex}
+        activeQueueId={activeQueueId}
+        compactLists={compactLists}
+        libraryTracks={libraryTracks}
+        dragOverQueueId={dragOverQueueId}
+        draggingQueueId={draggingQueueId}
+        onDragOverQueueIdChange={setDragOverQueueId}
+        onDraggingQueueIdChange={setDraggingQueueId}
+        onSelectIndex={selectIndex}
+        onReorderQueueItems={reorderQueueItems}
+        onRemoveQueueItem={handleRemoveQueueItem}
+        isFavoriteSong={isFavoriteSong}
+        onToggleFavoriteTrack={toggleFavoriteTrack}
+        onViewTrackDetails={openTrackDetails}
+        onViewRelatedSongs={openRelatedSongs}
+        onAddTrackToPlaylist={openAddToPlaylist}
+        onDownloadTrack={downloadTrack}
+        onAddTrackToLibrary={addToLibrary}
+        onRemoveTrackFromLibrary={removeFromLibrary}
+      />
+    </>
+  );
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col bg-zinc-100 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
@@ -1426,6 +1646,12 @@ export default function MusicPlayer() {
         onDuration={onYoutubeDuration}
         onError={(message) => setLoadError(message)}
       />
+      {showKeyboardShortcutsHelp ? (
+        <KeyboardShortcutsHelpDialog
+          shortcuts={preferences.keyboardShortcuts}
+          onClose={() => setShowKeyboardShortcutsHelp(false)}
+        />
+      ) : null}
 
       <header className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-3 border-b border-zinc-200 bg-white/90 px-6 py-3 backdrop-blur-sm dark:border-zinc-800/80 dark:bg-zinc-950/90">
         <div className="flex min-w-0 items-center gap-3">
@@ -1458,6 +1684,14 @@ export default function MusicPlayer() {
           >
             <IconSettings className="h-[18px] w-[18px]" />
           </Link>
+          <button
+            type="button"
+            onClick={() => setShowKeyboardShortcutsHelp(true)}
+            className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-600 shadow-sm transition hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-300 dark:shadow-none dark:hover:border-zinc-500 dark:hover:bg-zinc-700 dark:hover:text-zinc-50"
+            aria-label="Keyboard shortcuts"
+          >
+            <IconHelp className="h-[18px] w-[18px]" />
+          </button>
           <ThemeToggle />
         </div>
       </header>
@@ -1475,20 +1709,64 @@ export default function MusicPlayer() {
         ref={mainRowRef}
         className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden lg:flex-row"
       >
-        <div
-          className="flex min-h-0 min-w-0 flex-col overflow-hidden max-lg:flex-2 max-lg:w-full lg:h-full lg:min-w-0 lg:shrink-0"
-          style={
-            layoutLg ? { width: libraryPanelPx, flex: "0 0 auto" } : undefined
-          }
-        >
-          <BrowsePanel />
-        </div>
-        <PanelResizeHandle
-          aria-label="Resize library and queue panels"
-          onSessionStart={onLibraryQueueResizeStart}
-          onSessionMove={onLibraryQueueResizeMove}
-          onSessionEnd={onPanelResizeEnd}
-        />
+        {showBrowserView ? (
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+            <LibraryBrowserView />
+            <BrowserViewPlayerBar
+              expanded={browserPlayerExpanded}
+              onToggleExpanded={() => setBrowserPlayerExpanded((open) => !open)}
+              queueLength={queue.length}
+              current={current}
+              coverArtUrl={coverArtUrl}
+              isPlaying={isPlaying}
+              canPlay={queue.length > 0 && Boolean(current)}
+              onTogglePlay={() => setIsPlaying((p) => !p)}
+              onPrev={() => {
+                markCurrentSkipped();
+                goPrev();
+              }}
+              onNext={() => {
+                markCurrentSkipped();
+                goNext();
+              }}
+              positionSec={positionSec}
+              durationSec={durationSec}
+              onSeekBarPointer={onSeekBarPointer}
+              onSeekBarKeyDown={onSeekBarKeyDown}
+              volume={volume}
+              onVolumeChange={setPlayerVolume}
+              repeatMode={repeatMode}
+              shuffle={shuffle}
+              playbackRate={playbackRate}
+              showLyrics={showLyrics}
+              showEqualizer={showEqualizer}
+              equalizerGainsDb={equalizerGainsDb}
+              onCycleRepeatMode={cycleRepeatMode}
+              onToggleShuffle={toggleShuffle}
+              onToggleLyrics={() => setShowLyrics((prev) => !prev)}
+              onToggleEqualizer={() => setShowEqualizer((prev) => !prev)}
+              onPlaybackRateChange={setPlaybackRate}
+              onEqualizerBandChange={setEqualizerBandGain}
+              onResetEqualizer={resetEqualizer}
+              queuePanel={browserQueuePanel}
+            />
+          </div>
+        ) : (
+          <>
+            <div
+              className="flex min-h-0 min-w-0 flex-col overflow-hidden max-lg:flex-2 max-lg:w-full lg:h-full lg:min-w-0 lg:shrink-0"
+              style={
+                layoutLg ? { width: libraryPanelPx, flex: "0 0 auto" } : undefined
+              }
+            >
+              <BrowsePanel />
+            </div>
+            <PanelResizeHandle
+              aria-label="Resize library and queue panels"
+              onSessionStart={onLibraryQueueResizeStart}
+              onSessionMove={onLibraryQueueResizeMove}
+              onSessionEnd={onPanelResizeEnd}
+            />
         <section
           className="flex min-h-0 min-w-0 flex-col overflow-hidden border-b border-zinc-200 bg-white dark:border-zinc-800/80 dark:bg-zinc-950/50 max-lg:flex-1 max-lg:w-full lg:h-full lg:shrink-0 lg:border-b-0 lg:border-r lg:border-zinc-200 lg:dark:border-zinc-800"
           style={
@@ -1882,171 +2160,28 @@ export default function MusicPlayer() {
                     ) : null}
                   </div>
                 ) : (
-                  <ul
-                    className="divide-y divide-zinc-200 dark:divide-zinc-800"
-                    role="listbox"
-                    aria-label="Track queue"
-                  >
-                    {queue.map((row, index) => {
-                      const track = row.track;
-                      const selected = index === activeIndex;
-                      const isDropTarget =
-                        dragOverQueueId === row.queueId &&
-                        draggingQueueId !== row.queueId;
-                      const isStreamTrack = isMusicBrainzStreamTrack(track);
-                      const isSavedInLibrary = libraryTracks.some(
-                        (t) => t.id === track.id,
-                      );
-                      return (
-                        <li
-                          key={row.queueId}
-                          className={[
-                            "group/row flex items-center gap-0",
-                            selected ? "bg-accent-50/90 dark:bg-white/6" : "",
-                            isDropTarget ? "ring-1 ring-accent-400/30" : "",
-                          ].join(" ")}
-                          onDragOver={(e) => {
-                            if (!draggingQueueId) return;
-                            e.preventDefault();
-                            if (dragOverQueueId !== row.queueId)
-                              setDragOverQueueId(row.queueId);
-                          }}
-                          onDrop={(e) => {
-                            e.preventDefault();
-                            const fromQueueId = draggingQueueId;
-                            setDraggingQueueId(null);
-                            setDragOverQueueId(null);
-                            if (!fromQueueId) return;
-                            if (fromQueueId === row.queueId) return;
-                            const fromIndex = queue.findIndex(
-                              (q) => q.queueId === fromQueueId,
-                            );
-                            if (fromIndex < 0) return;
-
-                            const rect = (
-                              e.currentTarget as HTMLLIElement
-                            ).getBoundingClientRect();
-                            const insertAfter =
-                              e.clientY > rect.top + rect.height / 2;
-                            // Desired insertion index in the original list (before any splice shifting).
-                            const desiredInsertIndex = insertAfter
-                              ? index + 1
-                              : index;
-                            // Convert to insertion index after removal of the dragged item.
-                            const adjustedToIndex =
-                              fromIndex < desiredInsertIndex
-                                ? desiredInsertIndex - 1
-                                : desiredInsertIndex;
-                            reorderQueueItems(fromIndex, adjustedToIndex);
-                          }}
-                        >
-                          <button
-                            type="button"
-                            role="option"
-                            aria-selected={selected}
-                            onClick={() => selectIndex(index)}
-                            draggable
-                            onDragStart={(e) => {
-                              setDraggingQueueId(row.queueId);
-                              setDragOverQueueId(row.queueId);
-                              e.dataTransfer.effectAllowed = "move";
-                              e.dataTransfer.setData("text/plain", row.queueId);
-                            }}
-                            onDragEnd={() => {
-                              setDraggingQueueId(null);
-                              setDragOverQueueId(null);
-                            }}
-                            className={[
-                              `flex min-w-0 flex-1 items-center ${queueRowGapClass} border-l-2 border-transparent ${queueRowPadClass} text-left transition-colors`,
-                              selected
-                                ? "border-accent-500 dark:border-accent-400"
-                                : "hover:bg-zinc-50 dark:hover:bg-zinc-900/60",
-                              "cursor-grab active:cursor-grabbing",
-                              isDropTarget
-                                ? "border-accent-500/20 dark:border-accent-400/20"
-                                : "",
-                            ].join(" ")}
-                          >
-                            <span className="w-5 shrink-0 text-right text-[11px] tabular-nums text-zinc-400 dark:text-zinc-500">
-                              {index + 1}
-                            </span>
-                            <div className="min-w-0 flex-1">
-                              <p className="truncate text-sm font-medium leading-snug text-zinc-900 dark:text-zinc-100">
-                                {track.title}
-                              </p>
-                              <p className="truncate text-xs leading-snug text-zinc-500 dark:text-zinc-400">
-                                {track.artist} · {track.album}
-                              </p>
-                            </div>
-                            <span className="shrink-0 text-[11px] tabular-nums text-zinc-400 dark:text-zinc-500">
-                              {track.durationSec > 0
-                                ? formatDuration(track.durationSec)
-                                : "—"}
-                            </span>
-                          </button>
-                          <div
-                            className={[
-                              "flex shrink-0 items-center border-l pr-1 pl-0.5",
-                              selected
-                                ? "border-accent-200/80 dark:border-white/8"
-                                : "border-zinc-200 bg-zinc-50/80 dark:border-zinc-800 dark:bg-zinc-900/40",
-                            ].join(" ")}
-                          >
-                            <FavoriteStarButton
-                              className="rounded-none"
-                              filled={isFavoriteSong(track.id)}
-                              onPress={() => toggleFavoriteTrack(track)}
-                              label={
-                                isFavoriteSong(track.id)
-                                  ? "Remove song from favorites"
-                                  : "Add song to favorites"
-                              }
-                            />
-                            <TrackRowOverflowMenu
-                              triggerLabel={`Actions for ${track.title}`}
-                              items={buildTrackOverflowMenuItems({
-                                track,
-                                onViewDetails: openTrackDetails,
-                                onViewRelatedSongs: openRelatedSongs,
-                                onAddToPlaylist: (track) =>
-                                  openAddToPlaylist(track, track.title),
-                                onDownload: downloadTrack,
-                                onSave:
-                                  isStreamTrack && !isSavedInLibrary
-                                    ? () => addToLibrary(track)
-                                    : undefined,
-                                onRemoveFromLibrary: isSavedInLibrary
-                                  ? () => removeFromLibrary(track)
-                                  : undefined,
-                              })}
-                            />
-                            <button
-                              type="button"
-                              aria-label={`Remove ${track.title} from queue`}
-                              onClick={() => {
-                                const isCurrent = activeQueueId === row.queueId;
-                                if (isCurrent) markCurrentSkipped();
-                                const nextId = isCurrent
-                                  ? (queue[index + 1]?.queueId ??
-                                    queue[index - 1]?.queueId ??
-                                    null)
-                                  : activeQueueId;
-                                removeFromQueue(row.queueId);
-                                setActiveQueueId(nextId);
-                                if (isCurrent && !nextId) {
-                                  setIsPlaying(false);
-                                  setPositionSec(0);
-                                }
-                              }}
-                              className={`shrink-0 ${queueRemoveButtonPadClass} text-[11px] text-zinc-500 opacity-80 transition hover:bg-zinc-200/80 hover:text-zinc-900 sm:opacity-0 sm:group-hover/row:opacity-100 dark:hover:bg-zinc-800 dark:hover:text-zinc-100`}
-                            >
-                              Remove
-                            </button>
-                          </div>
-                        </li>
-                      );
-                    })}
-                  </ul>
+                  <QueueTrackList
+                    queue={queue}
+                    activeIndex={activeIndex}
+                    activeQueueId={activeQueueId}
+                    compactLists={compactLists}
+                    libraryTracks={libraryTracks}
+                    dragOverQueueId={dragOverQueueId}
+                    draggingQueueId={draggingQueueId}
+                    onDragOverQueueIdChange={setDragOverQueueId}
+                    onDraggingQueueIdChange={setDraggingQueueId}
+                    onSelectIndex={selectIndex}
+                    onReorderQueueItems={reorderQueueItems}
+                    onRemoveQueueItem={handleRemoveQueueItem}
+                    isFavoriteSong={isFavoriteSong}
+                    onToggleFavoriteTrack={toggleFavoriteTrack}
+                    onViewTrackDetails={openTrackDetails}
+                    onViewRelatedSongs={openRelatedSongs}
+                    onAddTrackToPlaylist={openAddToPlaylist}
+                    onDownloadTrack={downloadTrack}
+                    onAddTrackToLibrary={addToLibrary}
+                    onRemoveTrackFromLibrary={removeFromLibrary}
+                  />
                 )}
               </div>
             </>
@@ -2191,8 +2326,7 @@ export default function MusicPlayer() {
                   value={volume}
                   onChange={(e) => {
                     const v = Number(e.target.value);
-                    if (rememberVolume) persistVolume(v);
-                    else setSessionVolume(v);
+                    setPlayerVolume(v);
                   }}
                   className="h-1 w-full min-w-0 cursor-pointer accent-accent-500"
                   aria-label="Volume"
@@ -2286,6 +2420,8 @@ export default function MusicPlayer() {
             </div>
           </div>
         </aside>
+          </>
+        )}
       </div>
     </div>
   );

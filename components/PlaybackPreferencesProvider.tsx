@@ -17,6 +17,8 @@ import {
 } from "@/lib/playback/equalizer";
 import readStoredPlaybackPreferences from "@/lib/playback/read-stored-playback-preferences";
 import writeStoredPlaybackPreferences from "@/lib/playback/write-stored-playback-preferences";
+import { defaultKeyboardShortcuts } from "@/lib/keyboard-shortcuts";
+import type { KeyboardShortcutAction } from "@/types/keyboard-shortcuts";
 import type { PlaybackPreferences } from "@/types/playback-preferences";
 import type { RepeatMode } from "@/types/repeat-mode";
 
@@ -32,6 +34,11 @@ type PlaybackPreferencesContextValue = {
   setAutoAdvanceOnEnd: (on: boolean) => void;
   setEqualizerBandGain: (index: number, gainDb: number) => void;
   resetEqualizer: () => void;
+  setKeyboardShortcut: (
+    action: KeyboardShortcutAction,
+    shortcut: string | null,
+  ) => void;
+  resetKeyboardShortcuts: () => void;
   patchPreferences: (partial: Partial<PlaybackPreferences>) => void;
 };
 
@@ -145,6 +152,27 @@ export function PlaybackPreferencesProvider(props: { children: ReactNode }) {
     patchPreferences({ equalizerGainsDb: defaultEqualizerGainsDb() });
   }, [patchPreferences]);
 
+  const setKeyboardShortcut = useCallback(
+    (action: KeyboardShortcutAction, shortcut: string | null) => {
+      setPreferences((prev) => {
+        const next = {
+          ...prev,
+          keyboardShortcuts: {
+            ...prev.keyboardShortcuts,
+            [action]: shortcut,
+          },
+        };
+        writeStoredPlaybackPreferences(next);
+        return next;
+      });
+    },
+    [],
+  );
+
+  const resetKeyboardShortcuts = useCallback(() => {
+    patchPreferences({ keyboardShortcuts: defaultKeyboardShortcuts() });
+  }, [patchPreferences]);
+
   const value = useMemo(
     () => ({
       preferences,
@@ -158,6 +186,8 @@ export function PlaybackPreferencesProvider(props: { children: ReactNode }) {
       setAutoAdvanceOnEnd,
       setEqualizerBandGain,
       resetEqualizer,
+      setKeyboardShortcut,
+      resetKeyboardShortcuts,
       patchPreferences,
     }),
     [
@@ -172,6 +202,8 @@ export function PlaybackPreferencesProvider(props: { children: ReactNode }) {
       setAutoAdvanceOnEnd,
       setEqualizerBandGain,
       resetEqualizer,
+      setKeyboardShortcut,
+      resetKeyboardShortcuts,
       patchPreferences,
     ],
   );
