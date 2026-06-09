@@ -1553,8 +1553,8 @@ export default function MusicPlayer() {
   const showBrowserView = activeBrowseView === 'browser';
 
   useEffect(() => {
-    if (!showBrowserView) setBrowserPlayerExpanded(false);
-  }, [showBrowserView]);
+    if (!showBrowserView && layoutLg) setBrowserPlayerExpanded(false);
+  }, [showBrowserView, layoutLg]);
 
   const handleRemoveQueueItem = useCallback(
     (queueId: string, index: number) => {
@@ -1653,12 +1653,12 @@ export default function MusicPlayer() {
         />
       ) : null}
 
-      <header className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-3 border-b border-zinc-200 bg-white/90 px-6 py-3 backdrop-blur-sm dark:border-zinc-800/80 dark:bg-zinc-950/90">
-        <div className="flex min-w-0 items-center gap-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent-500/15 text-accent-700 ring-1 ring-accent-500/25 dark:text-accent-400 dark:ring-accent-500/30">
-            <IconQueue className="h-5 w-5" />
+      <header className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 border-b border-zinc-200 bg-white/90 px-3 py-2 sm:gap-x-4 sm:px-6 sm:py-3 backdrop-blur-sm dark:border-zinc-800/80 dark:bg-zinc-950/90">
+        <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent-500/15 text-accent-700 ring-1 ring-accent-500/25 dark:text-accent-400 dark:ring-accent-500/30 sm:h-9 sm:w-9">
+            <IconQueue className="h-4 w-4 sm:h-5 sm:w-5" />
           </div>
-          <div className="min-w-0">
+          <div className="min-w-0 hidden sm:block">
             <h1 className="text-sm font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
               Muzical
             </h1>
@@ -1666,12 +1666,17 @@ export default function MusicPlayer() {
               Local library · browser playback · v{readAppVersion()}
             </p>
           </div>
+          <div className="min-w-0 sm:hidden">
+            <h1 className="text-sm font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">Muzical</h1>
+          </div>
         </div>
-        <BrowseViewTabs />
-        <div className="ml-auto flex items-center gap-2">
+        <div className="min-w-0 flex-1 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <BrowseViewTabs />
+        </div>
+        <div className="flex items-center gap-1.5 sm:gap-2">
           <Link
             href="/settings/library"
-            className="hidden cursor-pointer rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-xs text-zinc-500 shadow-sm transition hover:border-zinc-300 hover:bg-zinc-100 hover:text-zinc-700 sm:inline dark:border-zinc-700/80 dark:bg-zinc-900/80 dark:text-zinc-400 dark:shadow-none dark:hover:border-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
+            className="hidden cursor-pointer rounded-full border border-zinc-200 bg-zinc-50 px-2.5 py-1 text-[10px] text-zinc-500 shadow-sm transition hover:border-zinc-300 hover:bg-zinc-100 hover:text-zinc-700 sm:inline sm:px-3 sm:py-1 sm:text-xs dark:border-zinc-700/80 dark:bg-zinc-900/80 dark:text-zinc-400 dark:shadow-none dark:hover:border-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
             aria-label="Open library settings"
             aria-live="polite"
           >
@@ -1679,18 +1684,18 @@ export default function MusicPlayer() {
           </Link>
           <Link
             href="/settings"
-            className="flex h-9 w-9 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-600 shadow-sm transition hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-300 dark:shadow-none dark:hover:border-zinc-500 dark:hover:bg-zinc-700 dark:hover:text-zinc-50"
+            className="flex h-8 w-8 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-600 shadow-sm transition hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-300 dark:shadow-none dark:hover:border-zinc-500 dark:hover:bg-zinc-700 dark:hover:text-zinc-50 sm:h-9 sm:w-9"
             aria-label="Library settings"
           >
-            <IconSettings className="h-[18px] w-[18px]" />
+            <IconSettings className="h-4 w-4 sm:h-[18px] sm:w-[18px]" />
           </Link>
           <button
             type="button"
             onClick={() => setShowKeyboardShortcutsHelp(true)}
-            className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-600 shadow-sm transition hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-300 dark:shadow-none dark:hover:border-zinc-500 dark:hover:bg-zinc-700 dark:hover:text-zinc-50"
+            className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-600 shadow-sm transition hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-300 dark:shadow-none dark:hover:border-zinc-500 dark:hover:bg-zinc-700 dark:hover:text-zinc-50 sm:h-9 sm:w-9"
             aria-label="Keyboard shortcuts"
           >
-            <IconHelp className="h-[18px] w-[18px]" />
+            <IconHelp className="h-4 w-4 sm:h-[18px] sm:w-[18px]" />
           </button>
           <ThemeToggle />
         </div>
@@ -1751,7 +1756,8 @@ export default function MusicPlayer() {
               queuePanel={browserQueuePanel}
             />
           </div>
-        ) : (
+        ) : layoutLg ? (
+          // Wide desktop (>=1024px): classic 3-column resizable layout with library | queue | now-playing
           <>
             <div
               className="flex min-h-0 min-w-0 flex-col overflow-hidden max-lg:flex-2 max-lg:w-full lg:h-full lg:min-w-0 lg:shrink-0"
@@ -2242,7 +2248,7 @@ export default function MusicPlayer() {
               <span>{durationSec > 0 ? formatDuration(durationSec) : "—"}</span>
             </div>
             <div
-              className="group relative h-2 cursor-pointer rounded-full bg-zinc-200 dark:bg-zinc-800"
+              className="group relative h-2.5 cursor-pointer rounded-full bg-zinc-200 dark:bg-zinc-800 touch-manipulation sm:h-2"
               onPointerDown={(e) => {
                 const el = e.currentTarget;
                 const rect = el.getBoundingClientRect();
@@ -2421,6 +2427,53 @@ export default function MusicPlayer() {
           </div>
         </aside>
           </>
+        ) : (
+          // Medium and below (<1024px): full-width library browser + persistent expandable bottom player bar.
+          // This makes the app usable across phones, tablets, and "medium" viewport widths instead of
+          // vertically stacking three heavy panels.
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+            <div className="min-h-0 flex-1 overflow-hidden">
+              <BrowsePanel />
+            </div>
+            <BrowserViewPlayerBar
+              expanded={browserPlayerExpanded}
+              onToggleExpanded={() => setBrowserPlayerExpanded((open) => !open)}
+              queueLength={queue.length}
+              current={current}
+              coverArtUrl={coverArtUrl}
+              isPlaying={isPlaying}
+              canPlay={queue.length > 0 && Boolean(current)}
+              onTogglePlay={() => setIsPlaying((p) => !p)}
+              onPrev={() => {
+                markCurrentSkipped();
+                goPrev();
+              }}
+              onNext={() => {
+                markCurrentSkipped();
+                goNext();
+              }}
+              positionSec={positionSec}
+              durationSec={durationSec}
+              onSeekBarPointer={onSeekBarPointer}
+              onSeekBarKeyDown={onSeekBarKeyDown}
+              volume={volume}
+              onVolumeChange={setPlayerVolume}
+              repeatMode={repeatMode}
+              shuffle={shuffle}
+              playbackRate={playbackRate}
+              showLyrics={showLyrics}
+              showEqualizer={showEqualizer}
+              equalizerGainsDb={equalizerGainsDb}
+              onCycleRepeatMode={cycleRepeatMode}
+              onToggleShuffle={toggleShuffle}
+              onToggleLyrics={() => setShowLyrics((prev) => !prev)}
+              onToggleEqualizer={() => setShowEqualizer((prev) => !prev)}
+              onPlaybackRateChange={setPlaybackRate}
+              onEqualizerBandChange={setEqualizerBandGain}
+              onResetEqualizer={resetEqualizer}
+              queuePanel={browserQueuePanel}
+            />
+          </div>
         )}
       </div>
     </div>

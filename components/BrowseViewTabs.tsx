@@ -55,7 +55,7 @@ export default function BrowseViewTabs() {
           aria-selected={view === id}
           onClick={() => setView(id)}
           className={[
-            'cursor-pointer rounded-full px-3 py-1.5 text-xs font-medium transition',
+            'cursor-pointer rounded-full px-2 py-1 text-[10px] font-medium transition whitespace-nowrap sm:px-3 sm:py-1 sm:text-xs',
             view === id
               ? 'bg-accent-500 text-zinc-950'
               : 'bg-zinc-200 text-zinc-700 hover:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700',

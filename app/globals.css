@@ -54,4 +54,14 @@ body {
   height: 100%;
   margin: 0;
   font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+  /* Respect safe areas on notched phones / tablets */
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+@supports (padding: max(0px)) {
+  /* Extra bottom padding safety for fixed bottom elements if needed */
+  .safe-bottom {
+    padding-bottom: max(env(safe-area-inset-bottom), 0px);
+  }
 }

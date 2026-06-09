@@ -291,7 +291,7 @@ function SeekBar({
         <span>{durationSec > 0 ? formatDuration(durationSec) : '—'}</span>
       </div>
       <div
-        className="group relative h-1.5 cursor-pointer rounded-full bg-zinc-200 dark:bg-zinc-800"
+        className="group relative h-2 cursor-pointer rounded-full bg-zinc-200 dark:bg-zinc-800 sm:h-1.5 touch-manipulation"
         onPointerDown={(e) => {
           const el = e.currentTarget
           const rect = el.getBoundingClientRect()
@@ -507,7 +507,7 @@ export default function BrowserViewPlayerBar({
         </div>
       </div>
 
-      <div className="flex h-[4.25rem] items-center gap-3 px-3 sm:px-4">
+      <div className="flex h-[4.25rem] items-center gap-3 px-3 pb-[env(safe-area-inset-bottom)] sm:px-4">
         <TrackCover coverArtUrl={coverArtUrl} current={current} className="h-11 w-11" />
         <button
           type="button"

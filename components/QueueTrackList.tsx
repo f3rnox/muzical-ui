@@ -181,9 +181,10 @@ export default function QueueTrackList({
                 type="button"
                 aria-label={`Remove ${track.title} from queue`}
                 onClick={() => onRemoveQueueItem(row.queueId, index)}
-                className={`shrink-0 ${queueRemoveButtonPadClass} text-[11px] text-zinc-500 opacity-80 transition hover:bg-zinc-200/80 hover:text-zinc-900 sm:opacity-0 sm:group-hover/row:opacity-100 dark:hover:bg-zinc-800 dark:hover:text-zinc-100`}
+                className={`shrink-0 ${queueRemoveButtonPadClass} text-[11px] text-zinc-500 opacity-80 transition hover:bg-zinc-200/80 hover:text-zinc-900 dark:hover:bg-zinc-800 dark:hover:text-zinc-100 sm:opacity-0 sm:group-hover/row:opacity-100`}
               >
-                Remove
+                <span className="hidden sm:inline">Remove</span>
+                <span className="sm:hidden" aria-hidden>×</span>
               </button>
             </div>
           </li>

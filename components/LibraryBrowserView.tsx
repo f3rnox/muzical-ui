@@ -154,10 +154,10 @@ export default function LibraryBrowserView() {
   }, [])
 
   return (
-    <div className="flex min-h-0 flex-1 overflow-hidden">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row">
       {/* Artists column */}
-      <div className="flex w-1/5 min-w-0 flex-col overflow-hidden border-r border-zinc-200 dark:border-zinc-800">
-        <div className="flex h-11 shrink-0 items-center border-b border-zinc-200 px-3 dark:border-zinc-800">
+      <div className="flex w-full min-w-0 flex-col overflow-hidden border-b border-zinc-200 dark:border-zinc-800 lg:w-1/5 lg:border-b-0 lg:border-r">
+        <div className="flex h-10 shrink-0 items-center border-b border-zinc-200 px-3 dark:border-zinc-800 lg:h-11">
           <h2 className="text-xs font-medium uppercase tracking-wider text-zinc-500">Artists</h2>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto px-1.5 py-1.5">
@@ -191,8 +191,8 @@ export default function LibraryBrowserView() {
       </div>
 
       {/* Albums column */}
-      <div className="flex w-1/5 min-w-0 flex-col overflow-hidden border-r border-zinc-200 dark:border-zinc-800">
-        <div className="flex h-11 shrink-0 items-center border-b border-zinc-200 px-3 dark:border-zinc-800">
+      <div className="flex w-full min-w-0 flex-col overflow-hidden border-b border-zinc-200 dark:border-zinc-800 lg:w-1/5 lg:border-b-0 lg:border-r">
+        <div className="flex h-10 shrink-0 items-center border-b border-zinc-200 px-3 dark:border-zinc-800 lg:h-11">
           <h2 className="text-xs font-medium uppercase tracking-wider text-zinc-500">Albums</h2>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto px-1.5 py-1.5">
@@ -249,8 +249,8 @@ export default function LibraryBrowserView() {
       </div>
 
       {/* Songs column */}
-      <div className="flex w-1/5 min-w-0 flex-col overflow-hidden border-r border-zinc-200 dark:border-zinc-800">
-        <div className="flex h-11 shrink-0 items-center border-b border-zinc-200 px-3 dark:border-zinc-800">
+      <div className="flex w-full min-w-0 flex-col overflow-hidden border-b border-zinc-200 dark:border-zinc-800 lg:w-1/5 lg:border-b-0 lg:border-r">
+        <div className="flex h-10 shrink-0 items-center border-b border-zinc-200 px-3 dark:border-zinc-800 lg:h-11">
           <h2 className="text-xs font-medium uppercase tracking-wider text-zinc-500">Songs</h2>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto px-1.5 py-1.5">
@@ -295,8 +295,8 @@ export default function LibraryBrowserView() {
       </div>
 
       {/* Details sidebar */}
-      <div className="flex w-2/5 min-w-0 flex-col overflow-hidden">
-        <div className="flex h-11 shrink-0 items-center border-b border-zinc-200 px-3 dark:border-zinc-800">
+      <div className="flex w-full min-w-0 flex-col overflow-hidden lg:w-2/5">
+        <div className="flex h-10 shrink-0 items-center border-b border-zinc-200 px-3 dark:border-zinc-800 lg:h-11">
           <h2 className="text-xs font-medium uppercase tracking-wider text-zinc-500">Song details</h2>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
@@ -307,7 +307,7 @@ export default function LibraryBrowserView() {
               <div className="flex justify-center">
                 <AlbumCoverThumb
                   track={selectedSong}
-                  className="h-48 w-48 overflow-hidden rounded-xl ring-1 ring-zinc-200/80 dark:ring-zinc-700/80"
+                  className="h-32 w-32 overflow-hidden rounded-xl ring-1 ring-zinc-200/80 dark:ring-zinc-700/80 sm:h-40 sm:w-40 lg:h-48 lg:w-48"
                 />
               </div>
 
